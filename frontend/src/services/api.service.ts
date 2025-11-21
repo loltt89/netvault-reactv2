@@ -404,6 +404,34 @@ class APIService {
       const response = await apiClient.get('/devices/devices/statistics/');
       return response.data;
     },
+
+    csvTemplate: (lang: string) => {
+      return `/api/v1/devices/devices/csv_template/?lang=${lang}`;
+    },
+
+    csvPreview: async (file: File) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await apiClient.post('/devices/devices/csv_preview/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    },
+
+    csvImport: async (file: File, options: { skip_duplicates?: boolean; update_existing?: boolean }) => {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (options.skip_duplicates !== undefined) {
+        formData.append('skip_duplicates', String(options.skip_duplicates));
+      }
+      if (options.update_existing !== undefined) {
+        formData.append('update_existing', String(options.update_existing));
+      }
+      const response = await apiClient.post('/devices/devices/csv_import/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      return response.data;
+    },
   };
 
   /**

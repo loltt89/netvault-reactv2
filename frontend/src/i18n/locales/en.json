@@ -69,7 +69,30 @@
     "device_deleted": "Device deleted",
     "password_required": "Password is required for new devices",
     "failed_save": "Failed to save device",
-    "failed_delete": "Failed to delete device"
+    "failed_delete": "Failed to delete device",
+    "import": {
+      "button": "Import CSV",
+      "title": "Import Devices from CSV",
+      "download_template": "Download Template",
+      "template_hint": "Download a CSV template with headers in your language. Fill it with your device data.",
+      "download_button": "Download Template",
+      "select_file": "Select CSV File",
+      "processing": "Processing file...",
+      "total": "Total",
+      "valid": "Valid",
+      "duplicates": "Duplicates",
+      "errors": "Errors",
+      "skip_duplicates": "Skip duplicate devices (by IP)",
+      "update_existing": "Update existing devices",
+      "import_button": "Import Devices",
+      "importing": "Importing...",
+      "complete": "Import Complete!",
+      "created": "Created",
+      "updated_count": "Updated",
+      "skipped_count": "Skipped",
+      "preview_error": "Failed to preview file",
+      "import_error": "Failed to import devices"
+    }
   },
   "backups": {
     "title": "Backups",
