@@ -274,9 +274,9 @@ class DeviceViewSet(viewsets.ModelViewSet):
                 reverse_map[header.lower()] = field
         return reverse_map
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['get'], permission_classes=[])
     def csv_template(self, request):
-        """Download CSV template with localized headers"""
+        """Download CSV template with localized headers (public - no auth required)"""
         lang = request.query_params.get('lang', 'en')
         if lang not in self.CSV_HEADERS:
             lang = 'en'
