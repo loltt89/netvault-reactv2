@@ -25,30 +25,41 @@ class DeviceConnectionError(Exception):
     pass
 
 
-def validate_target_host(host: str) -> None:
+def validate_target_host(host: str) -> str:
     """
     Validate target host to prevent SSRF attacks
 
-    Blocks connections to loopback addresses (127.0.0.1, ::1)
+    Blocks connections to loopback and private addresses
     to prevent attacks on local services (Redis, MariaDB, etc.)
 
     Args:
         host: Target hostname or IP address
 
+    Returns:
+        Resolved IP address to use for connection
+
     Raises:
-        DeviceConnectionError: If host is loopback address
+        DeviceConnectionError: If host resolves to forbidden address
     """
     try:
+        # Try to parse as IP first
         ip = ipaddress.ip_address(host)
-        if ip.is_loopback:
-            raise DeviceConnectionError(
-                f"Connection to loopback address {host} is forbidden for security reasons. "
-                f"This prevents SSRF attacks on local services."
-            )
+        resolved_ip = host
     except ValueError:
-        # Not an IP address, it's a hostname - allow it
-        # (DNS resolution will happen during connection)
-        pass
+        # It's a hostname - resolve DNS first to prevent DNS rebinding attacks
+        try:
+            resolved_ip = socket.gethostbyname(host)
+            ip = ipaddress.ip_address(resolved_ip)
+        except socket.gaierror:
+            raise DeviceConnectionError(f"Cannot resolve hostname: {host}")
+
+    # Block loopback addresses
+    if ip.is_loopback:
+        raise DeviceConnectionError(
+            f"Connection to loopback address {resolved_ip} is forbidden for security reasons."
+        )
+
+    return resolved_ip
 
 
 def tcp_ping(host: str, port: int, timeout: int = 2) -> bool:
@@ -606,19 +617,19 @@ def test_connection(host: str, port: int, protocol: str, username: str,
     Returns:
         Tuple of (success: bool, message: str)
     """
-    # SSRF protection - block loopback addresses
+    # SSRF protection - resolve DNS and block loopback addresses
     try:
-        validate_target_host(host)
+        resolved_host = validate_target_host(host)
     except DeviceConnectionError as e:
         return False, str(e)
 
     try:
         if protocol.lower() == 'ssh':
-            with SSHConnection(host, port, username, password, enable_password, timeout) as conn:
+            with SSHConnection(resolved_host, port, username, password, enable_password, timeout) as conn:
                 output = conn.send_command('show version', wait_time=1)
                 return True, "Connection successful"
         else:
-            with TelnetConnection(host, port, username, password, enable_password, timeout) as conn:
+            with TelnetConnection(resolved_host, port, username, password, enable_password, timeout) as conn:
                 output = conn.send_command('show version', wait_time=1)
                 return True, "Connection successful"
     except Exception as e:
@@ -646,19 +657,19 @@ def backup_device_config(host: str, port: int, protocol: str, username: str,
     Returns:
         Tuple of (success: bool, config: str, error_message: str)
     """
-    # SSRF protection - block loopback addresses
+    # SSRF protection - resolve DNS and block loopback addresses
     try:
-        validate_target_host(host)
+        resolved_host = validate_target_host(host)
     except DeviceConnectionError as e:
         return False, "", str(e)
 
     try:
         if protocol.lower() == 'ssh':
-            with SSHConnection(host, port, username, password, enable_password, timeout, vendor) as conn:
+            with SSHConnection(resolved_host, port, username, password, enable_password, timeout, vendor) as conn:
                 config = conn.get_config(vendor, backup_commands)
                 return True, config, ""
         else:
-            with TelnetConnection(host, port, username, password, enable_password, timeout, vendor) as conn:
+            with TelnetConnection(resolved_host, port, username, password, enable_password, timeout, vendor) as conn:
                 config = conn.get_config(vendor, backup_commands)
                 return True, config, ""
     except Exception as e:

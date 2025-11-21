@@ -97,6 +97,10 @@ class UserCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         validated_data.pop('password_confirm', None)
         password = validated_data.pop('password')
+        # Force viewer role on self-registration to prevent privilege escalation
+        # Only admins can set role via UserViewSet
+        if not self.context.get('is_admin_request'):
+            validated_data['role'] = 'viewer'
         user = User.objects.create_user(password=password, **validated_data)
         return user
 

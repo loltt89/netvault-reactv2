@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -5,6 +6,8 @@ from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import logout
 from .models import User, AuditLog
+
+logger = logging.getLogger(__name__)
 from .permissions import CanManageUsers, CanViewAuditLogs
 from .serializers import (
     CustomTokenObtainPairSerializer, UserSerializer, UserCreateSerializer,
@@ -75,7 +78,8 @@ class AuthViewSet(viewsets.GenericViewSet):
 
             return Response({'detail': 'Successfully logged out'}, status=status.HTTP_200_OK)
         except Exception as e:
-            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Logout error: {e}")
+            return Response({'detail': 'Logout failed'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserViewSet(viewsets.ModelViewSet):
@@ -102,6 +106,13 @@ class UserViewSet(viewsets.ModelViewSet):
         elif self.action in ['update', 'partial_update']:
             return UserUpdateSerializer
         return UserSerializer
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        # Allow admins to set role when creating users
+        if self.request.user.is_authenticated and self.request.user.role == 'administrator':
+            context['is_admin_request'] = True
+        return context
 
     @action(detail=False, methods=['get'])
     def me(self, request):

@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -8,6 +9,8 @@ from accounts.permissions import CanManageDevices
 import csv
 import io
 import re
+
+logger = logging.getLogger(__name__)
 from .models import Vendor, DeviceType, Device
 from .serializers import (
     VendorSerializer, DeviceTypeSerializer,
@@ -422,7 +425,8 @@ class DeviceViewSet(viewsets.ModelViewSet):
             })
 
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"CSV preview error: {e}")
+            return Response({'error': 'Failed to process CSV file'}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['post'])
     def csv_import(self, request):
@@ -547,4 +551,5 @@ class DeviceViewSet(viewsets.ModelViewSet):
             })
 
         except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"CSV import error: {e}")
+            return Response({'error': 'Failed to import CSV file'}, status=status.HTTP_400_BAD_REQUEST)

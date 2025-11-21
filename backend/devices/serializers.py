@@ -2,6 +2,13 @@ from rest_framework import serializers
 from .models import Vendor, DeviceType, Device
 
 
+def sanitize_csv_value(value: str) -> str:
+    """Sanitize value to prevent CSV injection (formula injection in Excel)"""
+    if value and isinstance(value, str) and value[0] in ('=', '+', '-', '@'):
+        return "'" + value
+    return value
+
+
 class VendorSerializer(serializers.ModelSerializer):
     """Vendor serializer"""
 
@@ -74,6 +81,16 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
         password = validated_data.pop('password')
         enable_password = validated_data.pop('enable_password', '')
 
+        # Only administrators can set custom_commands (prevents RCE by operators)
+        user = self.context['request'].user
+        if user.role != 'administrator':
+            validated_data.pop('custom_commands', None)
+
+        # Sanitize text fields to prevent CSV injection
+        for field in ['name', 'description', 'location']:
+            if field in validated_data and validated_data[field]:
+                validated_data[field] = sanitize_csv_value(validated_data[field])
+
         device = Device(**validated_data)
         device.set_password(password)
         if enable_password:
@@ -86,6 +103,16 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         password = validated_data.pop('password', None)
         enable_password = validated_data.pop('enable_password', None)
+
+        # Only administrators can set custom_commands (prevents RCE by operators)
+        user = self.context['request'].user
+        if user.role != 'administrator':
+            validated_data.pop('custom_commands', None)
+
+        # Sanitize text fields to prevent CSV injection
+        for field in ['name', 'description', 'location']:
+            if field in validated_data and validated_data[field]:
+                validated_data[field] = sanitize_csv_value(validated_data[field])
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)

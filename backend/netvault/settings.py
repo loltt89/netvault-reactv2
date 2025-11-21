@@ -204,8 +204,8 @@ SIMPLE_JWT = {
 }
 
 # CORS Configuration
-# Allow all origins for development (access from any IP in local network)
-CORS_ALLOW_ALL_ORIGINS = True
+# Only allow specified origins (set in .env or use defaults)
+CORS_ALLOW_ALL_ORIGINS = False
 
 CORS_ALLOWED_ORIGINS = os.getenv(
     'CORS_ALLOWED_ORIGINS',
