@@ -64,9 +64,6 @@
     "name": "Name",
     "type": "Type",
     "location": "Location",
-    "group": "Group",
-    "no_group": "No Group",
-    "all_groups": "All Groups",
     "device_updated": "Device updated",
     "device_created": "Device created",
     "device_deleted": "Device deleted",
@@ -160,18 +157,6 @@
     "no_results": "No matches found",
     "matches": "matches",
     "line": "Line"
-  },
-  "groups": {
-    "title": "Device Groups",
-    "add_group": "Add Group",
-    "edit_group": "Edit Group",
-    "name": "Name",
-    "description": "Description",
-    "color": "Color",
-    "devices": "devices",
-    "no_groups": "No groups created yet",
-    "confirm_delete": "Are you sure you want to delete this group?",
-    "has_devices": "Cannot delete group with devices. Remove devices from group first."
   },
   "users": {
     "title": "Users",

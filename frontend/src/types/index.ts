@@ -84,8 +84,6 @@ export interface Device {
   vendor_name?: string;
   device_type: DeviceType | number;
   device_type_name?: string;
-  group: DeviceGroup | number | null;
-  group_name?: string;
   protocol: Protocol;
   port: number;
   username: string;
@@ -120,14 +118,6 @@ export interface DeviceType {
   slug: string;
   description: string;
   icon: string;
-}
-
-export interface DeviceGroup {
-  id: number;
-  name: string;
-  description: string;
-  created_at: string;
-  updated_at: string;
 }
 
 export type Protocol = 'ssh' | 'telnet';
@@ -266,7 +256,6 @@ export interface DeviceForm {
   description: string;
   vendor: number;
   device_type: number;
-  group: number | null;
   protocol: Protocol;
   port: number;
   username: string;
