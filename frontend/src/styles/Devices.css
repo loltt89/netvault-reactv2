@@ -591,6 +591,38 @@
   letter-spacing: 0.5px;
 }
 
+.devices-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.devices-table th.sortable:hover {
+  background-color: var(--hover-bg);
+  color: var(--primary-color);
+}
+
+.devices-table th.sortable .sort-indicator {
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-size: 0.7rem;
+  opacity: 0;
+  transition: opacity 0.2s ease, transform 0.3s ease;
+}
+
+.devices-table th.sortable:hover .sort-indicator {
+  opacity: 0.5;
+}
+
+.devices-table th.sortable.active {
+  color: var(--primary-color);
+}
+
+.devices-table th.sortable.active .sort-indicator {
+  opacity: 1;
+  color: var(--primary-color);
+}
+
 .devices-table tbody tr {
   border-bottom: 1px solid var(--border-color);
   transition: background 0.2s;

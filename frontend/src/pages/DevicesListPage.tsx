@@ -569,26 +569,33 @@ const DevicesListPage: React.FC = () => {
           <table className="devices-table">
             <thead>
               <tr>
-                <th onClick={() => handleSort('name')} style={{ cursor: 'pointer' }}>
-                  {t('devices.name')} {sortField === 'name' && (sortDirection === 'asc' ? '▲' : '▼')}
+                <th onClick={() => handleSort('name')} className={`sortable ${sortField === 'name' ? 'active' : ''}`}>
+                  {t('devices.name')}
+                  <span className="sort-indicator">{sortField === 'name' ? (sortDirection === 'asc' ? '▲' : '▼') : '▲'}</span>
                 </th>
-                <th onClick={() => handleSort('ip_address')} style={{ cursor: 'pointer' }}>
-                  {t('devices.ip_address')} {sortField === 'ip_address' && (sortDirection === 'asc' ? '▲' : '▼')}
+                <th onClick={() => handleSort('ip_address')} className={`sortable ${sortField === 'ip_address' ? 'active' : ''}`}>
+                  {t('devices.ip_address')}
+                  <span className="sort-indicator">{sortField === 'ip_address' ? (sortDirection === 'asc' ? '▲' : '▼') : '▲'}</span>
                 </th>
-                <th onClick={() => handleSort('vendor')} style={{ cursor: 'pointer' }}>
-                  {t('devices.vendor')} {sortField === 'vendor' && (sortDirection === 'asc' ? '▲' : '▼')}
+                <th onClick={() => handleSort('vendor')} className={`sortable ${sortField === 'vendor' ? 'active' : ''}`}>
+                  {t('devices.vendor')}
+                  <span className="sort-indicator">{sortField === 'vendor' ? (sortDirection === 'asc' ? '▲' : '▼') : '▲'}</span>
                 </th>
-                <th onClick={() => handleSort('device_type')} style={{ cursor: 'pointer' }}>
-                  {t('devices.type')} {sortField === 'device_type' && (sortDirection === 'asc' ? '▲' : '▼')}
+                <th onClick={() => handleSort('device_type')} className={`sortable ${sortField === 'device_type' ? 'active' : ''}`}>
+                  {t('devices.type')}
+                  <span className="sort-indicator">{sortField === 'device_type' ? (sortDirection === 'asc' ? '▲' : '▼') : '▲'}</span>
                 </th>
-                <th onClick={() => handleSort('location')} style={{ cursor: 'pointer' }}>
-                  {t('devices.location')} {sortField === 'location' && (sortDirection === 'asc' ? '▲' : '▼')}
+                <th onClick={() => handleSort('location')} className={`sortable ${sortField === 'location' ? 'active' : ''}`}>
+                  {t('devices.location')}
+                  <span className="sort-indicator">{sortField === 'location' ? (sortDirection === 'asc' ? '▲' : '▼') : '▲'}</span>
                 </th>
-                <th onClick={() => handleSort('status')} style={{ cursor: 'pointer' }}>
-                  {t('devices.status')} {sortField === 'status' && (sortDirection === 'asc' ? '▲' : '▼')}
+                <th onClick={() => handleSort('status')} className={`sortable ${sortField === 'status' ? 'active' : ''}`}>
+                  {t('devices.status')}
+                  <span className="sort-indicator">{sortField === 'status' ? (sortDirection === 'asc' ? '▲' : '▼') : '▲'}</span>
                 </th>
-                <th onClick={() => handleSort('last_backup')} style={{ cursor: 'pointer' }}>
-                  {t('devices.last_backup')} {sortField === 'last_backup' && (sortDirection === 'asc' ? '▲' : '▼')}
+                <th onClick={() => handleSort('last_backup')} className={`sortable ${sortField === 'last_backup' ? 'active' : ''}`}>
+                  {t('devices.last_backup')}
+                  <span className="sort-indicator">{sortField === 'last_backup' ? (sortDirection === 'asc' ? '▲' : '▼') : '▲'}</span>
                 </th>
                 <th>{t('devices.actions')}</th>
               </tr>
