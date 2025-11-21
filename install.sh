@@ -235,10 +235,11 @@ build_frontend() {
     if [ ! -d "$CURRENT_DIR/frontend/build" ]; then
         print_header "Building Frontend (React)"
 
-        # Install Node.js if not present
-        if ! command -v node &> /dev/null; then
-            print_message "$BLUE" "Installing Node.js..."
-            curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+        # Install Node.js 20 if not present or if version < 20
+        node_version=$(node -v 2>/dev/null | cut -d'v' -f2 | cut -d'.' -f1)
+        if [ -z "$node_version" ] || [ "$node_version" -lt 20 ]; then
+            print_message "$BLUE" "Installing Node.js 20..."
+            curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
             apt-get install -y nodejs
         fi
 
@@ -246,7 +247,7 @@ build_frontend() {
 
         # Install dependencies
         print_message "$BLUE" "Installing npm dependencies..."
-        npm install --legacy-peer-deps
+        npm install
 
         # Build production
         print_message "$BLUE" "Building production bundle..."
