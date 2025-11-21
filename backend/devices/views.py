@@ -443,7 +443,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
 
         try:
             content = csv_file.read().decode('utf-8-sig')
-            reader = csv.DictReader(io.StringIO(content))
+            reader = csv.DictReader(io.StringIO(content), delimiter=';')
 
             reverse_map = self.get_reverse_header_mapping()
 
