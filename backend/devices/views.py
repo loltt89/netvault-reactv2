@@ -14,7 +14,8 @@ logger = logging.getLogger(__name__)
 from .models import Vendor, DeviceType, Device
 from .serializers import (
     VendorSerializer, DeviceTypeSerializer,
-    DeviceSerializer, DeviceCreateSerializer, DeviceDetailSerializer
+    DeviceSerializer, DeviceCreateSerializer, DeviceDetailSerializer,
+    sanitize_csv_value
 )
 
 
@@ -484,12 +485,12 @@ class DeviceViewSet(viewsets.ModelViewSet):
 
                 if existing:
                     if update_existing:
-                        # Update existing device
-                        existing.name = name
+                        # Update existing device (sanitize to prevent CSV injection)
+                        existing.name = sanitize_csv_value(name)
                         if mapped_row.get('location'):
-                            existing.location = mapped_row['location']
+                            existing.location = sanitize_csv_value(mapped_row['location'])
                         if mapped_row.get('description'):
-                            existing.description = mapped_row['description']
+                            existing.description = sanitize_csv_value(mapped_row['description'])
                         existing.save()
                         updated += 1
                     else:
@@ -514,6 +515,11 @@ class DeviceViewSet(viewsets.ModelViewSet):
                     backup_enabled_val = mapped_row.get('backup_enabled', 'yes').lower()
                     backup_enabled = backup_enabled_val in ['yes', 'да', 'иә', 'true', '1']
 
+                    # Sanitize text fields to prevent CSV injection
+                    name = sanitize_csv_value(name)
+                    location = sanitize_csv_value(mapped_row.get('location', ''))
+                    description = sanitize_csv_value(mapped_row.get('description', ''))
+
                     device = Device(
                         name=name,
                         ip_address=ip_address,
@@ -521,8 +527,8 @@ class DeviceViewSet(viewsets.ModelViewSet):
                         device_type=device_type,
                         protocol=protocol,
                         port=port,
-                        location=mapped_row.get('location', ''),
-                        description=mapped_row.get('description', ''),
+                        location=location,
+                        description=description,
                         backup_enabled=backup_enabled,
                         criticality=mapped_row.get('criticality', 'medium'),
                         created_by=request.user,
