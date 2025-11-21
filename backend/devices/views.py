@@ -84,6 +84,20 @@ class DeviceViewSet(viewsets.ModelViewSet):
             return DeviceCreateSerializer
         return DeviceSerializer
 
+    def perform_create(self, serializer):
+        """Block custom_commands for non-admins at view level"""
+        from rest_framework.exceptions import PermissionDenied
+        if 'custom_commands' in self.request.data and self.request.user.role != 'administrator':
+            raise PermissionDenied("Only administrators can set custom backup commands")
+        serializer.save()
+
+    def perform_update(self, serializer):
+        """Block custom_commands for non-admins at view level"""
+        from rest_framework.exceptions import PermissionDenied
+        if 'custom_commands' in self.request.data and self.request.user.role != 'administrator':
+            raise PermissionDenied("Only administrators can set custom backup commands")
+        serializer.save()
+
     def get_queryset(self):
         """Filter queryset based on query params"""
         queryset = super().get_queryset()

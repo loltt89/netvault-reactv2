@@ -29,7 +29,7 @@ def validate_target_host(host: str) -> str:
     """
     Validate target host to prevent SSRF attacks
 
-    Blocks connections to loopback and private addresses
+    Blocks connections to loopback and validates private network ranges
     to prevent attacks on local services (Redis, MariaDB, etc.)
 
     Args:
@@ -41,6 +41,8 @@ def validate_target_host(host: str) -> str:
     Raises:
         DeviceConnectionError: If host resolves to forbidden address
     """
+    from django.conf import settings
+
     try:
         # Try to parse as IP first
         ip = ipaddress.ip_address(host)
@@ -53,11 +55,20 @@ def validate_target_host(host: str) -> str:
         except socket.gaierror:
             raise DeviceConnectionError(f"Cannot resolve hostname: {host}")
 
-    # Block loopback addresses
+    # Block loopback addresses (127.0.0.1, ::1, etc.)
     if ip.is_loopback:
         raise DeviceConnectionError(
             f"Connection to loopback address {resolved_ip} is forbidden for security reasons."
         )
+
+    # Check private IP whitelist (if configured)
+    if ip.is_private and settings.ALLOWED_PRIVATE_NETWORKS:
+        # Whitelist is configured - check if IP is in allowed ranges
+        if not any(ip in network for network in settings.ALLOWED_PRIVATE_NETWORKS):
+            raise DeviceConnectionError(
+                f"Connection to private address {resolved_ip} is not in allowed network ranges. "
+                f"Contact administrator to whitelist this network."
+            )
 
     return resolved_ip
 

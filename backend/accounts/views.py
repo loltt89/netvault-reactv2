@@ -40,6 +40,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                     secure=request.is_secure(),  # True for HTTPS
                     samesite='Lax',
                     max_age=60 * 60,  # 1 hour
+                    path='/',
                 )
             if refresh_token:
                 response.set_cookie(
@@ -49,6 +50,7 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                     secure=request.is_secure(),
                     samesite='Lax',
                     max_age=24 * 60 * 60,  # 24 hours
+                    path='/',
                 )
 
         return response
@@ -274,9 +276,9 @@ class UserViewSet(viewsets.ModelViewSet):
 
         return Response(result)
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], throttle_classes=[LoginRateThrottle])
     def verify_2fa(self, request):
-        """Verify and activate 2FA"""
+        """Verify and activate 2FA (rate limited to prevent brute force)"""
         serializer = Verify2FASerializer(data=request.data, context={'request': request})
         serializer.is_valid(raise_exception=True)
         user = serializer.save()

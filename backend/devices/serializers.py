@@ -41,6 +41,22 @@ def validate_custom_commands(value):
         if not isinstance(value['enable_mode'], bool):
             raise serializers.ValidationError('enable_mode must be a boolean')
 
+    # Validate backup command doesn't contain shell metacharacters (security)
+    backup_cmd = value.get('backup', '')
+    dangerous_chars = ['|', '&', ';', '`', '$', '(', ')']
+    if any(char in backup_cmd for char in dangerous_chars):
+        raise serializers.ValidationError(
+            f'Backup command cannot contain shell metacharacters: {" ".join(dangerous_chars)}'
+        )
+
+    # Validate setup commands too
+    if 'setup' in value:
+        for cmd in value['setup']:
+            if any(char in cmd for char in dangerous_chars):
+                raise serializers.ValidationError(
+                    f'Setup commands cannot contain shell metacharacters: {" ".join(dangerous_chars)}'
+                )
+
     # Warn about unknown keys
     known_keys = {'setup', 'backup', 'enable_mode'}
     unknown_keys = set(value.keys()) - known_keys

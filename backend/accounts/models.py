@@ -121,11 +121,12 @@ class User(AbstractBaseUser, PermissionsMixin):
         )
 
     def verify_2fa_token(self, token):
-        """Verify a 2FA token"""
+        """Verify a 2FA token (strict 30-second window)"""
         if not self.two_factor_enabled or not self.two_factor_secret:
             return False
         totp = pyotp.TOTP(self.two_factor_secret)
-        return totp.verify(token, valid_window=1)
+        # Use strict window (0) for better security - only current 30-second window
+        return totp.verify(token, valid_window=0)
 
 
 class AuditLog(models.Model):

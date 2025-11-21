@@ -251,8 +251,13 @@ CORS_ALLOW_METHODS = [
     'PUT',
 ]
 
-# Encryption Key for device credentials
-ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY', '')
+# Encryption Key for device credentials (REQUIRED)
+ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY')
+if not ENCRYPTION_KEY:
+    raise ImproperlyConfigured(
+        'ENCRYPTION_KEY environment variable is required. '
+        'Generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
+    )
 
 # Email Configuration
 EMAIL_BACKEND = os.getenv('EMAIL_BACKEND', 'django.core.mail.backends.console.EmailBackend')
@@ -286,6 +291,20 @@ ALLOW_PUBLIC_REGISTRATION = os.getenv('ALLOW_PUBLIC_REGISTRATION', 'False') == '
 DEVICE_CHECK_INTERVAL_MINUTES = int(os.getenv('DEVICE_CHECK_INTERVAL_MINUTES', '5'))
 DEVICE_CHECK_TCP_TIMEOUT = int(os.getenv('DEVICE_CHECK_TCP_TIMEOUT', '2'))
 DEVICE_CHECK_SSH_TIMEOUT = int(os.getenv('DEVICE_CHECK_SSH_TIMEOUT', '5'))
+
+# SSRF Protection - Allowed Private Network Ranges
+# Leave empty to allow all private IPs (default for backward compatibility)
+# Format: comma-separated CIDR notation, e.g., "192.168.0.0/16,10.10.0.0/16"
+ALLOWED_PRIVATE_NETWORKS = os.getenv('ALLOWED_PRIVATE_NETWORKS', '').strip()
+if ALLOWED_PRIVATE_NETWORKS:
+    import ipaddress
+    ALLOWED_PRIVATE_NETWORKS = [
+        ipaddress.ip_network(net.strip())
+        for net in ALLOWED_PRIVATE_NETWORKS.split(',')
+        if net.strip()
+    ]
+else:
+    ALLOWED_PRIVATE_NETWORKS = []  # Empty = allow all private IPs
 
 # Redis Configuration
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')

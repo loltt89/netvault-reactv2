@@ -57,8 +57,7 @@ class IsOperatorOrAdmin(permissions.BasePermission):
         return (
             request.user and
             request.user.is_authenticated and
-            request.user.role in ['operator', 'administrator'] or
-            request.user.is_superuser
+            (request.user.role in ['operator', 'administrator'] or request.user.is_superuser)
         )
 
 
@@ -69,8 +68,7 @@ class IsAuditorOrAdmin(permissions.BasePermission):
         return (
             request.user and
             request.user.is_authenticated and
-            request.user.role in ['auditor', 'administrator'] or
-            request.user.is_superuser
+            (request.user.role in ['auditor', 'administrator'] or request.user.is_superuser)
         )
 
 
