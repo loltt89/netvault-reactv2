@@ -206,7 +206,7 @@ const UsersPage: React.FC = () => {
                 </div>
                 <div className="info-row">
                   <span className="info-label">{t('users.status')}:</span>
-                  <span className={`badge ${user.is_active ? 'badge-success' : 'badge-secondary'}`}>
+                  <span className={`badge ${user.is_active ? 'badge-success' : 'badge-secondary'}`} style={{ marginLeft: '4px' }}>
                     {user.is_active ? t('users.active') : t('users.inactive')}
                   </span>
                 </div>
