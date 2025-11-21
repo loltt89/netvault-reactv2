@@ -39,7 +39,7 @@ const GroupsPage: React.FC = () => {
   const loadGroups = async () => {
     try {
       const response = await apiService.deviceGroups.list();
-      setGroups(response.data.results || response.data);
+      setGroups(response.results || response);
     } catch (error) {
       console.error('Failed to load groups:', error);
     } finally {
