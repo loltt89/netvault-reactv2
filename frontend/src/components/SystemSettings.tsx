@@ -790,34 +790,34 @@ const SystemSettings: React.FC = () => {
                 onChange={(e) => setSamlSettings({ ...samlSettings, enabled: e.target.checked })}
               />
               <label htmlFor="saml_enabled" style={{ fontWeight: 600, fontSize: '1rem' }}>
-                Enable SAML 2.0 SSO
+                {t('systemSettings.saml.enable')}
               </label>
             </div>
           </div>
 
           <div className="info-card" style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: 'var(--hover-bg)' }}>
             <p style={{ margin: 0, fontSize: '0.9rem' }}>
-              <strong>SAML 2.0 Single Sign-On</strong><br />
-              Configure SAML SSO to allow users to authenticate via your Identity Provider (Azure AD, Okta, ADFS, etc.)
+              <strong>{t('systemSettings.saml.sp_info')}</strong><br />
+              {t('systemSettings.saml.sp_info_desc')}
             </p>
           </div>
 
           {/* SP Information (Read-only) */}
-          <h4 style={{ marginTop: '1.5rem', marginBottom: '1rem' }}>Service Provider (SP) Information</h4>
+          <h4 style={{ marginTop: '1.5rem', marginBottom: '1rem' }}>{t('systemSettings.saml.sp_info')}</h4>
           <div className="info-card" style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: 'var(--bg-tertiary)' }}>
             <p style={{ margin: '0.25rem 0', fontSize: '0.85rem' }}>
-              <strong>Metadata URL:</strong> <code>{samlSettings.sp_metadata_url || `${window.location.origin}/api/v1/saml/metadata/`}</code>
+              <strong>{t('systemSettings.saml.metadata_url')}:</strong> <code>{samlSettings.sp_metadata_url || `${window.location.origin}/api/v1/saml/metadata/`}</code>
             </p>
             <p style={{ margin: '0.25rem 0', fontSize: '0.85rem' }}>
-              <strong>ACS URL:</strong> <code>{samlSettings.sp_acs_url || `${window.location.origin}/api/v1/saml/acs/`}</code>
+              <strong>{t('systemSettings.saml.acs_url')}:</strong> <code>{samlSettings.sp_acs_url || `${window.location.origin}/api/v1/saml/acs/`}</code>
             </p>
             <p style={{ margin: '0.25rem 0', fontSize: '0.85rem' }}>
-              <strong>Entity ID:</strong> <code>{samlSettings.sp_entity_id || `${window.location.origin}/api/v1/saml/metadata/`}</code>
+              <strong>{t('systemSettings.saml.entity_id')}:</strong> <code>{samlSettings.sp_entity_id || `${window.location.origin}/api/v1/saml/metadata/`}</code>
             </p>
           </div>
 
           <div className="form-group">
-            <label>SP Entity ID (optional)</label>
+            <label>{t('systemSettings.saml.entity_id')} (optional)</label>
             <input
               type="text"
               value={samlSettings.sp_entity_id}
@@ -828,10 +828,10 @@ const SystemSettings: React.FC = () => {
           </div>
 
           {/* IdP Configuration */}
-          <h4 style={{ marginTop: '1.5rem', marginBottom: '1rem' }}>Identity Provider (IdP) Configuration</h4>
+          <h4 style={{ marginTop: '1.5rem', marginBottom: '1rem' }}>{t('systemSettings.saml.idp_config')}</h4>
 
           <div className="form-group">
-            <label>IdP Entity ID *</label>
+            <label>{t('systemSettings.saml.idp_entity_id')} *</label>
             <input
               type="text"
               value={samlSettings.idp_entity_id}
@@ -842,7 +842,7 @@ const SystemSettings: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label>IdP SSO URL *</label>
+            <label>{t('systemSettings.saml.idp_sso_url')} *</label>
             <input
               type="text"
               value={samlSettings.idp_sso_url}
@@ -853,7 +853,7 @@ const SystemSettings: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label>IdP SLO URL (optional)</label>
+            <label>{t('systemSettings.saml.idp_slo_url')}</label>
             <input
               type="text"
               value={samlSettings.idp_slo_url}
@@ -864,11 +864,11 @@ const SystemSettings: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label>IdP X.509 Certificate *</label>
+            <label>{t('systemSettings.saml.idp_x509_cert')} *</label>
             <textarea
               value={samlSettings.idp_x509_cert}
               onChange={(e) => setSamlSettings({ ...samlSettings, idp_x509_cert: e.target.value })}
-              placeholder="-----BEGIN CERTIFICATE-----&#10;MIICxxxx...&#10;-----END CERTIFICATE-----"
+              placeholder={t('systemSettings.saml.idp_x509_cert_placeholder')}
               rows={6}
               disabled={!samlSettings.enabled}
               style={{ fontFamily: 'monospace', fontSize: '0.85rem' }}
@@ -876,10 +876,10 @@ const SystemSettings: React.FC = () => {
           </div>
 
           {/* Attribute Mapping */}
-          <h4 style={{ marginTop: '1.5rem', marginBottom: '1rem' }}>Attribute Mapping</h4>
+          <h4 style={{ marginTop: '1.5rem', marginBottom: '1rem' }}>{t('systemSettings.saml.attr_mapping')}</h4>
 
           <div className="form-group">
-            <label>Username Attribute</label>
+            <label>{t('systemSettings.saml.attr_username')}</label>
             <input
               type="text"
               value={samlSettings.attr_username}
@@ -889,7 +889,7 @@ const SystemSettings: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label>Email Attribute</label>
+            <label>{t('systemSettings.saml.attr_email')}</label>
             <input
               type="text"
               value={samlSettings.attr_email}
@@ -899,7 +899,7 @@ const SystemSettings: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label>First Name Attribute</label>
+            <label>{t('systemSettings.saml.attr_first_name')}</label>
             <input
               type="text"
               value={samlSettings.attr_first_name}
@@ -909,7 +909,7 @@ const SystemSettings: React.FC = () => {
           </div>
 
           <div className="form-group">
-            <label>Last Name Attribute</label>
+            <label>{t('systemSettings.saml.attr_last_name')}</label>
             <input
               type="text"
               value={samlSettings.attr_last_name}
@@ -919,7 +919,7 @@ const SystemSettings: React.FC = () => {
           </div>
 
           {/* User Provisioning */}
-          <h4 style={{ marginTop: '1.5rem', marginBottom: '1rem' }}>User Provisioning</h4>
+          <h4 style={{ marginTop: '1.5rem', marginBottom: '1rem' }}>{t('systemSettings.saml.user_provisioning')}</h4>
 
           <div className="form-group">
             <div className="checkbox-group">
@@ -931,27 +931,27 @@ const SystemSettings: React.FC = () => {
                 disabled={!samlSettings.enabled}
               />
               <label htmlFor="saml_auto_create">
-                Auto-create users on first login
+                {t('systemSettings.saml.auto_create_users')}
               </label>
             </div>
           </div>
 
           <div className="form-group">
-            <label>Default Role for New Users</label>
+            <label>{t('systemSettings.saml.default_role')}</label>
             <select
               value={samlSettings.default_role}
               onChange={(e) => setSamlSettings({ ...samlSettings, default_role: e.target.value })}
               disabled={!samlSettings.enabled}
             >
-              <option value="viewer">Viewer</option>
-              <option value="operator">Operator</option>
+              <option value="viewer">{t('systemSettings.saml.role_viewer')}</option>
+              <option value="operator">{t('systemSettings.saml.role_operator')}</option>
               <option value="auditor">Auditor</option>
-              <option value="administrator">Administrator</option>
+              <option value="administrator">{t('systemSettings.saml.role_admin')}</option>
             </select>
           </div>
 
           {/* Security */}
-          <h4 style={{ marginTop: '1.5rem', marginBottom: '1rem' }}>Security Options</h4>
+          <h4 style={{ marginTop: '1.5rem', marginBottom: '1rem' }}>{t('systemSettings.saml.security_options')}</h4>
 
           <div className="form-group">
             <div className="checkbox-group">
@@ -963,7 +963,7 @@ const SystemSettings: React.FC = () => {
                 disabled={!samlSettings.enabled}
               />
               <label htmlFor="saml_want_assertions_signed">
-                Require signed assertions
+                {t('systemSettings.saml.want_assertions_signed')}
               </label>
             </div>
           </div>
@@ -978,7 +978,7 @@ const SystemSettings: React.FC = () => {
                 disabled={!samlSettings.enabled}
               />
               <label htmlFor="saml_want_messages_signed">
-                Require signed messages
+                {t('systemSettings.saml.want_messages_signed')}
               </label>
             </div>
           </div>
