@@ -297,17 +297,21 @@ const DevicesListPage: React.FC = () => {
     try {
       const lang = getCurrentLanguage();
       const response = await apiService.devices.csvTemplate(lang);
-      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8' });
+      const blob = response.data;
       const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `devices_template_${lang}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `devices_template_${lang}.csv`);
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(link);
+      }, 100);
     } catch (error) {
       console.error('Failed to download template:', error);
+      alert(t('devices.import.preview_error'));
     }
   };
 
@@ -436,7 +440,7 @@ const DevicesListPage: React.FC = () => {
           <button onClick={loadDevices} className="btn-primary">
             🔄 {t('common.refresh')}
           </button>
-          <button onClick={handleOpenImport} className="btn-secondary">
+          <button onClick={handleOpenImport} className="btn-primary">
             📥 {t('devices.import.button')}
           </button>
           <button onClick={handleAddDevice} className="btn-primary">
@@ -824,7 +828,7 @@ const DevicesListPage: React.FC = () => {
                 </p>
                 <button
                   onClick={handleDownloadTemplate}
-                  className="btn-secondary"
+                  className="btn-primary"
                   type="button"
                 >
                   📄 {t('devices.import.download_button')}
