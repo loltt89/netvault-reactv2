@@ -2,6 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import '../styles/Devices.css';
+import { AxiosError } from 'axios';
+
+// Type guard for AxiosError
+const isAxiosError = (error: unknown): error is AxiosError => {
+  return (error as AxiosError).response !== undefined;
+};
 
 interface Device {
   id: number;
@@ -20,7 +26,7 @@ interface Device {
   status: string;
   backup_enabled: boolean;
   last_backup: string | null;
-  custom_commands: any;
+  custom_commands: CustomCommands | null;
 }
 
 interface Vendor {
@@ -31,6 +37,29 @@ interface Vendor {
 interface DeviceType {
   id: number;
   name: string;
+}
+
+interface CustomCommands {
+  setup?: string[];
+  backup: string;
+  enable_mode?: boolean;
+}
+
+interface DevicePayload {
+  name: string;
+  ip_address: string;
+  description: string;
+  vendor: number;
+  device_type: number;
+  protocol: string;
+  port: number;
+  username: string;
+  location: string;
+  criticality: string;
+  backup_enabled: boolean;
+  password?: string;
+  enable_password?: string;
+  custom_commands?: CustomCommands | null;
 }
 
 interface DeviceFormData {
@@ -164,7 +193,7 @@ const DevicesPage: React.FC = () => {
     e.preventDefault();
 
     try {
-      const payload: any = {
+      const payload: DevicePayload = {
         name: formData.name,
         ip_address: formData.ip_address,
         description: formData.description,
@@ -213,9 +242,10 @@ const DevicesPage: React.FC = () => {
 
       setShowModal(false);
       loadDevices();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error saving device:', error);
-      alert(t('common.error') + ': ' + (error.response?.data?.message || 'Failed to save device'));
+      const message = isAxiosError(error) ? error.response?.data?.message : undefined;
+      alert(t('common.error') + ': ' + (message || 'Failed to save device'));
     }
   };
 
@@ -242,9 +272,10 @@ const DevicesPage: React.FC = () => {
       } else {
         alert(`${t('common.error')}: ${result.message}`);
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error testing connection:', error);
-      alert(t('common.error') + ': ' + (error.response?.data?.message || 'Connection test failed'));
+      const message = isAxiosError(error) ? error.response?.data?.message : undefined;
+      alert(t('common.error') + ': ' + (message || 'Connection test failed'));
     }
   };
 
@@ -252,9 +283,10 @@ const DevicesPage: React.FC = () => {
     try {
       const result = await apiService.devices.backupNow(device.id);
       alert(`${t('common.success')}: ${result.message}`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error initiating backup:', error);
-      alert(t('common.error') + ': ' + (error.response?.data?.error || 'Backup failed'));
+      const message = isAxiosError(error) ? error.response?.data?.error : undefined;
+      alert(t('common.error') + ': ' + (message || 'Backup failed'));
     }
   };
 

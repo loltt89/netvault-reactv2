@@ -9,6 +9,50 @@ def sanitize_csv_value(value: str) -> str:
     return value
 
 
+def validate_custom_commands(value):
+    """
+    Validate custom_commands JSON structure
+    Expected format:
+    {
+        'setup': ['cmd1', 'cmd2'],  # optional, list of strings
+        'backup': 'show running-config',  # required, string
+        'enable_mode': True  # optional, bool
+    }
+    """
+    if not isinstance(value, dict):
+        raise serializers.ValidationError('custom_commands must be a JSON object')
+
+    # Check required 'backup' field
+    if 'backup' not in value:
+        raise serializers.ValidationError('custom_commands must contain "backup" field')
+
+    if not isinstance(value['backup'], str) or not value['backup'].strip():
+        raise serializers.ValidationError('backup command must be a non-empty string')
+
+    # Check optional 'setup' field
+    if 'setup' in value:
+        if not isinstance(value['setup'], list):
+            raise serializers.ValidationError('setup must be a list of commands')
+        if not all(isinstance(cmd, str) for cmd in value['setup']):
+            raise serializers.ValidationError('setup commands must be strings')
+
+    # Check optional 'enable_mode' field
+    if 'enable_mode' in value:
+        if not isinstance(value['enable_mode'], bool):
+            raise serializers.ValidationError('enable_mode must be a boolean')
+
+    # Warn about unknown keys
+    known_keys = {'setup', 'backup', 'enable_mode'}
+    unknown_keys = set(value.keys()) - known_keys
+    if unknown_keys:
+        raise serializers.ValidationError(
+            f'Unknown keys in custom_commands: {", ".join(unknown_keys)}. '
+            f'Valid keys are: {", ".join(known_keys)}'
+        )
+
+    return value
+
+
 class VendorSerializer(serializers.ModelSerializer):
     """Vendor serializer"""
 
@@ -91,6 +135,18 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
             if field in validated_data and validated_data[field]:
                 validated_data[field] = sanitize_csv_value(validated_data[field])
 
+        # Validate username doesn't start with dangerous CSV characters
+        if 'username' in validated_data and validated_data['username']:
+            username = validated_data['username']
+            if username and username[0] in ('=', '+', '-', '@'):
+                raise serializers.ValidationError({
+                    'username': f'Username cannot start with {username[0]} (CSV injection risk)'
+                })
+
+        # Validate custom_commands structure
+        if 'custom_commands' in validated_data and validated_data['custom_commands']:
+            validate_custom_commands(validated_data['custom_commands'])
+
         device = Device(**validated_data)
         device.set_password(password)
         if enable_password:
@@ -113,6 +169,18 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
         for field in ['name', 'description', 'location']:
             if field in validated_data and validated_data[field]:
                 validated_data[field] = sanitize_csv_value(validated_data[field])
+
+        # Validate username doesn't start with dangerous CSV characters
+        if 'username' in validated_data and validated_data['username']:
+            username = validated_data['username']
+            if username and username[0] in ('=', '+', '-', '@'):
+                raise serializers.ValidationError({
+                    'username': f'Username cannot start with {username[0]} (CSV injection risk)'
+                })
+
+        # Validate custom_commands structure
+        if 'custom_commands' in validated_data and validated_data['custom_commands']:
+            validate_custom_commands(validated_data['custom_commands'])
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)

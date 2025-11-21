@@ -534,9 +534,13 @@ class DeviceViewSet(viewsets.ModelViewSet):
                         created_by=request.user,
                     )
 
-                    # Set credentials
+                    # Set credentials (validate username for CSV injection)
                     if mapped_row.get('username'):
-                        device.username = mapped_row['username']
+                        username = mapped_row['username']
+                        if username and username[0] in ('=', '+', '-', '@'):
+                            errors.append(f'Row {row_num}: Username cannot start with {username[0]} (CSV injection risk)')
+                            continue
+                        device.username = username
                     if mapped_row.get('password'):
                         device.set_password(mapped_row['password'])
                     if mapped_row.get('enable_password'):
