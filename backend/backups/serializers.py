@@ -1,6 +1,9 @@
+import logging
 from rest_framework import serializers
 from .models import Backup, BackupSchedule, BackupRetentionPolicy
 from devices.serializers import DeviceSerializer
+
+logger = logging.getLogger(__name__)
 
 
 class BackupSerializer(serializers.ModelSerializer):
@@ -63,7 +66,8 @@ class BackupDetailSerializer(serializers.ModelSerializer):
         """Return decrypted configuration if user has permission"""
         try:
             return obj.get_configuration()
-        except Exception:
+        except Exception as e:
+            logger.debug(f"Could not decrypt configuration for backup {obj.id}: {e}")
             return None
 
 

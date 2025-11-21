@@ -7,7 +7,17 @@ import time
 import socket
 import re
 import ipaddress
+import logging
 from typing import Optional, Tuple, List
+
+logger = logging.getLogger(__name__)
+
+
+class LoggingAutoAddPolicy(paramiko.MissingHostKeyPolicy):
+    """Auto-add host keys but log when it happens for security visibility"""
+    def missing_host_key(self, client, hostname, key):
+        logger.warning(f"SSH: Auto-accepting host key for {hostname} (fingerprint: {key.get_fingerprint().hex()})")
+        client.get_host_keys().add(hostname, key.get_name(), key)
 
 
 class DeviceConnectionError(Exception):
@@ -147,7 +157,7 @@ class SSHConnection:
         """Establish SSH connection"""
         try:
             self.client = paramiko.SSHClient()
-            self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self.client.set_missing_host_key_policy(LoggingAutoAddPolicy())
 
             self.client.connect(
                 hostname=self.host,

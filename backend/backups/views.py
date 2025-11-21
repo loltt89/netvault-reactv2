@@ -1,3 +1,4 @@
+import logging
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -5,6 +6,8 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Count, Q
 from django.utils import timezone
 from accounts.permissions import CanManageBackups, CanManageDevices
+
+logger = logging.getLogger(__name__)
 from .models import Backup, BackupSchedule, BackupRetentionPolicy
 from .serializers import (
     BackupSerializer, BackupDetailSerializer,
@@ -274,7 +277,8 @@ class BackupViewSet(viewsets.ModelViewSet):
 
             try:
                 config = latest_backup.get_configuration()
-            except Exception:
+            except Exception as e:
+                logger.debug(f"Could not decrypt config for device {device.id}: {e}")
                 continue
 
             # Search in config

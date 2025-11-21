@@ -315,6 +315,11 @@ class DeviceViewSet(viewsets.ModelViewSet):
         if not csv_file.name.endswith('.csv'):
             return Response({'error': 'File must be CSV'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Limit file size to 5MB to prevent memory exhaustion
+        max_size = 5 * 1024 * 1024
+        if csv_file.size > max_size:
+            return Response({'error': 'CSV file too large (max 5MB)'}, status=status.HTTP_400_BAD_REQUEST)
+
         try:
             # Read file content
             content = csv_file.read().decode('utf-8-sig')  # Handle BOM
@@ -428,6 +433,11 @@ class DeviceViewSet(viewsets.ModelViewSet):
         csv_file = request.FILES['file']
         skip_duplicates = request.data.get('skip_duplicates', True)
         update_existing = request.data.get('update_existing', False)
+
+        # Limit file size to 5MB to prevent memory exhaustion
+        max_size = 5 * 1024 * 1024
+        if csv_file.size > max_size:
+            return Response({'error': 'CSV file too large (max 5MB)'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             content = csv_file.read().decode('utf-8-sig')

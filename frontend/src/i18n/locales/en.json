@@ -37,6 +37,7 @@
     "vendor": "Vendor",
     "device_type": "Device Type",
     "protocol": "Protocol",
+    "telnet_warning": "Telnet transmits passwords in plain text. Use SSH if possible.",
     "port": "Port",
     "status": "Status",
     "last_backup": "Last Backup",

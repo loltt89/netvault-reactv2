@@ -397,13 +397,21 @@ create_admin() {
     print_header "Creating Administrator Account"
 
     cd $INSTALL_DIR
-    ./venv/bin/python manage.py shell <<EOF
+    # Use environment variables to avoid password exposure in process list
+    NETVAULT_ADMIN_USER="${ADMIN_USER}" \
+    NETVAULT_ADMIN_EMAIL="${ADMIN_EMAIL}" \
+    NETVAULT_ADMIN_PASS="${ADMIN_PASS}" \
+    ./venv/bin/python manage.py shell <<'EOF'
+import os
 from accounts.models import User
-if not User.objects.filter(username='${ADMIN_USER}').exists():
+username = os.environ.get('NETVAULT_ADMIN_USER')
+email = os.environ.get('NETVAULT_ADMIN_EMAIL')
+password = os.environ.get('NETVAULT_ADMIN_PASS')
+if not User.objects.filter(username=username).exists():
     User.objects.create_superuser(
-        username='${ADMIN_USER}',
-        email='${ADMIN_EMAIL}',
-        password='${ADMIN_PASS}',
+        username=username,
+        email=email,
+        password=password,
         role='administrator'
     )
     print('Admin user created')

@@ -781,6 +781,11 @@ const DevicesListPage: React.FC = () => {
                       <option value="ssh">SSH</option>
                       <option value="telnet">Telnet</option>
                     </select>
+                    {formData.protocol === 'telnet' && (
+                      <div style={{ color: 'var(--warning-color)', fontSize: '0.85rem', marginTop: '0.25rem' }}>
+                        ⚠️ {t('devices.telnet_warning')}
+                      </div>
+                    )}
                   </div>
 
                   <div className="form-group">
