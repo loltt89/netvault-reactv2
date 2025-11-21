@@ -127,7 +127,6 @@ class BackupSchedule(models.Model):
 
     # Devices to backup
     devices = models.ManyToManyField(Device, related_name='backup_schedules', blank=True)
-    device_group = models.ForeignKey('devices.DeviceGroup', on_delete=models.CASCADE, null=True, blank=True, related_name='backup_schedules')
 
     is_active = models.BooleanField(default=True)
 

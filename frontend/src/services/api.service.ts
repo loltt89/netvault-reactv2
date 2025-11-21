@@ -362,36 +362,6 @@ class APIService {
   };
 
   /**
-   * Device Groups endpoints
-   */
-  deviceGroups = {
-    list: async () => {
-      const response = await apiClient.get('/devices/groups/');
-      return response.data;
-    },
-
-    get: async (id: number) => {
-      const response = await apiClient.get(`/devices/groups/${id}/`);
-      return response.data;
-    },
-
-    create: async (data: { name: string; description?: string; color?: string }) => {
-      const response = await apiClient.post('/devices/groups/', data);
-      return response.data;
-    },
-
-    update: async (id: number, data: { name?: string; description?: string; color?: string }) => {
-      const response = await apiClient.patch(`/devices/groups/${id}/`, data);
-      return response.data;
-    },
-
-    delete: async (id: number) => {
-      const response = await apiClient.delete(`/devices/groups/${id}/`);
-      return response.data;
-    },
-  };
-
-  /**
    * Devices endpoints
    */
   devices = {

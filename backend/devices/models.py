@@ -63,38 +63,6 @@ class DeviceType(models.Model):
         return self.name
 
 
-class DeviceGroup(models.Model):
-    """Group for organizing devices"""
-
-    COLOR_CHOICES = (
-        ('#6366f1', 'Indigo'),
-        ('#8b5cf6', 'Violet'),
-        ('#ec4899', 'Pink'),
-        ('#ef4444', 'Red'),
-        ('#f97316', 'Orange'),
-        ('#eab308', 'Yellow'),
-        ('#22c55e', 'Green'),
-        ('#14b8a6', 'Teal'),
-        ('#3b82f6', 'Blue'),
-        ('#64748b', 'Slate'),
-    )
-
-    name = models.CharField(max_length=100, unique=True)
-    description = models.TextField(blank=True)
-    color = models.CharField(max_length=7, choices=COLOR_CHOICES, default='#6366f1')
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        db_table = 'device_groups'
-        verbose_name = 'Device Group'
-        verbose_name_plural = 'Device Groups'
-        ordering = ['name']
-
-    def __str__(self):
-        return self.name
-
-
 class Device(models.Model):
     """Network device"""
 
@@ -124,7 +92,6 @@ class Device(models.Model):
     # Device details
     vendor = models.ForeignKey(Vendor, on_delete=models.PROTECT, related_name='devices')
     device_type = models.ForeignKey(DeviceType, on_delete=models.PROTECT, related_name='devices')
-    group = models.ForeignKey(DeviceGroup, on_delete=models.SET_NULL, null=True, blank=True, related_name='devices')
 
     # Connection settings
     protocol = models.CharField(max_length=10, choices=PROTOCOL_CHOICES, default='ssh')

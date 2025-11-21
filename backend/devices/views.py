@@ -8,9 +8,9 @@ from accounts.permissions import CanManageDevices
 import csv
 import io
 import re
-from .models import Vendor, DeviceType, DeviceGroup, Device
+from .models import Vendor, DeviceType, Device
 from .serializers import (
-    VendorSerializer, DeviceTypeSerializer, DeviceGroupSerializer,
+    VendorSerializer, DeviceTypeSerializer,
     DeviceSerializer, DeviceCreateSerializer, DeviceDetailSerializer
 )
 
@@ -61,23 +61,11 @@ class DeviceTypeViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
 
-class DeviceGroupViewSet(viewsets.ModelViewSet):
-    """
-    ViewSet for DeviceGroup CRUD operations
-    """
-    queryset = DeviceGroup.objects.annotate(device_count=Count('devices'))
-    serializer_class = DeviceGroupSerializer
-    permission_classes = [IsAuthenticated, CanManageDevices]
-    search_fields = ['name', 'description']
-    ordering_fields = ['name', 'created_at']
-    ordering = ['name']
-
-
 class DeviceViewSet(viewsets.ModelViewSet):
     """
     ViewSet for Device CRUD operations
     """
-    queryset = Device.objects.select_related('vendor', 'device_type', 'group', 'created_by')
+    queryset = Device.objects.select_related('vendor', 'device_type', 'created_by')
     permission_classes = [IsAuthenticated, CanManageDevices]
     search_fields = ['name', 'ip_address', 'location', 'description']
     ordering_fields = ['name', 'ip_address', 'created_at', 'last_backup']

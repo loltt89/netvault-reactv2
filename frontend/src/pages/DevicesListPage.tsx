@@ -12,13 +12,6 @@ interface ImportPreviewRow {
   valid: boolean;
 }
 
-interface DeviceGroup {
-  id: number;
-  name: string;
-  color: string;
-  device_count: number;
-}
-
 interface Device {
   id: number;
   name: string;
@@ -28,9 +21,6 @@ interface Device {
   vendor_name: string;
   device_type: number;
   device_type_name: string;
-  group: number | null;
-  group_name: string | null;
-  group_color: string | null;
   protocol: string;
   port: number;
   username: string;
@@ -57,7 +47,6 @@ interface DeviceFormData {
   description: string;
   vendor: string;
   device_type: string;
-  group: string;
   protocol: string;
   port: string;
   username: string;
@@ -75,7 +64,6 @@ const DevicesListPage: React.FC = () => {
   const [filteredDevices, setFilteredDevices] = useState<Device[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
-  const [deviceGroups, setDeviceGroups] = useState<DeviceGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
@@ -109,7 +97,6 @@ const DevicesListPage: React.FC = () => {
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterLocation, setFilterLocation] = useState('');
-  const [filterGroup, setFilterGroup] = useState('');
   const [sortField, setSortField] = useState<string>('ip_address');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -119,7 +106,6 @@ const DevicesListPage: React.FC = () => {
     description: '',
     vendor: '',
     device_type: '',
-    group: '',
     protocol: 'ssh',
     port: '22',
     username: '',
@@ -136,10 +122,10 @@ const DevicesListPage: React.FC = () => {
 
   useEffect(() => {
     applyFilters();
-  }, [devices, searchTerm, filterVendor, filterType, filterStatus, filterLocation, filterGroup, sortField, sortDirection]);
+  }, [devices, searchTerm, filterVendor, filterType, filterStatus, filterLocation, sortField, sortDirection]);
 
   const loadData = async () => {
-    await Promise.all([loadDevices(), loadVendors(), loadDeviceTypes(), loadDeviceGroups()]);
+    await Promise.all([loadDevices(), loadVendors(), loadDeviceTypes()]);
   };
 
   const loadDevices = async () => {
@@ -176,16 +162,6 @@ const DevicesListPage: React.FC = () => {
     }
   };
 
-  const loadDeviceGroups = async () => {
-    try {
-      const response = await apiService.deviceGroups.list();
-      const groupsList = Array.isArray(response) ? response : response.results || [];
-      setDeviceGroups(groupsList);
-    } catch (error) {
-      console.error('Error loading device groups:', error);
-    }
-  };
-
   const applyFilters = () => {
     let filtered = devices;
 
@@ -218,11 +194,6 @@ const DevicesListPage: React.FC = () => {
       filtered = filtered.filter(device =>
         device.location && device.location.toLowerCase().includes(filterLocation.toLowerCase())
       );
-    }
-
-    // Group filter
-    if (filterGroup) {
-      filtered = filtered.filter(device => String(device.group) === filterGroup);
     }
 
     // Sorting
@@ -276,7 +247,6 @@ const DevicesListPage: React.FC = () => {
     setFilterType('');
     setFilterStatus('');
     setFilterLocation('');
-    setFilterGroup('');
   };
 
   const handleAddDevice = () => {
@@ -287,7 +257,6 @@ const DevicesListPage: React.FC = () => {
       description: '',
       vendor: vendors.length > 0 ? String(vendors[0].id) : '',
       device_type: deviceTypes.length > 0 ? String(deviceTypes[0].id) : '',
-      group: '',
       protocol: 'ssh',
       port: '22',
       username: '',
@@ -308,7 +277,6 @@ const DevicesListPage: React.FC = () => {
       description: device.description,
       vendor: String(device.vendor),
       device_type: String(device.device_type),
-      group: device.group ? String(device.group) : '',
       protocol: device.protocol,
       port: String(device.port),
       username: device.username,
@@ -401,7 +369,6 @@ const DevicesListPage: React.FC = () => {
         description: formData.description,
         vendor: parseInt(formData.vendor),
         device_type: parseInt(formData.device_type),
-        group: formData.group ? parseInt(formData.group) : null,
         protocol: formData.protocol,
         port: parseInt(formData.port),
         username: formData.username,
@@ -569,17 +536,6 @@ const DevicesListPage: React.FC = () => {
             <option value="online">{t('devices.online')}</option>
             <option value="offline">{t('devices.offline')}</option>
             <option value="unknown">{t('devices.unknown')}</option>
-          </select>
-
-          <select
-            value={filterGroup}
-            onChange={(e) => setFilterGroup(e.target.value)}
-            className="filter-select"
-          >
-            <option value="">{t('devices.all_groups')}</option>
-            {deviceGroups.map(group => (
-              <option key={group.id} value={group.id}>{group.name}</option>
-            ))}
           </select>
 
           <input
@@ -808,21 +764,6 @@ const DevicesListPage: React.FC = () => {
                       {deviceTypes.map((type) => (
                         <option key={type.id} value={type.id}>
                           {type.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="form-group">
-                    <label>{t('devices.group')}</label>
-                    <select
-                      value={formData.group}
-                      onChange={(e) => setFormData({ ...formData, group: e.target.value })}
-                    >
-                      <option value="">{t('devices.no_group')}</option>
-                      {deviceGroups.map((group) => (
-                        <option key={group.id} value={group.id}>
-                          {group.name}
                         </option>
                       ))}
                     </select>
