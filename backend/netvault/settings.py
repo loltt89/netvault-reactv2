@@ -166,6 +166,15 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '10/hour',  # Anonymous users: 10 requests per hour
+        'user': '1000/hour',  # Authenticated users: 1000 per hour
+        'login': '5/hour',  # Login attempts: 5 per hour per IP
+    },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
     'DEFAULT_FILTER_BACKENDS': (
@@ -294,16 +303,24 @@ CELERY_RESULT_EXPIRES = 3600  # 1 hour
 
 # Security Settings
 # Read from .env to support both HTTP and HTTPS installations
-# SESSION_COOKIE_SECURE and CSRF_COOKIE_SECURE are True for HTTPS (cookies only sent over HTTPS)
-# SECURE_SSL_REDIRECT is NOT USED because Nginx handles HTTP->HTTPS redirects
-SESSION_COOKIE_SECURE = os.getenv('SESSION_COOKIE_SECURE', 'False') == 'True'
-CSRF_COOKIE_SECURE = os.getenv('CSRF_COOKIE_SECURE', 'False') == 'True'
+# Set USE_HTTPS=True in production for secure cookies
+USE_HTTPS = os.getenv('USE_HTTPS', 'False') == 'True'
 
-# Additional security headers (always enabled)
+# Secure cookies for HTTPS (cookies only sent over HTTPS)
+# SECURE_SSL_REDIRECT is NOT USED because Nginx handles HTTP->HTTPS redirects
+SESSION_COOKIE_SECURE = USE_HTTPS
+CSRF_COOKIE_SECURE = USE_HTTPS
+# Trust X-Forwarded-Proto header from Nginx for request.is_secure()
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https') if USE_HTTPS else None
+
+# Additional security headers (always enabled in production)
 if not DEBUG:
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = 'DENY'
+    SECURE_HSTS_SECONDS = 31536000 if USE_HTTPS else 0  # 1 year HSTS
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = USE_HTTPS
+    SECURE_HSTS_PRELOAD = USE_HTTPS
 
 # Logging Configuration
 LOGGING = {

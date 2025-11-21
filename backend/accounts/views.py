@@ -7,6 +7,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from django.contrib.auth import logout
 from .models import User, AuditLog
+from .throttling import LoginRateThrottle
 
 logger = logging.getLogger(__name__)
 from .permissions import CanManageUsers, CanViewAuditLogs
@@ -18,9 +19,10 @@ from .serializers import (
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
-    """Custom JWT token obtain view with 2FA support"""
+    """Custom JWT token obtain view with 2FA support and rate limiting"""
 
     serializer_class = CustomTokenObtainPairSerializer
+    throttle_classes = [LoginRateThrottle]
 
     def post(self, request, *args, **kwargs):
         response = super().post(request, *args, **kwargs)

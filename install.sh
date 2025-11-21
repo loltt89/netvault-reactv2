@@ -203,6 +203,35 @@ gather_settings() {
         exit 1
     fi
 
+    # Admin panel IP restriction
+    echo ""
+    print_message "$BLUE" "Admin Panel Security"
+    echo "Restrict /admin/ access to specific IP addresses? (recommended for production)"
+    read -p "Enable IP whitelist for /admin/? [Y/n]: " RESTRICT_ADMIN
+    RESTRICT_ADMIN=${RESTRICT_ADMIN:-Y}
+
+    if [[ "$RESTRICT_ADMIN" =~ ^[Yy]$ ]]; then
+        echo ""
+        echo "Enter trusted IP addresses (one per line, empty line to finish):"
+        echo "Example: 192.168.1.100, 10.0.0.5, your office IP"
+        ADMIN_ALLOWED_IPS=()
+        while true; do
+            read -p "IP address: " ip
+            if [[ -z "$ip" ]]; then
+                break
+            fi
+            ADMIN_ALLOWED_IPS+=("$ip")
+            print_success "Added: $ip"
+        done
+
+        if [[ ${#ADMIN_ALLOWED_IPS[@]} -eq 0 ]]; then
+            print_warning "No IPs specified, admin panel will be accessible from anywhere"
+            RESTRICT_ADMIN="n"
+        else
+            print_success "${#ADMIN_ALLOWED_IPS[@]} IP(s) whitelisted for /admin/"
+        fi
+    fi
+
     echo ""
     print_success "Configuration collected"
 }
@@ -369,11 +398,16 @@ DEVICE_CHECK_SSH_TIMEOUT=5
 JWT_ACCESS_TOKEN_LIFETIME=60
 JWT_REFRESH_TOKEN_LIFETIME=1440
 
-# Security (HTTPS)
-# SESSION_COOKIE_SECURE and CSRF_COOKIE_SECURE are True for HTTPS (cookies only sent over HTTPS)
+# Security Settings
+# USE_HTTPS: Enable HTTPS mode (secure cookies, HSTS headers)
+# SESSION_COOKIE_SECURE and CSRF_COOKIE_SECURE: Cookies only sent over HTTPS
 # SECURE_SSL_REDIRECT is NOT used - Nginx handles HTTP->HTTPS redirects
+USE_HTTPS=$([ "$USE_HTTPS" == "true" ] && echo "True" || echo "False")
 SESSION_COOKIE_SECURE=$([ "$USE_HTTPS" == "true" ] && echo "True" || echo "False")
 CSRF_COOKIE_SECURE=$([ "$USE_HTTPS" == "true" ] && echo "True" || echo "False")
+
+# Registration Control (disabled by default for security)
+ALLOW_PUBLIC_REGISTRATION=False
 EOF
 
     chmod 600 $INSTALL_DIR/.env
@@ -562,6 +596,17 @@ setup_ssl_certificate() {
     fi
 }
 
+# Generate IP whitelist directives for Nginx
+generate_admin_ip_whitelist() {
+    if [[ "$RESTRICT_ADMIN" =~ ^[Yy]$ ]] && [[ ${#ADMIN_ALLOWED_IPS[@]} -gt 0 ]]; then
+        for ip in "${ADMIN_ALLOWED_IPS[@]}"; do
+            echo "        allow $ip;"
+        done
+        echo "        deny all;"
+        echo ""
+    fi
+}
+
 # Setup nginx
 setup_nginx() {
     print_header "Configuring Nginx"
@@ -611,9 +656,9 @@ server {
         proxy_read_timeout 120s;
     }
 
-    # Django admin
+    # Django admin (IP restricted for security)
     location /admin/ {
-        proxy_pass http://127.0.0.1:8000;
+$(generate_admin_ip_whitelist)        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -692,9 +737,9 @@ server {
         proxy_read_timeout 120s;
     }
 
-    # Django admin
+    # Django admin (IP restricted for security)
     location /admin/ {
-        proxy_pass http://127.0.0.1:8000;
+$(generate_admin_ip_whitelist)        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -824,6 +869,16 @@ print_summary() {
         echo "SSL Certificate:"
         echo "  Let's Encrypt certificate will auto-renew"
         echo "  Manual renewal: certbot renew"
+        echo ""
+    fi
+
+    if [[ "$RESTRICT_ADMIN" =~ ^[Yy]$ ]] && [[ ${#ADMIN_ALLOWED_IPS[@]} -gt 0 ]]; then
+        echo "Admin Panel Access:"
+        echo "  Access restricted to whitelisted IPs:"
+        for ip in "${ADMIN_ALLOWED_IPS[@]}"; do
+            echo "    - $ip"
+        done
+        echo "  To modify: edit /etc/nginx/sites-available/netvault"
         echo ""
     fi
 
