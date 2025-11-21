@@ -251,6 +251,8 @@
 
 .settings-tab-content {
   padding-top: 1.5rem;
+  overflow-x: auto;
+  max-width: 100%;
 }
 
 .settings-tab-content .form-group {
