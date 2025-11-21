@@ -405,8 +405,11 @@ class APIService {
       return response.data;
     },
 
-    csvTemplate: (lang: string) => {
-      return `/api/v1/devices/devices/csv_template/?lang=${lang}`;
+    csvTemplate: async (lang: string) => {
+      const response = await apiClient.get(`/devices/devices/csv_template/?lang=${lang}`, {
+        responseType: 'blob',
+      });
+      return response;
     },
 
     csvPreview: async (file: File) => {

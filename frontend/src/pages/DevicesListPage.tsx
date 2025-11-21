@@ -293,6 +293,24 @@ const DevicesListPage: React.FC = () => {
     return ['en', 'ru', 'kk'].includes(lang) ? lang : 'en';
   };
 
+  const handleDownloadTemplate = async () => {
+    try {
+      const lang = getCurrentLanguage();
+      const response = await apiService.devices.csvTemplate(lang);
+      const blob = new Blob([response.data], { type: 'text/csv;charset=utf-8' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `devices_template_${lang}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error('Failed to download template:', error);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -804,14 +822,13 @@ const DevicesListPage: React.FC = () => {
                 <p style={{ margin: '0 0 0.5rem 0', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
                   {t('devices.import.template_hint')}
                 </p>
-                <a
-                  href={apiService.devices.csvTemplate(getCurrentLanguage())}
-                  download
+                <button
+                  onClick={handleDownloadTemplate}
                   className="btn-secondary"
-                  style={{ display: 'inline-block', textDecoration: 'none' }}
+                  type="button"
                 >
                   📄 {t('devices.import.download_button')}
-                </a>
+                </button>
               </div>
 
               {/* File upload */}
