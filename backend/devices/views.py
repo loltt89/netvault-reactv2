@@ -288,7 +288,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
         response['Content-Disposition'] = f'attachment; filename="devices_template_{lang}.csv"'
         response.write('\ufeff')  # UTF-8 BOM for Excel
 
-        writer = csv.writer(response)
+        writer = csv.writer(response, delimiter=';')
 
         # Write headers
         writer.writerow([
@@ -330,7 +330,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
         try:
             # Read file content
             content = csv_file.read().decode('utf-8-sig')  # Handle BOM
-            reader = csv.DictReader(io.StringIO(content))
+            reader = csv.DictReader(io.StringIO(content), delimiter=';')
 
             # Get reverse mapping
             reverse_map = self.get_reverse_header_mapping()
