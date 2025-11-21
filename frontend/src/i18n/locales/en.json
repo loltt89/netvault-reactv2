@@ -142,6 +142,22 @@
     "filter_all_types": "All Types",
     "clear_filters": "Clear Filters"
   },
+  "config_search": {
+    "nav_title": "Config Search",
+    "title": "Configuration Search",
+    "subtitle": "Search across all device configurations",
+    "placeholder": "Enter search term (e.g., snmp, ntp, 192.168)",
+    "search": "Search",
+    "searching": "Searching...",
+    "case_sensitive": "Case sensitive",
+    "regex": "Regular expression",
+    "min_chars": "Search query must be at least 2 characters",
+    "search_error": "Search error occurred",
+    "found_matches": "Found {{matches}} matches in {{devices}} devices",
+    "no_results": "No matches found",
+    "matches": "matches",
+    "line": "Line"
+  },
   "users": {
     "title": "Users",
     "management": "Users Management",

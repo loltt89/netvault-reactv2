@@ -244,6 +244,90 @@ class BackupViewSet(viewsets.ModelViewSet):
 
         return response
 
+    @action(detail=False, methods=['get'])
+    def search_configs(self, request):
+        """Search through all device configurations"""
+        import re
+
+        query = request.query_params.get('q', '').strip()
+        case_sensitive = request.query_params.get('case_sensitive', 'false').lower() == 'true'
+        regex_mode = request.query_params.get('regex', 'false').lower() == 'true'
+
+        if not query or len(query) < 2:
+            return Response(
+                {'error': 'Search query must be at least 2 characters'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get latest successful backup for each device
+        from django.db.models import Max
+        from devices.models import Device
+
+        devices = Device.objects.filter(backups__success=True).distinct()
+        results = []
+
+        for device in devices:
+            # Get latest successful backup
+            latest_backup = device.backups.filter(success=True).order_by('-created_at').first()
+            if not latest_backup:
+                continue
+
+            try:
+                config = latest_backup.get_configuration()
+            except Exception:
+                continue
+
+            # Search in config
+            matches = []
+            lines = config.split('\n')
+
+            for line_num, line in enumerate(lines, 1):
+                found = False
+
+                if regex_mode:
+                    try:
+                        flags = 0 if case_sensitive else re.IGNORECASE
+                        if re.search(query, line, flags):
+                            found = True
+                    except re.error:
+                        pass
+                else:
+                    if case_sensitive:
+                        found = query in line
+                    else:
+                        found = query.lower() in line.lower()
+
+                if found:
+                    # Get context (2 lines before and after)
+                    start = max(0, line_num - 3)
+                    end = min(len(lines), line_num + 2)
+                    context = '\n'.join(f'{i+1}: {lines[i]}' for i in range(start, end))
+
+                    matches.append({
+                        'line_number': line_num,
+                        'line': line.strip(),
+                        'context': context
+                    })
+
+            if matches:
+                results.append({
+                    'device_id': device.id,
+                    'device_name': device.name,
+                    'device_ip': device.ip_address,
+                    'vendor': device.vendor.name if device.vendor else None,
+                    'backup_id': latest_backup.id,
+                    'backup_date': latest_backup.created_at,
+                    'match_count': len(matches),
+                    'matches': matches[:10]  # Limit matches per device
+                })
+
+        return Response({
+            'query': query,
+            'total_devices': len(results),
+            'total_matches': sum(r['match_count'] for r in results),
+            'results': results
+        })
+
 
 class BackupScheduleViewSet(viewsets.ModelViewSet):
     """

@@ -195,6 +195,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <span className="nav-text">{t('backups.title')}</span>
           </Link>
 
+          <Link to="/config-search" className={`nav-item ${isActive('/config-search')}`}>
+            <span className="nav-icon">🔍</span>
+            <span className="nav-text">{t('config_search.nav_title')}</span>
+          </Link>
+
           {/* Admin-only: Users Management */}
           {user?.role === 'administrator' && (
             <Link to="/users" className={`nav-item ${isActive('/users')}`}>

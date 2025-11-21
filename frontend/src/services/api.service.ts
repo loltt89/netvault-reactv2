@@ -487,6 +487,17 @@ class APIService {
       );
       return response.data;
     },
+
+    searchConfigs: async (query: string, options?: { caseSensitive?: boolean; regex?: boolean }) => {
+      const response = await apiClient.get('/backups/backups/search_configs/', {
+        params: {
+          q: query,
+          case_sensitive: options?.caseSensitive || false,
+          regex: options?.regex || false,
+        }
+      });
+      return response.data;
+    },
   };
 
   /**

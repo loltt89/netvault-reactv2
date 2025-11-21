@@ -10,6 +10,7 @@ import BackupsPage from './pages/BackupsPage';
 import UsersPage from './pages/UsersPage';
 import AuditLogsPage from './pages/AuditLogsPage';
 import SettingsPage from './pages/SettingsPage';
+import ConfigSearchPage from './pages/ConfigSearchPage';
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
@@ -80,6 +81,15 @@ function App() {
           element={
             <ProtectedRoute>
               <BackupsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/config-search"
+          element={
+            <ProtectedRoute>
+              <ConfigSearchPage />
             </ProtectedRoute>
           }
         />
