@@ -262,16 +262,32 @@ class BackupViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Get latest successful backup for each device
-        from django.db.models import Max
+        # Get latest successful backup for each device (optimized to avoid N+1)
+        from django.db.models import Max, Subquery, OuterRef
         from devices.models import Device
 
-        devices = Device.objects.filter(backups__success=True).distinct()
+        # Subquery to get latest backup ID for each device
+        latest_backup_subquery = Backup.objects.filter(
+            device=OuterRef('pk'),
+            success=True
+        ).order_by('-created_at').values('id')[:1]
+
+        # Get devices with their latest backup ID
+        devices_with_backup = Device.objects.filter(
+            backups__success=True
+        ).annotate(
+            latest_backup_id=Subquery(latest_backup_subquery)
+        ).distinct()
+
+        # Fetch all latest backups in one query
+        latest_backup_ids = [d.latest_backup_id for d in devices_with_backup if d.latest_backup_id]
+        latest_backups = {b.device_id: b for b in Backup.objects.filter(id__in=latest_backup_ids)}
+
         results = []
 
-        for device in devices:
-            # Get latest successful backup
-            latest_backup = device.backups.filter(success=True).order_by('-created_at').first()
+        for device in devices_with_backup:
+            # Get pre-fetched backup (no additional query!)
+            latest_backup = latest_backups.get(device.id)
             if not latest_backup:
                 continue
 
