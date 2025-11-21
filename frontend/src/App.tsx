@@ -11,7 +11,6 @@ import UsersPage from './pages/UsersPage';
 import AuditLogsPage from './pages/AuditLogsPage';
 import SettingsPage from './pages/SettingsPage';
 import ConfigSearchPage from './pages/ConfigSearchPage';
-import GroupsPage from './pages/GroupsPage';
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
@@ -91,15 +90,6 @@ function App() {
           element={
             <ProtectedRoute>
               <ConfigSearchPage />
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-          path="/groups"
-          element={
-            <ProtectedRoute>
-              <GroupsPage />
             </ProtectedRoute>
           }
         />
