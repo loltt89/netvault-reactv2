@@ -270,6 +270,9 @@ LDAP_USER_SEARCH_BASE = os.getenv('LDAP_USER_SEARCH_BASE', '')
 BACKUP_RETENTION_DAYS = int(os.getenv('BACKUP_RETENTION_DAYS', '90'))
 BACKUP_PARALLEL_WORKERS = int(os.getenv('BACKUP_PARALLEL_WORKERS', '5'))
 
+# Security: Allow public registration (disabled by default for corporate environments)
+ALLOW_PUBLIC_REGISTRATION = os.getenv('ALLOW_PUBLIC_REGISTRATION', 'False') == 'True'
+
 # Device Check Configuration (always uses hybrid mode: TCP first, then SSH fallback)
 DEVICE_CHECK_INTERVAL_MINUTES = int(os.getenv('DEVICE_CHECK_INTERVAL_MINUTES', '5'))
 DEVICE_CHECK_TCP_TIMEOUT = int(os.getenv('DEVICE_CHECK_TCP_TIMEOUT', '2'))

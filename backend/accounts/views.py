@@ -97,7 +97,15 @@ class AuthViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=['post'])
     def register(self, request):
-        """Register a new user"""
+        """Register a new user (only if ALLOW_PUBLIC_REGISTRATION=True)"""
+        from django.conf import settings
+
+        if not settings.ALLOW_PUBLIC_REGISTRATION:
+            return Response(
+                {'detail': 'Public registration is disabled. Contact administrator.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         serializer = UserCreateSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
