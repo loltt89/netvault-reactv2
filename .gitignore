@@ -34,3 +34,4 @@ Thumbs.db
 # Backup files with sensitive data (not the backups app code)
 # backend/backup_files/
 CLAUDE.md
+backend/staticfiles/
