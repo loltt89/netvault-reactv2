@@ -97,6 +97,8 @@ const DevicesListPage: React.FC = () => {
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterLocation, setFilterLocation] = useState('');
+  const [sortField, setSortField] = useState<string>('ip_address');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   const [formData, setFormData] = useState<DeviceFormData>({
     name: '',
@@ -120,7 +122,7 @@ const DevicesListPage: React.FC = () => {
 
   useEffect(() => {
     applyFilters();
-  }, [devices, searchTerm, filterVendor, filterType, filterStatus, filterLocation]);
+  }, [devices, searchTerm, filterVendor, filterType, filterStatus, filterLocation, sortField, sortDirection]);
 
   const loadData = async () => {
     await Promise.all([loadDevices(), loadVendors(), loadDeviceTypes()]);
@@ -194,7 +196,49 @@ const DevicesListPage: React.FC = () => {
       );
     }
 
+    // Sorting
+    filtered.sort((a, b) => {
+      let aVal: any = a[sortField as keyof Device];
+      let bVal: any = b[sortField as keyof Device];
+
+      // Handle IP address sorting naturally
+      if (sortField === 'ip_address') {
+        const parseIP = (ip: string) => ip.split('.').map(n => parseInt(n, 10));
+        const aIP = parseIP(aVal || '0.0.0.0');
+        const bIP = parseIP(bVal || '0.0.0.0');
+        for (let i = 0; i < 4; i++) {
+          if (aIP[i] !== bIP[i]) {
+            return sortDirection === 'asc' ? aIP[i] - bIP[i] : bIP[i] - aIP[i];
+          }
+        }
+        return 0;
+      }
+
+      // Handle null/undefined
+      if (aVal == null) aVal = '';
+      if (bVal == null) bVal = '';
+
+      // String comparison
+      if (typeof aVal === 'string') {
+        aVal = aVal.toLowerCase();
+        bVal = bVal.toLowerCase();
+      }
+
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
     setFilteredDevices(filtered);
+  };
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
   };
 
   const clearFilters = () => {
@@ -525,13 +569,27 @@ const DevicesListPage: React.FC = () => {
           <table className="devices-table">
             <thead>
               <tr>
-                <th>{t('devices.name')}</th>
-                <th>{t('devices.ip_address')}</th>
-                <th>{t('devices.vendor')}</th>
-                <th>{t('devices.type')}</th>
-                <th>{t('devices.location')}</th>
-                <th>{t('devices.status')}</th>
-                <th>{t('devices.last_backup')}</th>
+                <th onClick={() => handleSort('name')} style={{ cursor: 'pointer' }}>
+                  {t('devices.name')} {sortField === 'name' && (sortDirection === 'asc' ? '▲' : '▼')}
+                </th>
+                <th onClick={() => handleSort('ip_address')} style={{ cursor: 'pointer' }}>
+                  {t('devices.ip_address')} {sortField === 'ip_address' && (sortDirection === 'asc' ? '▲' : '▼')}
+                </th>
+                <th onClick={() => handleSort('vendor')} style={{ cursor: 'pointer' }}>
+                  {t('devices.vendor')} {sortField === 'vendor' && (sortDirection === 'asc' ? '▲' : '▼')}
+                </th>
+                <th onClick={() => handleSort('device_type')} style={{ cursor: 'pointer' }}>
+                  {t('devices.type')} {sortField === 'device_type' && (sortDirection === 'asc' ? '▲' : '▼')}
+                </th>
+                <th onClick={() => handleSort('location')} style={{ cursor: 'pointer' }}>
+                  {t('devices.location')} {sortField === 'location' && (sortDirection === 'asc' ? '▲' : '▼')}
+                </th>
+                <th onClick={() => handleSort('status')} style={{ cursor: 'pointer' }}>
+                  {t('devices.status')} {sortField === 'status' && (sortDirection === 'asc' ? '▲' : '▼')}
+                </th>
+                <th onClick={() => handleSort('last_backup')} style={{ cursor: 'pointer' }}>
+                  {t('devices.last_backup')} {sortField === 'last_backup' && (sortDirection === 'asc' ? '▲' : '▼')}
+                </th>
                 <th>{t('devices.actions')}</th>
               </tr>
             </thead>
