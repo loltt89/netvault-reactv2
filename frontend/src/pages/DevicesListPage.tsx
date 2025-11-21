@@ -401,6 +401,7 @@ const DevicesListPage: React.FC = () => {
         description: formData.description,
         vendor: parseInt(formData.vendor),
         device_type: parseInt(formData.device_type),
+        group: formData.group ? parseInt(formData.group) : null,
         protocol: formData.protocol,
         port: parseInt(formData.port),
         username: formData.username,
@@ -568,6 +569,17 @@ const DevicesListPage: React.FC = () => {
             <option value="online">{t('devices.online')}</option>
             <option value="offline">{t('devices.offline')}</option>
             <option value="unknown">{t('devices.unknown')}</option>
+          </select>
+
+          <select
+            value={filterGroup}
+            onChange={(e) => setFilterGroup(e.target.value)}
+            className="filter-select"
+          >
+            <option value="">{t('devices.all_groups')}</option>
+            {deviceGroups.map(group => (
+              <option key={group.id} value={group.id}>{group.name}</option>
+            ))}
           </select>
 
           <input
@@ -796,6 +808,21 @@ const DevicesListPage: React.FC = () => {
                       {deviceTypes.map((type) => (
                         <option key={type.id} value={type.id}>
                           {type.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-group">
+                    <label>{t('devices.group')}</label>
+                    <select
+                      value={formData.group}
+                      onChange={(e) => setFormData({ ...formData, group: e.target.value })}
+                    >
+                      <option value="">{t('devices.no_group')}</option>
+                      {deviceGroups.map((group) => (
+                        <option key={group.id} value={group.id}>
+                          {group.name}
                         </option>
                       ))}
                     </select>
