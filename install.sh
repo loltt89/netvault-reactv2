@@ -319,6 +319,8 @@ generate_env_file() {
 SECRET_KEY=${SECRET_KEY}
 DEBUG=False
 ALLOWED_HOSTS=${DOMAIN},localhost,127.0.0.1
+# CORS: private IPs auto-allowed via regex, add public domains here if needed
+CORS_ALLOWED_ORIGINS=http://${DOMAIN},https://${DOMAIN}
 
 # Database Configuration
 DB_ENGINE=mysql
