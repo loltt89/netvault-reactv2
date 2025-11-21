@@ -207,10 +207,17 @@ SIMPLE_JWT = {
 # Only allow specified origins (set in .env or use defaults)
 CORS_ALLOW_ALL_ORIGINS = False
 
-CORS_ALLOWED_ORIGINS = os.getenv(
-    'CORS_ALLOWED_ORIGINS',
-    'http://localhost:3000,http://127.0.0.1:3000'
-).split(',')
+# Default includes localhost and common private network ranges
+_default_cors = 'http://localhost:3000,http://127.0.0.1:3000,http://localhost,http://127.0.0.1'
+# Add common private IP patterns (will be matched by CORS_ALLOWED_ORIGIN_REGEXES)
+CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', _default_cors).split(',')
+
+# Allow private network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https?://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$",
+    r"^https?://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$",
+    r"^https?://172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}(:\d+)?$",
+]
 
 CORS_ALLOW_CREDENTIALS = True
 
