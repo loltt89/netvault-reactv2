@@ -66,8 +66,22 @@ class DeviceType(models.Model):
 class DeviceGroup(models.Model):
     """Group for organizing devices"""
 
+    COLOR_CHOICES = (
+        ('#6366f1', 'Indigo'),
+        ('#8b5cf6', 'Violet'),
+        ('#ec4899', 'Pink'),
+        ('#ef4444', 'Red'),
+        ('#f97316', 'Orange'),
+        ('#eab308', 'Yellow'),
+        ('#22c55e', 'Green'),
+        ('#14b8a6', 'Teal'),
+        ('#3b82f6', 'Blue'),
+        ('#64748b', 'Slate'),
+    )
+
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True)
+    color = models.CharField(max_length=7, choices=COLOR_CHOICES, default='#6366f1')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

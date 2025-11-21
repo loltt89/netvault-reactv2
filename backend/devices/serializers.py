@@ -30,7 +30,7 @@ class DeviceGroupSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = DeviceGroup
-        fields = ['id', 'name', 'description', 'device_count', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'description', 'color', 'device_count', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at', 'device_count']
 
 
@@ -40,6 +40,7 @@ class DeviceSerializer(serializers.ModelSerializer):
     vendor_name = serializers.CharField(source='vendor.name', read_only=True)
     device_type_name = serializers.CharField(source='device_type.name', read_only=True)
     group_name = serializers.CharField(source='group.name', read_only=True, allow_null=True)
+    group_color = serializers.CharField(source='group.color', read_only=True, allow_null=True)
 
     class Meta:
         model = Device
@@ -47,7 +48,7 @@ class DeviceSerializer(serializers.ModelSerializer):
             'id', 'name', 'ip_address', 'description',
             'vendor', 'vendor_name',
             'device_type', 'device_type_name',
-            'group', 'group_name',
+            'group', 'group_name', 'group_color',
             'protocol', 'port', 'username',
             'location', 'tags', 'criticality',
             'status', 'last_seen', 'last_backup', 'backup_status',
@@ -56,7 +57,7 @@ class DeviceSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'id', 'created_at', 'updated_at', 'vendor_name',
-            'device_type_name', 'group_name', 'status', 'last_seen',
+            'device_type_name', 'group_name', 'group_color', 'status', 'last_seen',
             'last_backup', 'backup_status'
         ]
         extra_kwargs = {
