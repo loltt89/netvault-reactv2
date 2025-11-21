@@ -71,7 +71,6 @@ class BackupScheduleSerializer(serializers.ModelSerializer):
     """Backup Schedule serializer"""
 
     created_by_email = serializers.CharField(source='created_by.email', read_only=True, allow_null=True)
-    device_group_name = serializers.CharField(source='device_group.name', read_only=True, allow_null=True)
     devices_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -79,14 +78,14 @@ class BackupScheduleSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'description',
             'frequency', 'run_time', 'run_days',
-            'devices', 'device_group', 'device_group_name', 'devices_count',
+            'devices', 'devices_count',
             'is_active',
             'last_run', 'next_run',
             'total_runs', 'successful_runs', 'failed_runs',
             'created_at', 'updated_at', 'created_by_email'
         ]
         read_only_fields = [
-            'id', 'device_group_name', 'devices_count', 'created_by_email',
+            'id', 'devices_count', 'created_by_email',
             'last_run', 'next_run', 'total_runs',
             'successful_runs', 'failed_runs',
             'created_at', 'updated_at'
@@ -94,8 +93,6 @@ class BackupScheduleSerializer(serializers.ModelSerializer):
 
     def get_devices_count(self, obj):
         """Return count of devices"""
-        if obj.device_group:
-            return obj.device_group.devices.count()
         return obj.devices.count()
 
 

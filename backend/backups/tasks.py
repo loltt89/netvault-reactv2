@@ -285,12 +285,6 @@ def run_scheduled_backups():
             # If schedule has specific devices assigned, use them
             if schedule.devices.exists():
                 device_ids = schedule.devices.filter(backup_enabled=True).values_list('id', flat=True)
-            # If schedule has a device group, use devices from that group
-            elif schedule.device_group:
-                device_ids = Device.objects.filter(
-                    groups=schedule.device_group,
-                    backup_enabled=True
-                ).values_list('id', flat=True)
             # Otherwise, backup all devices with backup_enabled=True
             else:
                 device_ids = Device.objects.filter(backup_enabled=True).values_list('id', flat=True)

@@ -333,7 +333,7 @@ class BackupScheduleViewSet(viewsets.ModelViewSet):
     """
     ViewSet for BackupSchedule CRUD operations
     """
-    queryset = BackupSchedule.objects.select_related('created_by').prefetch_related('devices', 'device_group')
+    queryset = BackupSchedule.objects.select_related('created_by').prefetch_related('devices')
     serializer_class = BackupScheduleSerializer
     permission_classes = [IsAuthenticated, CanManageDevices]
     search_fields = ['name', 'description']
