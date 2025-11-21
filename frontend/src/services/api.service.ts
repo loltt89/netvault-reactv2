@@ -585,6 +585,11 @@ class APIService {
     const response = await apiClient.delete(url, config);
     return response.data;
   };
+
+  request = async (method: string, url: string, data?: any, config?: AxiosRequestConfig) => {
+    const response = await apiClient.request({ method, url, data, ...config });
+    return response.data;
+  };
 }
 
 // Export singleton instance
