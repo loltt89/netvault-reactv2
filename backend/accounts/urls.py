@@ -1,7 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from rest_framework_simplejwt.views import TokenRefreshView
-from .views import CustomTokenObtainPairView, AuthViewSet, UserViewSet, AuditLogViewSet
+from .views import CustomTokenObtainPairView, CookieTokenRefreshView, AuthViewSet, UserViewSet, AuditLogViewSet
 from .saml_views import (
     SAMLMetadataView, SAMLLoginView, SAMLACSView, SAMLSLSView,
     SAMLSettingsAPIView, SAMLStatusView
@@ -15,7 +14,7 @@ router.register(r'audit-logs', AuditLogViewSet, basename='audit-logs')
 urlpatterns = [
     # JWT token endpoints
     path('token/', CustomTokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    path('token/refresh/', CookieTokenRefreshView.as_view(), name='token_refresh'),
 
     # SAML 2.0 SSO endpoints
     path('saml/metadata/', SAMLMetadataView.as_view(), name='saml_metadata'),

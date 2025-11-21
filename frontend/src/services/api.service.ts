@@ -1,7 +1,7 @@
 /**
  * API Service Layer
  * Handles all HTTP requests with automatic JWT token management
- * This ensures proper authentication for frontend-backend communication
+ * Tokens are stored in HttpOnly cookies (secure) with in-memory fallback
  */
 
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosError } from 'axios';
@@ -9,9 +9,8 @@ import axios, { AxiosInstance, AxiosRequestConfig, AxiosError } from 'axios';
 // API Base URL
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
 
-// Token storage keys
-const ACCESS_TOKEN_KEY = 'access_token';
-const REFRESH_TOKEN_KEY = 'refresh_token';
+// In-memory token storage (access token only, refresh is in HttpOnly cookie)
+let accessToken: string | null = null;
 
 /**
  * Create axios instance with base configuration
@@ -21,7 +20,8 @@ const apiClient: AxiosInstance = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 30000, // 30 seconds
+  timeout: 30000,
+  withCredentials: true, // Send cookies with requests
 });
 
 /**
@@ -29,12 +29,10 @@ const apiClient: AxiosInstance = axios.create({
  */
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem(ACCESS_TOKEN_KEY);
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    // Use in-memory token if available (for backward compatibility)
+    if (accessToken) {
+      config.headers.Authorization = `Bearer ${accessToken}`;
     }
-
     return config;
   },
   (error) => {
@@ -56,7 +54,6 @@ const processQueue = (error: any, token: string | null = null) => {
       prom.resolve(token);
     }
   });
-
   failedQueue = [];
 };
 
@@ -68,12 +65,13 @@ apiClient.interceptors.response.use(
     // Handle 401 Unauthorized
     if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
-        // Queue the request if token is being refreshed
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         })
           .then((token) => {
-            originalRequest.headers.Authorization = `Bearer ${token}`;
+            if (token) {
+              originalRequest.headers.Authorization = `Bearer ${token}`;
+            }
             return apiClient(originalRequest);
           })
           .catch((err) => {
@@ -84,36 +82,26 @@ apiClient.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
 
-      const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-
-      if (!refreshToken) {
-        // No refresh token, redirect to login
-        clearTokens();
-        window.location.href = '/login';
-        return Promise.reject(error);
-      }
-
       try {
-        // Attempt to refresh the token
-        const response = await axios.post(`${API_BASE_URL}/token/refresh/`, {
-          refresh: refreshToken,
-        });
+        // Attempt to refresh using HttpOnly cookie (no body needed)
+        const response = await axios.post(
+          `${API_BASE_URL}/token/refresh/`,
+          {},
+          { withCredentials: true }
+        );
 
-        const { access, refresh } = response.data;
+        const { access } = response.data;
 
-        // Save new tokens
-        localStorage.setItem(ACCESS_TOKEN_KEY, access);
-        if (refresh) {
-          localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
+        // Save new access token in memory
+        accessToken = access;
+
+        if (access) {
+          originalRequest.headers.Authorization = `Bearer ${access}`;
         }
-
-        // Update the original request with new token
-        originalRequest.headers.Authorization = `Bearer ${access}`;
 
         processQueue(null, access);
         isRefreshing = false;
 
-        // Retry the original request
         return apiClient(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
@@ -133,33 +121,28 @@ apiClient.interceptors.response.use(
 /**
  * Token management functions
  */
-export const setTokens = (access: string, refresh: string) => {
-  localStorage.setItem(ACCESS_TOKEN_KEY, access);
-  localStorage.setItem(REFRESH_TOKEN_KEY, refresh);
-
-  // Set cookie for WebSocket authentication (SameSite=Lax for CSRF protection)
-  // Note: Not using Secure flag since this is for local network (HTTP)
-  document.cookie = `access_token=${access}; path=/; SameSite=Lax`;
+export const setTokens = (access: string, _refresh?: string) => {
+  // Store access token in memory (not localStorage for XSS protection)
+  accessToken = access;
+  // Refresh token is handled by HttpOnly cookie set by server
 };
 
 export const getAccessToken = (): string | null => {
-  return localStorage.getItem(ACCESS_TOKEN_KEY);
+  return accessToken;
 };
 
 export const getRefreshToken = (): string | null => {
-  return localStorage.getItem(REFRESH_TOKEN_KEY);
+  // Refresh token is in HttpOnly cookie, not accessible from JS
+  return null;
 };
 
 export const clearTokens = () => {
-  localStorage.removeItem(ACCESS_TOKEN_KEY);
-  localStorage.removeItem(REFRESH_TOKEN_KEY);
-
-  // Clear cookie (set expiry in the past)
-  document.cookie = 'access_token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+  accessToken = null;
+  // Cookies will be cleared by server on logout
 };
 
 export const isAuthenticated = (): boolean => {
-  return !!getAccessToken();
+  return !!accessToken;
 };
 
 /**
@@ -176,28 +159,36 @@ class APIService {
         password,
         two_factor_token: twoFactorToken,
       });
+      // Store access token in memory
+      if (response.data.access) {
+        accessToken = response.data.access;
+      }
       return response.data;
     },
 
     register: async (userData: any) => {
       const response = await apiClient.post('/auth/register/', userData);
+      // Store access token in memory
+      if (response.data.access) {
+        accessToken = response.data.access;
+      }
       return response.data;
     },
 
     logout: async () => {
-      const refreshToken = getRefreshToken();
-      const response = await apiClient.post('/auth/logout/', {
-        refresh: refreshToken,
-      });
-      clearTokens();
-      return response.data;
+      try {
+        const response = await apiClient.post('/auth/logout/', {});
+        return response.data;
+      } finally {
+        clearTokens();
+      }
     },
 
     refreshToken: async () => {
-      const refreshToken = getRefreshToken();
-      const response = await apiClient.post('/token/refresh/', {
-        refresh: refreshToken,
-      });
+      const response = await apiClient.post('/token/refresh/', {});
+      if (response.data.access) {
+        accessToken = response.data.access;
+      }
       return response.data;
     },
   };

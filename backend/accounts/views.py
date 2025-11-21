@@ -2,8 +2,9 @@ import logging
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from django.contrib.auth import logout
 from .models import User, AuditLog
 
@@ -20,6 +21,73 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     """Custom JWT token obtain view with 2FA support"""
 
     serializer_class = CustomTokenObtainPairSerializer
+
+    def post(self, request, *args, **kwargs):
+        response = super().post(request, *args, **kwargs)
+
+        if response.status_code == 200:
+            # Set tokens as HttpOnly cookies for XSS protection
+            access_token = response.data.get('access')
+            refresh_token = response.data.get('refresh')
+
+            if access_token:
+                response.set_cookie(
+                    'access_token',
+                    access_token,
+                    httponly=True,
+                    secure=request.is_secure(),  # True for HTTPS
+                    samesite='Lax',
+                    max_age=60 * 60,  # 1 hour
+                )
+            if refresh_token:
+                response.set_cookie(
+                    'refresh_token',
+                    refresh_token,
+                    httponly=True,
+                    secure=request.is_secure(),
+                    samesite='Lax',
+                    max_age=24 * 60 * 60,  # 24 hours
+                )
+
+        return response
+
+
+class CookieTokenRefreshView(TokenRefreshView):
+    """Token refresh view that reads from HttpOnly cookie"""
+
+    def post(self, request, *args, **kwargs):
+        # Try to get refresh token from cookie first
+        refresh_token = request.COOKIES.get('refresh_token')
+
+        if refresh_token:
+            # Inject into request data
+            request.data._mutable = True
+            request.data['refresh'] = refresh_token
+            request.data._mutable = False
+
+        try:
+            response = super().post(request, *args, **kwargs)
+
+            if response.status_code == 200:
+                # Set new access token as cookie
+                access_token = response.data.get('access')
+                if access_token:
+                    response.set_cookie(
+                        'access_token',
+                        access_token,
+                        httponly=True,
+                        secure=request.is_secure(),
+                        samesite='Lax',
+                        max_age=60 * 60,
+                    )
+
+            return response
+        except (InvalidToken, TokenError) as e:
+            # Clear cookies on invalid refresh token
+            response = Response({'detail': 'Token is invalid or expired'}, status=status.HTTP_401_UNAUTHORIZED)
+            response.delete_cookie('access_token')
+            response.delete_cookie('refresh_token')
+            return response
 
 
 class AuthViewSet(viewsets.GenericViewSet):
@@ -49,17 +117,35 @@ class AuthViewSet(viewsets.GenericViewSet):
             user_agent=request.META.get('HTTP_USER_AGENT', ''),
         )
 
-        return Response({
+        access_token = str(refresh.access_token)
+        refresh_token = str(refresh)
+
+        response = Response({
             'user': UserSerializer(user).data,
-            'refresh': str(refresh),
-            'access': str(refresh.access_token),
+            'refresh': refresh_token,
+            'access': access_token,
         }, status=status.HTTP_201_CREATED)
+
+        # Set HttpOnly cookies for XSS protection
+        response.set_cookie(
+            'access_token', access_token,
+            httponly=True, secure=request.is_secure(),
+            samesite='Lax', max_age=60 * 60,
+        )
+        response.set_cookie(
+            'refresh_token', refresh_token,
+            httponly=True, secure=request.is_secure(),
+            samesite='Lax', max_age=24 * 60 * 60,
+        )
+
+        return response
 
     @action(detail=False, methods=['post'], permission_classes=[permissions.IsAuthenticated])
     def logout(self, request):
         """Logout user"""
         try:
-            refresh_token = request.data.get('refresh')
+            # Try to get refresh token from cookie first, then from body
+            refresh_token = request.COOKIES.get('refresh_token') or request.data.get('refresh')
             if refresh_token:
                 token = RefreshToken(refresh_token)
                 token.blacklist()
@@ -76,7 +162,11 @@ class AuthViewSet(viewsets.GenericViewSet):
                 user_agent=request.META.get('HTTP_USER_AGENT', ''),
             )
 
-            return Response({'detail': 'Successfully logged out'}, status=status.HTTP_200_OK)
+            response = Response({'detail': 'Successfully logged out'}, status=status.HTTP_200_OK)
+            # Clear cookies
+            response.delete_cookie('access_token')
+            response.delete_cookie('refresh_token')
+            return response
         except Exception as e:
             logger.error(f"Logout error: {e}")
             return Response({'detail': 'Logout failed'}, status=status.HTTP_400_BAD_REQUEST)

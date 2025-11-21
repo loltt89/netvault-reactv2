@@ -205,7 +205,19 @@ class SAMLACSView(View):
             # Frontend will store these and redirect to dashboard
             redirect_url = f'/sso-callback?access={access_token}&refresh={refresh_token}'
 
-            return HttpResponseRedirect(redirect_url)
+            response = HttpResponseRedirect(redirect_url)
+            # Set HttpOnly cookies for XSS protection
+            response.set_cookie(
+                'access_token', access_token,
+                httponly=True, secure=request.is_secure(),
+                samesite='Lax', max_age=60 * 60,
+            )
+            response.set_cookie(
+                'refresh_token', refresh_token,
+                httponly=True, secure=request.is_secure(),
+                samesite='Lax', max_age=24 * 60 * 60,
+            )
+            return response
 
         except ImportError:
             return HttpResponse("python3-saml not installed", status=503)

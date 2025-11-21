@@ -5,6 +5,7 @@
 
 import React, { useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { setTokens } from '../services/api.service';
 
 const SSOCallbackPage: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -14,11 +15,10 @@ const SSOCallbackPage: React.FC = () => {
     const refreshToken = searchParams.get('refresh');
 
     if (accessToken && refreshToken) {
-      // Store tokens in localStorage
-      localStorage.setItem('access_token', accessToken);
-      localStorage.setItem('refresh_token', refreshToken);
+      // Store access token in memory (cookies set by server)
+      setTokens(accessToken, refreshToken);
 
-      // Reload to pick up tokens in AuthContext
+      // Redirect to dashboard
       window.location.href = '/dashboard';
     } else {
       // No tokens - redirect to login with error
