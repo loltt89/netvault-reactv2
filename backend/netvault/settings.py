@@ -134,7 +134,28 @@ AUTH_PASSWORD_VALIDATORS = [
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
+# Timezone configuration - automatically detected from system
+# Priority: 1) TIME_ZONE env var (if set), 2) System timezone (/etc/timezone), 3) UTC fallback
+def get_system_timezone():
+    """Get timezone from system or environment variable"""
+    # Check if explicitly set in .env (optional override)
+    env_tz = os.getenv('TIME_ZONE', '').strip()
+    if env_tz:
+        return env_tz
+
+    # Try to read system timezone
+    try:
+        with open('/etc/timezone', 'r') as f:
+            system_tz = f.read().strip()
+            if system_tz:
+                return system_tz
+    except (FileNotFoundError, PermissionError):
+        pass
+
+    # Fallback to UTC
+    return 'UTC'
+
+TIME_ZONE = get_system_timezone()
 
 USE_I18N = True
 
@@ -332,7 +353,7 @@ CELERY_RESULT_BACKEND = REDIS_URL
 CELERY_ACCEPT_CONTENT = ['json']
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
-CELERY_TIMEZONE = 'UTC'
+CELERY_TIMEZONE = TIME_ZONE  # Use same timezone as Django
 CELERY_TASK_TRACK_STARTED = True
 CELERY_TASK_TIME_LIMIT = 30 * 60  # 30 minutes
 CELERY_RESULT_EXPIRES = 3600  # 1 hour
