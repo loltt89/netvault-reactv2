@@ -123,9 +123,8 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
                 from backups.models import BackupSchedule
                 try:
                     schedule = BackupSchedule.objects.get(id=schedule_id)
-                    schedule.total_runs += 1
                     schedule.successful_runs += 1
-                    schedule.save(update_fields=['total_runs', 'successful_runs'])
+                    schedule.save(update_fields=['successful_runs'])
                 except BackupSchedule.DoesNotExist:
                     pass
 
@@ -161,9 +160,8 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
                 from backups.models import BackupSchedule
                 try:
                     schedule = BackupSchedule.objects.get(id=schedule_id)
-                    schedule.total_runs += 1
                     schedule.failed_runs += 1
-                    schedule.save(update_fields=['total_runs', 'failed_runs'])
+                    schedule.save(update_fields=['failed_runs'])
                 except BackupSchedule.DoesNotExist:
                     pass
 
@@ -314,7 +312,8 @@ def run_scheduled_backups():
 
             # Update schedule stats
             schedule.last_run = now
-            schedule.save(update_fields=['last_run'])
+            schedule.total_runs += 1
+            schedule.save(update_fields=['last_run', 'total_runs'])
 
     logger.info(f"Scheduled backups completed. Triggered {total_backups_triggered} device backups")
 
