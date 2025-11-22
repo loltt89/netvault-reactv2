@@ -268,7 +268,12 @@ def run_scheduled_backups():
             # Check if it's time and not run today
             if schedule.run_time:
                 # Run time must be passed, but not more than 10 minutes ago (2 check cycles)
-                run_datetime = timezone.datetime.combine(now.date(), schedule.run_time)
+                run_datetime = now.replace(
+                    hour=schedule.run_time.hour,
+                    minute=schedule.run_time.minute,
+                    second=0,
+                    microsecond=0
+                )
 
                 if now >= run_datetime:
                     time_since_run = (now - run_datetime).total_seconds()
@@ -282,7 +287,12 @@ def run_scheduled_backups():
             if schedule.run_time and schedule.run_days:
                 if current_weekday in [int(d) for d in schedule.run_days.split(',')]:
                     # Run time must be passed, but not more than 10 minutes ago
-                    run_datetime = timezone.datetime.combine(now.date(), schedule.run_time)
+                    run_datetime = now.replace(
+                        hour=schedule.run_time.hour,
+                        minute=schedule.run_time.minute,
+                        second=0,
+                        microsecond=0
+                    )
 
                     if now >= run_datetime:
                         time_since_run = (now - run_datetime).total_seconds()
