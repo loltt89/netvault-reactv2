@@ -87,9 +87,12 @@ apiClient.interceptors.response.use(
 
           return access;
         } catch (refreshError) {
-          // Refresh failed, redirect to login
+          // Refresh failed, clear tokens
           clearTokens();
-          window.location.href = '/login';
+          // Only redirect to login if not already on login page (prevent infinite loop)
+          if (window.location.pathname !== '/login') {
+            window.location.href = '/login';
+          }
           throw refreshError;
         } finally {
           isRefreshing = false;
