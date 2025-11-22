@@ -267,27 +267,31 @@ def run_scheduled_backups():
                 should_run = True
 
         elif schedule.frequency == 'daily':
-            # Check if it's time and not run today (with 5min tolerance for timing issues)
+            # Check if it's time and not run today
             if schedule.run_time:
-                # Calculate run_time - 5 minutes for tolerance window
+                # Run time must be passed, but not more than 10 minutes ago (2 check cycles)
                 run_datetime = timezone.datetime.combine(now.date(), schedule.run_time)
-                run_with_tolerance = (run_datetime - timedelta(minutes=5)).time()
 
-                if current_time >= run_with_tolerance:
-                    if not schedule.last_run or schedule.last_run.date() < now.date():
-                        should_run = True
-
-        elif schedule.frequency == 'weekly':
-            # Check if it's the right day and time (with 5min tolerance)
-            if schedule.run_time and schedule.run_days:
-                if current_weekday in [int(d) for d in schedule.run_days.split(',')]:
-                    # Calculate run_time - 5 minutes for tolerance window
-                    run_datetime = timezone.datetime.combine(now.date(), schedule.run_time)
-                    run_with_tolerance = (run_datetime - timedelta(minutes=5)).time()
-
-                    if current_time >= run_with_tolerance:
+                if now >= run_datetime:
+                    time_since_run = (now - run_datetime).total_seconds()
+                    # Only run if within 10 minutes of scheduled time (allows 2 check cycles at 5min interval)
+                    if time_since_run <= 600:  # 10 minutes
                         if not schedule.last_run or schedule.last_run.date() < now.date():
                             should_run = True
+
+        elif schedule.frequency == 'weekly':
+            # Check if it's the right day and time
+            if schedule.run_time and schedule.run_days:
+                if current_weekday in [int(d) for d in schedule.run_days.split(',')]:
+                    # Run time must be passed, but not more than 10 minutes ago
+                    run_datetime = timezone.datetime.combine(now.date(), schedule.run_time)
+
+                    if now >= run_datetime:
+                        time_since_run = (now - run_datetime).total_seconds()
+                        # Only run if within 10 minutes of scheduled time
+                        if time_since_run <= 600:  # 10 minutes
+                            if not schedule.last_run or schedule.last_run.date() < now.date():
+                                should_run = True
 
         if should_run:
             logger.info(f"Schedule due: {schedule.name}")
