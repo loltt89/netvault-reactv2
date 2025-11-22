@@ -87,6 +87,39 @@ def send_telegram_notification(message: str):
         return False
 
 
+def notify_backup_success(device_name: str, backup_id: int = None, size_bytes: int = 0, has_changes: bool = False):
+    """
+    Send notification when backup succeeds
+
+    Args:
+        device_name: Name of the device
+        backup_id: Backup record ID
+        size_bytes: Backup size in bytes
+        has_changes: Whether config changed
+    """
+    from django.conf import settings
+
+    # Check if notifications are enabled
+    if not getattr(settings, 'NOTIFY_ON_BACKUP_SUCCESS', False):
+        return
+
+    subject = f"Backup Success: {device_name}"
+
+    size_kb = size_bytes / 1024 if size_bytes else 0
+    changes_text = "✓ Configuration changed" if has_changes else "○ No changes"
+
+    message = f"""Backup completed successfully for device: {device_name}
+
+{changes_text}
+Size: {size_kb:.1f} KB
+Time: {get_current_time()}
+Backup ID: {backup_id if backup_id else 'N/A'}"""
+
+    # Send both email and Telegram
+    send_email_notification(subject, message)
+    send_telegram_notification(f"✅ Backup success: *{device_name}*\n{changes_text} • {size_kb:.1f} KB")
+
+
 def notify_backup_failed(device_name: str, error_message: str, backup_id: int = None):
     """
     Send notification when backup fails
@@ -96,8 +129,14 @@ def notify_backup_failed(device_name: str, error_message: str, backup_id: int = 
         error_message: Error description
         backup_id: Backup record ID
     """
+    from django.conf import settings
+
+    # Check if notifications are enabled
+    if not getattr(settings, 'NOTIFY_ON_BACKUP_FAILURE', True):
+        return
+
     subject = f"Backup Failed: {device_name}"
-    
+
     message = f"""Backup failed for device: {device_name}
 
 Error: {error_message}

@@ -295,6 +295,11 @@ TELEGRAM_ENABLED = os.getenv('TELEGRAM_ENABLED', 'False') == 'True'
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN', '')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID', '')
 
+# Notification Settings
+NOTIFY_ON_BACKUP_SUCCESS = os.getenv('NOTIFY_ON_BACKUP_SUCCESS', 'False') == 'True'
+NOTIFY_ON_BACKUP_FAILURE = os.getenv('NOTIFY_ON_BACKUP_FAILURE', 'True') == 'True'
+NOTIFY_SCHEDULE_SUMMARY = os.getenv('NOTIFY_SCHEDULE_SUMMARY', 'False') == 'True'
+
 # LDAP Configuration
 LDAP_ENABLED = os.getenv('LDAP_ENABLED', 'False') == 'True'
 LDAP_SERVER_URI = os.getenv('LDAP_SERVER_URI', '')

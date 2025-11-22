@@ -14,7 +14,7 @@ from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
 
 # Notification services
-from notifications.services import notify_backup_failed
+from notifications.services import notify_backup_failed, notify_backup_success
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +137,14 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
 
             logger.info(f"Backup completed successfully for {device.name}")
             send_log('success', f"Backup complete! Has Changes: {backup.has_changes}, Size: {backup.size_bytes} bytes")
+
+            # Send success notification
+            notify_backup_success(
+                device_name=device.name,
+                backup_id=backup.id,
+                size_bytes=backup.size_bytes,
+                has_changes=backup.has_changes
+            )
 
             return {
                 'success': True,

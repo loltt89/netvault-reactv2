@@ -43,6 +43,13 @@ def get_system_settings(request):
             'chat_id': getattr(settings, 'TELEGRAM_CHAT_ID', ''),
         },
 
+        # Notification Settings
+        'notifications': {
+            'notify_on_success': getattr(settings, 'NOTIFY_ON_BACKUP_SUCCESS', False),
+            'notify_on_failure': getattr(settings, 'NOTIFY_ON_BACKUP_FAILURE', True),
+            'notify_schedule_summary': getattr(settings, 'NOTIFY_SCHEDULE_SUMMARY', False),
+        },
+
         # LDAP Settings
         'ldap': {
             'enabled': getattr(settings, 'LDAP_ENABLED', False),
@@ -132,6 +139,16 @@ def update_system_settings(request):
                 updated_vars['TELEGRAM_BOT_TOKEN'] = telegram['bot_token']
             if 'chat_id' in telegram:
                 updated_vars['TELEGRAM_CHAT_ID'] = telegram['chat_id']
+
+        # Notification settings
+        if 'notifications' in data:
+            notifications = data['notifications']
+            if 'notify_on_success' in notifications:
+                updated_vars['NOTIFY_ON_BACKUP_SUCCESS'] = str(notifications['notify_on_success'])
+            if 'notify_on_failure' in notifications:
+                updated_vars['NOTIFY_ON_BACKUP_FAILURE'] = str(notifications['notify_on_failure'])
+            if 'notify_schedule_summary' in notifications:
+                updated_vars['NOTIFY_SCHEDULE_SUMMARY'] = str(notifications['notify_schedule_summary'])
 
         # LDAP settings
         if 'ldap' in data:
