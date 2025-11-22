@@ -102,7 +102,7 @@ class Device(models.Model):
 
     # Organization
     location = models.CharField(max_length=255, blank=True)
-    tags = models.JSONField(default=list)  # List of tags
+    tags = models.JSONField(default=list, blank=True)  # List of tags
     criticality = models.CharField(max_length=20, choices=CRITICALITY_CHOICES, default='medium')
 
     # Status
@@ -114,7 +114,7 @@ class Device(models.Model):
     # Backup settings
     backup_enabled = models.BooleanField(default=True)
     backup_schedule = models.CharField(max_length=255, blank=True)  # Cron expression
-    custom_commands = models.JSONField(default=list)  # Custom backup commands
+    custom_commands = models.JSONField(default=list, blank=True)  # Custom backup commands
 
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
