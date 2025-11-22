@@ -66,6 +66,7 @@ class Backup(models.Model):
         ordering = ['-created_at']
         indexes = [
             models.Index(fields=['device', '-created_at']),
+            models.Index(fields=['device', 'success', '-created_at']),  # Composite for queries
             models.Index(fields=['status']),
             models.Index(fields=['-created_at']),
             models.Index(fields=['configuration_hash']),
@@ -152,6 +153,10 @@ class BackupSchedule(models.Model):
         verbose_name = 'Backup Schedule'
         verbose_name_plural = 'Backup Schedules'
         ordering = ['name']
+        indexes = [
+            models.Index(fields=['is_active', 'next_run']),  # For finding active schedules to run
+            models.Index(fields=['is_active', 'frequency']),  # For filtering schedules by type
+        ]
 
     def __str__(self):
         return self.name

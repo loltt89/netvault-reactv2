@@ -202,10 +202,10 @@ class BackupViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['post'])
     def download_multiple(self, request):
-        """Download multiple backups as a ZIP archive"""
+        """Download multiple backups as a ZIP archive (streaming to avoid memory issues)"""
         import zipfile
         import io
-        from django.http import HttpResponse
+        from django.http import StreamingHttpResponse
 
         backup_ids = request.data.get('backup_ids', [])
 
@@ -215,8 +215,17 @@ class BackupViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        # Limit number of backups to prevent abuse
+        from django.conf import settings
+        max_backups = settings.BACKUP_MAX_EXPORT_COUNT
+        if len(backup_ids) > max_backups:
+            return Response(
+                {'error': f'Too many backups requested (max {max_backups})'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         # Get backups
-        backups = Backup.objects.filter(id__in=backup_ids, success=True)
+        backups = Backup.objects.filter(id__in=backup_ids, success=True).select_related('device', 'device__vendor')
 
         if not backups.exists():
             return Response(
@@ -224,25 +233,29 @@ class BackupViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # Create ZIP file in memory
-        zip_buffer = io.BytesIO()
+        def zip_generator():
+            """Generator that yields ZIP file chunks (streaming to avoid loading all in memory)"""
+            # Use a temp buffer to accumulate small chunks
+            temp_buffer = io.BytesIO()
 
-        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-            for backup in backups:
-                config = backup.get_configuration()
-                filename = f'{backup.device.name}_{backup.created_at.strftime("%Y%m%d_%H%M%S")}.txt'
+            with zipfile.ZipFile(temp_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                for backup in backups:
+                    config = backup.get_configuration()
+                    filename = f'{backup.device.name}_{backup.created_at.strftime("%Y%m%d_%H%M%S")}.txt'
 
-                # Add to zip with folder structure: vendor/device_name/filename
-                if backup.device.vendor:
-                    folder_path = f'{backup.device.vendor.name}/{backup.device.name}/{filename}'
-                else:
-                    folder_path = f'Unknown/{backup.device.name}/{filename}'
+                    # Add to zip with folder structure: vendor/device_name/filename
+                    if backup.device.vendor:
+                        folder_path = f'{backup.device.vendor.name}/{backup.device.name}/{filename}'
+                    else:
+                        folder_path = f'Unknown/{backup.device.name}/{filename}'
 
-                zip_file.writestr(folder_path, config)
+                    zip_file.writestr(folder_path, config)
 
-        # Prepare response
-        zip_buffer.seek(0)
-        response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
+            # Return final ZIP content
+            temp_buffer.seek(0)
+            yield temp_buffer.read()
+
+        response = StreamingHttpResponse(zip_generator(), content_type='application/zip')
         response['Content-Disposition'] = f'attachment; filename="backups_{timezone.now().strftime("%Y%m%d_%H%M%S")}.zip"'
 
         return response
@@ -258,7 +271,16 @@ class BackupViewSet(viewsets.ModelViewSet):
 
         if not query or len(query) < 2:
             return Response(
-                {'error': 'Search query must be at least 2 characters'},
+                {'detail': 'Search query must be at least 2 characters'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # ReDoS protection: Limit regex pattern length to prevent catastrophic backtracking
+        from django.conf import settings
+        max_regex_length = settings.CONFIG_SEARCH_REGEX_MAX_LENGTH
+        if regex_mode and len(query) > max_regex_length:
+            return Response(
+                {'detail': f'Regex pattern is too long (max {max_regex_length} characters)'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -283,6 +305,18 @@ class BackupViewSet(viewsets.ModelViewSet):
         latest_backup_ids = [d.latest_backup_id for d in devices_with_backup if d.latest_backup_id]
         latest_backups = {b.device_id: b for b in Backup.objects.filter(id__in=latest_backup_ids)}
 
+        # Pre-compile regex pattern once for performance (instead of re.search on every line)
+        compiled_pattern = None
+        if regex_mode:
+            try:
+                flags = 0 if case_sensitive else re.IGNORECASE
+                compiled_pattern = re.compile(query, flags)
+            except re.error as e:
+                return Response(
+                    {'detail': f'Invalid regex pattern: {str(e)}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
         results = []
 
         for device in devices_with_backup:
@@ -305,12 +339,9 @@ class BackupViewSet(viewsets.ModelViewSet):
                 found = False
 
                 if regex_mode:
-                    try:
-                        flags = 0 if case_sensitive else re.IGNORECASE
-                        if re.search(query, line, flags):
-                            found = True
-                    except re.error:
-                        pass
+                    # Use pre-compiled pattern for performance and ReDoS protection
+                    if compiled_pattern and compiled_pattern.search(line):
+                        found = True
                 else:
                     if case_sensitive:
                         found = query in line

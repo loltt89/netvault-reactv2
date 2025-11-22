@@ -85,14 +85,21 @@ def tcp_ping(host: str, port: int, timeout: int = 2) -> bool:
     Returns:
         True if port is open, False otherwise
     """
+    sock = None
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(timeout)
         result = sock.connect_ex((host, port))
-        sock.close()
         return result == 0  # 0 means connection successful
     except Exception as e:
         return False
+    finally:
+        # Always close socket to prevent file descriptor leak
+        if sock:
+            try:
+                sock.close()
+            except:
+                pass
 
 
 def clean_device_output(output: str, vendor: str = '', command: str = '') -> str:
@@ -174,6 +181,7 @@ class SSHConnection:
         self.vendor = vendor
         self.client: Optional[paramiko.SSHClient] = None
         self.shell: Optional[paramiko.Channel] = None
+        self.backup_commands: Optional[dict] = None  # Store backup_commands for logout
 
     def connect(self) -> None:
         """Establish SSH connection"""
@@ -330,6 +338,9 @@ class SSHConnection:
         """
         vendor = vendor.lower()
 
+        # Store backup_commands for logout (used in disconnect())
+        self.backup_commands = backup_commands
+
         # Backup commands should come from database (Vendor model)
         # If not provided, use generic fallback
         if backup_commands:
@@ -360,28 +371,23 @@ class SSHConnection:
 
         return clean_device_output(config, vendor, show_command)
 
-    def _get_logout_commands(self, vendor_obj) -> List[str]:
+    def _get_logout_commands(self) -> List[str]:
         """
-        Get vendor-specific logout commands from vendor settings or fallback to defaults
+        Get vendor-specific logout commands from backup_commands or fallback to defaults
 
-        Logout commands can be customized in vendor's backup_commands JSON field.
+        Logout commands can be customized in backup_commands JSON field.
         Structure: {"logout": ["end", "exit"]}
 
         Returns multiple commands to handle different modes (enable, config, etc.)
 
-        Args:
-            vendor_obj: Vendor model instance
-
         Returns:
             List of logout commands to send sequentially
         """
-        # Try to get logout commands from vendor settings
-        if vendor_obj and hasattr(vendor_obj, 'backup_commands'):
-            backup_commands = vendor_obj.backup_commands or {}
-            if isinstance(backup_commands, dict) and 'logout' in backup_commands:
-                logout_cmds = backup_commands.get('logout', [])
-                if isinstance(logout_cmds, list) and logout_cmds:
-                    return logout_cmds
+        # Try to get logout commands from stored backup_commands (from DB)
+        if self.backup_commands and isinstance(self.backup_commands, dict):
+            logout_cmds = self.backup_commands.get('logout', [])
+            if isinstance(logout_cmds, list) and logout_cmds:
+                return logout_cmds
 
         # Fallback to default for backward compatibility and generic devices
         # Default: 'end' to exit config mode, then 'exit' to logout (works for most Cisco-like devices)
@@ -394,7 +400,7 @@ class SSHConnection:
                 # Send vendor-specific logout commands to gracefully close session
                 # This prevents hanging VTY lines and "Connection reset by peer" logs
                 try:
-                    logout_commands = self._get_logout_commands(self.vendor)
+                    logout_commands = self._get_logout_commands()
                     for cmd in logout_commands:
                         self.shell.send(f'{cmd}\n')
                         time.sleep(0.3)  # Brief pause between commands
@@ -442,6 +448,7 @@ class TelnetConnection:
         self.timeout = timeout
         self.vendor = vendor
         self.connection: Optional[telnetlib.Telnet] = None
+        self.backup_commands: Optional[dict] = None  # Store backup_commands for logout
 
     def connect(self) -> None:
         """Establish Telnet connection"""
@@ -530,6 +537,9 @@ class TelnetConnection:
         """
         vendor = vendor.lower()
 
+        # Store backup_commands for logout (used in disconnect())
+        self.backup_commands = backup_commands
+
         # Backup commands should come from database (Vendor model)
         # If not provided, use generic fallback
         if backup_commands:
@@ -557,33 +567,27 @@ class TelnetConnection:
         # Use the same cleaning method
         return clean_device_output(config, vendor, show_command)
 
-    def _get_logout_commands(self, vendor: str) -> List[str]:
+    def _get_logout_commands(self) -> List[str]:
         """
-        Get vendor-specific logout commands (same as SSH version)
+        Get vendor-specific logout commands from backup_commands or fallback to defaults
 
-        Args:
-            vendor: Device vendor slug
+        Logout commands can be customized in backup_commands JSON field.
+        Structure: {"logout": ["end", "exit"]}
+
+        Returns multiple commands to handle different modes (enable, config, etc.)
 
         Returns:
             List of logout commands to send sequentially
         """
-        vendor = vendor.lower()
+        # Try to get logout commands from stored backup_commands (from DB)
+        if self.backup_commands and isinstance(self.backup_commands, dict):
+            logout_cmds = self.backup_commands.get('logout', [])
+            if isinstance(logout_cmds, list) and logout_cmds:
+                return logout_cmds
 
-        # Vendor-specific logout sequences
-        logout_sequences = {
-            'huawei': ['quit', 'quit'],      # quit from system-view, quit from user-view
-            'hp': ['quit', 'quit'],           # quit from system-view, quit from user-view
-            'mikrotik': ['quit'],             # MikroTik uses quit
-            'fortinet': ['end', 'exit'],      # end config mode, exit session
-            'aruba': ['end', 'exit'],         # Aruba (HPE) - Cisco-like
-            'grandstream': ['exit'],          # Grandstream - simple exit
-        }
-
-        # For Cisco-like devices (Cisco, TP-Link, Arista, Juniper, Dell, Generic)
-        # Send 'end' to exit config mode, then 'exit' to logout
-        default_sequence = ['end', 'exit']
-
-        return logout_sequences.get(vendor, default_sequence)
+        # Fallback to default for backward compatibility and generic devices
+        # Default: 'end' to exit config mode, then 'exit' to logout (works for most Cisco-like devices)
+        return ['end', 'exit']
 
     def disconnect(self) -> None:
         """Close Telnet connection gracefully with vendor-specific logout commands"""
@@ -592,7 +596,7 @@ class TelnetConnection:
                 # Send vendor-specific logout commands to gracefully close session
                 # This prevents hanging VTY lines and "Connection reset by peer" logs
                 try:
-                    logout_commands = self._get_logout_commands(self.vendor)
+                    logout_commands = self._get_logout_commands()
                     for cmd in logout_commands:
                         self.connection.write(f'{cmd}\n'.encode('ascii'))
                         time.sleep(0.3)  # Brief pause between commands

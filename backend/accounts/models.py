@@ -92,6 +92,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name = 'User'
         verbose_name_plural = 'Users'
         ordering = ['-date_joined']
+        indexes = [
+            models.Index(fields=['role']),  # For filtering by role
+            models.Index(fields=['is_active', 'role']),  # For filtering active users by role
+            models.Index(fields=['-date_joined']),  # For sorting by join date
+        ]
 
     def __str__(self):
         return self.email
@@ -165,6 +170,8 @@ class AuditLog(models.Model):
             models.Index(fields=['-timestamp']),
             models.Index(fields=['user', '-timestamp']),
             models.Index(fields=['resource_type', 'resource_id']),
+            models.Index(fields=['action', '-timestamp']),  # For filtering by action type
+            models.Index(fields=['success', '-timestamp']),  # For filtering failed/successful actions
         ]
 
     def __str__(self):

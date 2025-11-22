@@ -306,6 +306,16 @@ if ALLOWED_PRIVATE_NETWORKS:
 else:
     ALLOWED_PRIVATE_NETWORKS = []  # Empty = allow all private IPs
 
+# CSV Import/Export Configuration
+CSV_MAX_FILE_SIZE = int(os.getenv('CSV_MAX_FILE_SIZE', str(5 * 1024 * 1024)))  # 5MB default
+
+# Backup Export Configuration
+BACKUP_MAX_EXPORT_COUNT = int(os.getenv('BACKUP_MAX_EXPORT_COUNT', '1000'))  # Max backups in single ZIP
+BACKUP_CONNECTION_TIMEOUT = int(os.getenv('BACKUP_CONNECTION_TIMEOUT', '30'))  # Connection timeout in seconds
+
+# Config Search Configuration
+CONFIG_SEARCH_REGEX_MAX_LENGTH = int(os.getenv('CONFIG_SEARCH_REGEX_MAX_LENGTH', '200'))  # Max regex pattern length
+
 # Redis Configuration
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 

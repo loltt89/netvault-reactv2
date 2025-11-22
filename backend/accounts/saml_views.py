@@ -111,7 +111,8 @@ class SAMLMetadataView(View):
         except ImportError:
             return HttpResponse("python3-saml not installed", status=503)
         except Exception as e:
-            logger.exception("Error generating SAML metadata")
+            # Use logger.error instead of logger.exception to avoid logging SAML config in traceback
+            logger.error(f"Error generating SAML metadata: {str(e)}")
             return HttpResponse(f"Error: {str(e)}", status=500)
 
 
@@ -139,7 +140,7 @@ class SAMLLoginView(View):
         except ImportError:
             return HttpResponse("python3-saml not installed", status=503)
         except Exception as e:
-            logger.exception("Error initiating SAML login")
+            logger.error(f"Error initiating SAML login: {str(e)}")
             return HttpResponse(f"Error: {str(e)}", status=500)
 
 
@@ -211,18 +212,20 @@ class SAMLACSView(View):
                 'access_token', access_token,
                 httponly=True, secure=request.is_secure(),
                 samesite='Lax', max_age=60 * 60,
+                path='/',
             )
             response.set_cookie(
                 'refresh_token', refresh_token,
                 httponly=True, secure=request.is_secure(),
                 samesite='Lax', max_age=24 * 60 * 60,
+                path='/',
             )
             return response
 
         except ImportError:
             return HttpResponse("python3-saml not installed", status=503)
         except Exception as e:
-            logger.exception("Error processing SAML response")
+            logger.error(f"Error processing SAML response: {str(e)}")
             return HttpResponseRedirect(f'/login?error=saml_error&message={str(e)}')
 
     def _get_attribute(self, attributes, attr_name, default=''):
@@ -287,7 +290,7 @@ class SAMLACSView(View):
             return user
 
         except Exception as e:
-            logger.exception(f"Error getting/creating SAML user: {e}")
+            logger.error(f"Error getting/creating SAML user: {str(e)}")
             return None
 
 
@@ -324,7 +327,7 @@ class SAMLSLSView(View):
             return HttpResponseRedirect('/login?logout=success')
 
         except Exception as e:
-            logger.exception("Error processing SAML logout")
+            logger.error(f"Error processing SAML logout: {str(e)}")
             return HttpResponseRedirect('/login')
 
 
@@ -336,7 +339,7 @@ class SAMLSettingsAPIView(APIView):
         """Get current SAML settings"""
         # Check if user is admin
         if request.user.role != 'administrator':
-            return Response({'error': 'Admin access required'}, status=403)
+            return Response({'detail': 'Admin access required'}, status=403)
 
         config = SAMLSettings.get_settings()
 
@@ -369,7 +372,7 @@ class SAMLSettingsAPIView(APIView):
         """Update SAML settings"""
         # Check if user is admin
         if request.user.role != 'administrator':
-            return Response({'error': 'Admin access required'}, status=403)
+            return Response({'detail': 'Admin access required'}, status=403)
 
         config = SAMLSettings.get_settings()
         data = request.data

@@ -51,14 +51,14 @@ class DeviceTypeViewSet(viewsets.ModelViewSet):
         # Check if predefined
         if device_type.is_predefined:
             return Response(
-                {'error': 'Cannot delete predefined device type'},
+                {'detail': 'Cannot delete predefined device type'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         # Check if in use by devices
         if device_type.devices.exists():
             return Response(
-                {'error': f'Cannot delete device type. It is used by {device_type.devices.count()} device(s).'},
+                {'detail': f'Cannot delete device type. It is used by {device_type.devices.count()} device(s).'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -160,6 +160,8 @@ class DeviceViewSet(viewsets.ModelViewSet):
             password = device.get_password()
             enable_password = device.get_enable_password() if device.enable_password_encrypted else None
 
+            from django.conf import settings
+
             success, message = test_connection(
                 host=device.ip_address,
                 port=device.port,
@@ -167,7 +169,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
                 username=username,
                 password=password,
                 enable_password=enable_password,
-                timeout=30
+                timeout=settings.BACKUP_CONNECTION_TIMEOUT
             )
 
             # Update device status based on connection test result
@@ -191,11 +193,11 @@ class DeviceViewSet(viewsets.ModelViewSet):
             device.status = 'offline'
             device.save()
 
+            logger.error(f"Connection test failed for device {device.id}: {str(e)}")
             return Response({
-                'success': False,
-                'message': str(e),
+                'detail': f'Connection test failed: {str(e)}',
                 'device_id': device.id,
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            }, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=['post'])
     def backup_now(self, request, pk=None):
@@ -280,9 +282,9 @@ class DeviceViewSet(viewsets.ModelViewSet):
                 reverse_map[header.lower()] = field
         return reverse_map
 
-    @action(detail=False, methods=['get'], permission_classes=[])
+    @action(detail=False, methods=['get'])
     def csv_template(self, request):
-        """Download CSV template with localized headers (public - no auth required)"""
+        """Download CSV template with localized headers"""
         lang = request.query_params.get('lang', 'en')
         if lang not in self.CSV_HEADERS:
             lang = 'en'
@@ -327,16 +329,18 @@ class DeviceViewSet(viewsets.ModelViewSet):
     def csv_preview(self, request):
         """Preview CSV import with validation"""
         if 'file' not in request.FILES:
-            return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
 
         csv_file = request.FILES['file']
         if not csv_file.name.endswith('.csv'):
-            return Response({'error': 'File must be CSV'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'File must be CSV'}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Limit file size to 5MB to prevent memory exhaustion
-        max_size = 5 * 1024 * 1024
+        # Limit file size to prevent memory exhaustion
+        from django.conf import settings
+        max_size = settings.CSV_MAX_FILE_SIZE
+        max_size_mb = max_size // (1024 * 1024)
         if csv_file.size > max_size:
-            return Response({'error': 'CSV file too large (max 5MB)'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': f'CSV file too large (max {max_size_mb}MB)'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             # Read file content
@@ -348,7 +352,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
 
             # Map headers to field names
             if not reader.fieldnames:
-                return Response({'error': 'Empty CSV file'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'detail': 'Empty CSV file'}, status=status.HTTP_400_BAD_REQUEST)
 
             field_mapping = {}
             for header in reader.fieldnames:
@@ -357,7 +361,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
                     field_mapping[header] = field
 
             if not field_mapping:
-                return Response({'error': 'Could not recognize CSV headers'}, status=status.HTTP_400_BAD_REQUEST)
+                return Response({'detail': 'Could not recognize CSV headers'}, status=status.HTTP_400_BAD_REQUEST)
 
             # Get existing data for validation
             existing_ips = set(Device.objects.values_list('ip_address', flat=True))
@@ -440,23 +444,25 @@ class DeviceViewSet(viewsets.ModelViewSet):
             })
 
         except Exception as e:
-            logger.error(f"CSV preview error: {e}")
-            return Response({'error': 'Failed to process CSV file'}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"CSV preview error: {str(e)}")
+            return Response({'detail': f'Failed to process CSV file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['post'])
     def csv_import(self, request):
         """Import devices from CSV"""
         if 'file' not in request.FILES:
-            return Response({'error': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': 'No file uploaded'}, status=status.HTTP_400_BAD_REQUEST)
 
         csv_file = request.FILES['file']
         skip_duplicates = request.data.get('skip_duplicates', True)
         update_existing = request.data.get('update_existing', False)
 
-        # Limit file size to 5MB to prevent memory exhaustion
-        max_size = 5 * 1024 * 1024
+        # Limit file size to prevent memory exhaustion
+        from django.conf import settings
+        max_size = settings.CSV_MAX_FILE_SIZE
+        max_size_mb = max_size // (1024 * 1024)
         if csv_file.size > max_size:
-            return Response({'error': 'CSV file too large (max 5MB)'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'detail': f'CSV file too large (max {max_size_mb}MB)'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             content = csv_file.read().decode('utf-8-sig')
@@ -575,5 +581,5 @@ class DeviceViewSet(viewsets.ModelViewSet):
             })
 
         except Exception as e:
-            logger.error(f"CSV import error: {e}")
-            return Response({'error': 'Failed to import CSV file'}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"CSV import error: {str(e)}")
+            return Response({'detail': f'Failed to import CSV file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)

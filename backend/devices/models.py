@@ -136,6 +136,25 @@ class Device(models.Model):
     def __str__(self):
         return f'{self.name} ({self.ip_address})'
 
+    def clean(self):
+        """Sanitize fields to prevent CSV injection"""
+        from django.core.exceptions import ValidationError
+
+        # Sanitize text fields that could be exported to CSV
+        if self.name and isinstance(self.name, str) and self.name[0] in ('=', '+', '-', '@', '\t', '\r'):
+            self.name = "'" + self.name
+
+        if self.location and isinstance(self.location, str) and self.location[0] in ('=', '+', '-', '@', '\t', '\r'):
+            self.location = "'" + self.location
+
+        if self.description and isinstance(self.description, str) and self.description[0] in ('=', '+', '-', '@', '\t', '\r'):
+            self.description = "'" + self.description
+
+    def save(self, *args, **kwargs):
+        """Override save to call clean()"""
+        self.full_clean()
+        super().save(*args, **kwargs)
+
     def set_password(self, password):
         """Encrypt and set password"""
         self.password_encrypted = encrypt_data(password)
@@ -156,7 +175,9 @@ class Device(models.Model):
         """Get backup commands for this device"""
         if self.custom_commands:
             return self.custom_commands
-        return self.vendor.backup_commands
+        if self.vendor:
+            return self.vendor.backup_commands
+        return None
 
 
 class DeviceCredential(models.Model):

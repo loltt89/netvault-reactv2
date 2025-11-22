@@ -42,20 +42,10 @@ apiClient.interceptors.request.use(
 
 /**
  * Response interceptor - Handle token refresh on 401 errors
+ * Uses promise-based queue to prevent race conditions when multiple requests fail simultaneously
  */
 let isRefreshing = false;
-let failedQueue: any[] = [];
-
-const processQueue = (error: any, token: string | null = null) => {
-  failedQueue.forEach((prom) => {
-    if (error) {
-      prom.reject(error);
-    } else {
-      prom.resolve(token);
-    }
-  });
-  failedQueue = [];
-};
+let refreshPromise: Promise<string> | null = null;
 
 apiClient.interceptors.response.use(
   (response) => response,
@@ -64,52 +54,56 @@ apiClient.interceptors.response.use(
 
     // Handle 401 Unauthorized
     if (error.response?.status === 401 && !originalRequest._retry) {
-      if (isRefreshing) {
-        return new Promise((resolve, reject) => {
-          failedQueue.push({ resolve, reject });
-        })
-          .then((token) => {
-            if (token) {
-              originalRequest.headers.Authorization = `Bearer ${token}`;
-            }
-            return apiClient(originalRequest);
-          })
-          .catch((err) => {
-            return Promise.reject(err);
-          });
+      originalRequest._retry = true;
+
+      if (isRefreshing && refreshPromise) {
+        // Another request is already refreshing the token, wait for it
+        try {
+          const newToken = await refreshPromise;
+          if (newToken) {
+            originalRequest.headers.Authorization = `Bearer ${newToken}`;
+          }
+          return apiClient(originalRequest);
+        } catch (refreshError) {
+          return Promise.reject(refreshError);
+        }
       }
 
-      originalRequest._retry = true;
+      // Start refresh process
       isRefreshing = true;
+      refreshPromise = (async () => {
+        try {
+          // Attempt to refresh using HttpOnly cookie (no body needed)
+          const response = await axios.post(
+            `${API_BASE_URL}/token/refresh/`,
+            {},
+            { withCredentials: true }
+          );
+
+          const { access } = response.data;
+
+          // Save new access token in memory
+          accessToken = access;
+
+          return access;
+        } catch (refreshError) {
+          // Refresh failed, redirect to login
+          clearTokens();
+          window.location.href = '/login';
+          throw refreshError;
+        } finally {
+          isRefreshing = false;
+          refreshPromise = null;
+        }
+      })();
 
       try {
-        // Attempt to refresh using HttpOnly cookie (no body needed)
-        const response = await axios.post(
-          `${API_BASE_URL}/token/refresh/`,
-          {},
-          { withCredentials: true }
-        );
-
-        const { access } = response.data;
-
-        // Save new access token in memory
-        accessToken = access;
-
-        if (access) {
-          originalRequest.headers.Authorization = `Bearer ${access}`;
+        const newToken = await refreshPromise;
+        if (newToken) {
+          originalRequest.headers.Authorization = `Bearer ${newToken}`;
         }
-
-        processQueue(null, access);
-        isRefreshing = false;
-
         return apiClient(originalRequest);
       } catch (refreshError) {
-        processQueue(refreshError, null);
-        isRefreshing = false;
-
-        // Refresh failed, redirect to login
-        clearTokens();
-        window.location.href = '/login';
         return Promise.reject(refreshError);
       }
     }

@@ -83,19 +83,23 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
         backup_commands = None
         if device.custom_commands:
             backup_commands = device.custom_commands
-        elif device.vendor.backup_commands:
+        elif device.vendor and device.vendor.backup_commands:
             backup_commands = device.vendor.backup_commands
 
+        # Get vendor slug (with fallback if vendor is None)
+        vendor_slug = device.vendor.slug if device.vendor else 'generic'
+
         # Perform backup
+        from django.conf import settings
         success, config, error_message = backup_device_config(
             host=device.ip_address,
             port=device.port,
             protocol=device.protocol,
             username=username,
             password=password,
-            vendor=device.vendor.slug,
+            vendor=vendor_slug,
             enable_password=enable_password,
-            timeout=30,
+            timeout=settings.BACKUP_CONNECTION_TIMEOUT,
             backup_commands=backup_commands
         )
 
@@ -173,7 +177,8 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
             return {'success': False, 'error': error_message}
 
     except Exception as e:
-        logger.exception(f"Error during backup of device {device.name}")
+        # Use logger.error instead of logger.exception to avoid logging passwords in traceback
+        logger.error(f"Error during backup of device {device.name}: {str(e)}")
         send_log('error', f"Critical task error: {str(e)}")
 
         backup.status = 'failed'
@@ -262,16 +267,25 @@ def run_scheduled_backups():
                 should_run = True
 
         elif schedule.frequency == 'daily':
-            # Check if it's time and not run today
-            if schedule.run_time and current_time >= schedule.run_time:
-                if not schedule.last_run or schedule.last_run.date() < now.date():
-                    should_run = True
+            # Check if it's time and not run today (with 5min tolerance for timing issues)
+            if schedule.run_time:
+                # Calculate run_time - 5 minutes for tolerance window
+                run_datetime = timezone.datetime.combine(now.date(), schedule.run_time)
+                run_with_tolerance = (run_datetime - timedelta(minutes=5)).time()
+
+                if current_time >= run_with_tolerance:
+                    if not schedule.last_run or schedule.last_run.date() < now.date():
+                        should_run = True
 
         elif schedule.frequency == 'weekly':
-            # Check if it's the right day and time
+            # Check if it's the right day and time (with 5min tolerance)
             if schedule.run_time and schedule.run_days:
                 if current_weekday in [int(d) for d in schedule.run_days.split(',')]:
-                    if current_time >= schedule.run_time:
+                    # Calculate run_time - 5 minutes for tolerance window
+                    run_datetime = timezone.datetime.combine(now.date(), schedule.run_time)
+                    run_with_tolerance = (run_datetime - timedelta(minutes=5)).time()
+
+                    if current_time >= run_with_tolerance:
                         if not schedule.last_run or schedule.last_run.date() < now.date():
                             should_run = True
 

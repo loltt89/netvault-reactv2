@@ -5,7 +5,6 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from django.contrib.auth import logout
 from .models import User, AuditLog
 from .throttling import LoginRateThrottle
 
@@ -16,6 +15,38 @@ from .serializers import (
     UserUpdateSerializer, ChangePasswordSerializer, Enable2FASerializer,
     Verify2FASerializer, Disable2FASerializer, AuditLogSerializer
 )
+
+
+def set_jwt_cookies(response, request, access_token=None, refresh_token=None):
+    """
+    Helper function to set JWT tokens as HttpOnly cookies (DRY principle)
+
+    Args:
+        response: Django Response object
+        request: Django Request object
+        access_token: Access token string (optional)
+        refresh_token: Refresh token string (optional)
+    """
+    if access_token:
+        response.set_cookie(
+            'access_token',
+            access_token,
+            httponly=True,
+            secure=request.is_secure(),
+            samesite='Lax',
+            max_age=60 * 60,  # 1 hour
+            path='/',
+        )
+    if refresh_token:
+        response.set_cookie(
+            'refresh_token',
+            refresh_token,
+            httponly=True,
+            secure=request.is_secure(),
+            samesite='Lax',
+            max_age=24 * 60 * 60,  # 24 hours
+            path='/',
+        )
 
 
 class CustomTokenObtainPairView(TokenObtainPairView):
@@ -29,29 +60,12 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
         if response.status_code == 200:
             # Set tokens as HttpOnly cookies for XSS protection
-            access_token = response.data.get('access')
-            refresh_token = response.data.get('refresh')
-
-            if access_token:
-                response.set_cookie(
-                    'access_token',
-                    access_token,
-                    httponly=True,
-                    secure=request.is_secure(),  # True for HTTPS
-                    samesite='Lax',
-                    max_age=60 * 60,  # 1 hour
-                    path='/',
-                )
-            if refresh_token:
-                response.set_cookie(
-                    'refresh_token',
-                    refresh_token,
-                    httponly=True,
-                    secure=request.is_secure(),
-                    samesite='Lax',
-                    max_age=24 * 60 * 60,  # 24 hours
-                    path='/',
-                )
+            set_jwt_cookies(
+                response,
+                request,
+                access_token=response.data.get('access'),
+                refresh_token=response.data.get('refresh')
+            )
 
         return response
 
@@ -74,16 +88,11 @@ class CookieTokenRefreshView(TokenRefreshView):
 
             if response.status_code == 200:
                 # Set new access token as cookie
-                access_token = response.data.get('access')
-                if access_token:
-                    response.set_cookie(
-                        'access_token',
-                        access_token,
-                        httponly=True,
-                        secure=request.is_secure(),
-                        samesite='Lax',
-                        max_age=60 * 60,
-                    )
+                set_jwt_cookies(
+                    response,
+                    request,
+                    access_token=response.data.get('access')
+                )
 
             return response
         except (InvalidToken, TokenError) as e:
@@ -139,16 +148,7 @@ class AuthViewSet(viewsets.GenericViewSet):
         }, status=status.HTTP_201_CREATED)
 
         # Set HttpOnly cookies for XSS protection
-        response.set_cookie(
-            'access_token', access_token,
-            httponly=True, secure=request.is_secure(),
-            samesite='Lax', max_age=60 * 60,
-        )
-        response.set_cookie(
-            'refresh_token', refresh_token,
-            httponly=True, secure=request.is_secure(),
-            samesite='Lax', max_age=24 * 60 * 60,
-        )
+        set_jwt_cookies(response, request, access_token=access_token, refresh_token=refresh_token)
 
         return response
 
