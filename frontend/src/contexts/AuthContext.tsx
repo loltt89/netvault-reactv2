@@ -46,21 +46,23 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   /**
    * Load user data on mount if authenticated
+   * Always attempt to load user - if HttpOnly cookie is valid, backend will authenticate
    */
   useEffect(() => {
     const loadUser = async () => {
-      if (checkAuth()) {
-        try {
-          const userData = await APIService.users.getMe();
-          setUser(userData);
-          setIsAuthenticated(true);
-        } catch (error) {
-          console.error('Failed to load user:', error);
-          clearTokens();
-          setIsAuthenticated(false);
-        }
+      try {
+        // Always try to load user (backend will check HttpOnly cookie)
+        const userData = await APIService.users.getMe();
+        setUser(userData);
+        setIsAuthenticated(true);
+      } catch (error) {
+        // If 401/403, user is not authenticated (cookie expired or invalid)
+        console.error('Failed to load user:', error);
+        clearTokens();
+        setIsAuthenticated(false);
+      } finally {
+        setIsLoading(false);
       }
-      setIsLoading(false);
     };
 
     loadUser();
