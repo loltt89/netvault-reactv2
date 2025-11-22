@@ -334,6 +334,7 @@
     "tabs": {
       "email": "Email",
       "telegram": "Telegram",
+      "notifications": "Notifications",
       "ldap": "LDAP/AD",
       "saml": "SAML SSO",
       "backup": "Backup",
@@ -371,6 +372,18 @@
       "saved": "Telegram settings saved successfully! Please restart the application.",
       "failed_save": "Failed to save telegram settings",
       "failed_test": "Failed to send test message"
+    },
+    "notifications": {
+      "title": "Notification Settings:",
+      "description": "Choose when to send Email and Telegram notifications. Make sure Email and Telegram are configured in their respective tabs.",
+      "notify_on_success": "Notify on successful backups",
+      "notify_on_success_help": "Send notification every time a device backup completes successfully (can be many messages)",
+      "notify_on_failure": "Notify on backup failures",
+      "notify_on_failure_help": "Send notification when a device backup fails (recommended)",
+      "notify_schedule_summary": "Schedule summary",
+      "notify_schedule_summary_help": "Send one summary notification after all scheduled backups complete",
+      "saved": "Notification settings saved successfully! Please restart the application.",
+      "failed_save": "Failed to save notification settings"
     },
     "ldap": {
       "enable": "Enable LDAP/Active Directory Authentication",

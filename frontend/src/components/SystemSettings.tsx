@@ -16,6 +16,11 @@ interface SystemSettings {
     chat_id: string;
     enabled: boolean;
   };
+  notifications: {
+    notify_on_success: boolean;
+    notify_on_failure: boolean;
+    notify_schedule_summary: boolean;
+  };
   ldap: {
     enabled: boolean;
     server_uri: string;
@@ -50,7 +55,7 @@ const SystemSettings: React.FC = () => {
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'email' | 'telegram' | 'ldap' | 'saml' | 'backup' | 'device_check' | 'jwt' | 'redis' | 'vendors' | 'devicetypes'>('email');
+  const [activeTab, setActiveTab] = useState<'email' | 'telegram' | 'notifications' | 'ldap' | 'saml' | 'backup' | 'device_check' | 'jwt' | 'redis' | 'vendors' | 'devicetypes'>('email');
 
   // Form states
   const [emailSettings, setEmailSettings] = useState({
@@ -65,6 +70,12 @@ const SystemSettings: React.FC = () => {
     enabled: false,
     bot_token: '',
     chat_id: '',
+  });
+
+  const [notificationSettings, setNotificationSettings] = useState({
+    notify_on_success: false,
+    notify_on_failure: true,
+    notify_schedule_summary: false,
   });
 
   const [ldapSettings, setLdapSettings] = useState({
@@ -151,6 +162,12 @@ const SystemSettings: React.FC = () => {
         enabled: data.telegram.enabled,
         bot_token: data.telegram.bot_token,
         chat_id: data.telegram.chat_id,
+      });
+
+      setNotificationSettings({
+        notify_on_success: data.notifications.notify_on_success,
+        notify_on_failure: data.notifications.notify_on_failure,
+        notify_schedule_summary: data.notifications.notify_schedule_summary,
       });
 
       setLdapSettings({
@@ -241,6 +258,20 @@ const SystemSettings: React.FC = () => {
       alert(result.message);
     } catch (error: any) {
       alert(error.response?.data?.error || t('systemSettings.telegram.failed_test'));
+    }
+  };
+
+  const handleSaveNotifications = async () => {
+    try {
+      setSaving(true);
+      await apiService.systemSettings.update({ notifications: notificationSettings });
+      alert(t('systemSettings.notifications.saved'));
+      await loadSettings();
+    } catch (error) {
+      console.error('Error saving notification settings:', error);
+      alert(t('systemSettings.notifications.failed_save'));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -522,6 +553,12 @@ const SystemSettings: React.FC = () => {
           📱 {t('systemSettings.tabs.telegram')}
         </button>
         <button
+          className={`tab-btn ${activeTab === 'notifications' ? 'active' : ''}`}
+          onClick={() => setActiveTab('notifications')}
+        >
+          🔔 {t('systemSettings.tabs.notifications')}
+        </button>
+        <button
           className={`tab-btn ${activeTab === 'ldap' ? 'active' : ''}`}
           onClick={() => setActiveTab('ldap')}
         >
@@ -697,6 +734,75 @@ const SystemSettings: React.FC = () => {
             </button>
             <button onClick={handleTestTelegram} className="btn-secondary" disabled={!telegramSettings.enabled}>
               {t('systemSettings.telegram.test_telegram')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Notification Settings */}
+      {activeTab === 'notifications' && (
+        <div className="settings-tab-content">
+          <div className="info-card" style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: 'var(--hover-bg)' }}>
+            <p style={{ margin: 0, fontSize: '0.9rem' }}>
+              <strong>{t('systemSettings.notifications.title')}</strong><br />
+              {t('systemSettings.notifications.description')}
+            </p>
+          </div>
+
+          <div className="form-group">
+            <div className="checkbox-group">
+              <input
+                type="checkbox"
+                id="notify_on_success"
+                checked={notificationSettings.notify_on_success}
+                onChange={(e) => setNotificationSettings({ ...notificationSettings, notify_on_success: e.target.checked })}
+              />
+              <label htmlFor="notify_on_success" style={{ fontWeight: 600, fontSize: '1rem' }}>
+                {t('systemSettings.notifications.notify_on_success')}
+              </label>
+            </div>
+            <small style={{ color: 'var(--text-secondary)', marginLeft: '1.75rem', display: 'block', marginTop: '0.25rem' }}>
+              {t('systemSettings.notifications.notify_on_success_help')}
+            </small>
+          </div>
+
+          <div className="form-group">
+            <div className="checkbox-group">
+              <input
+                type="checkbox"
+                id="notify_on_failure"
+                checked={notificationSettings.notify_on_failure}
+                onChange={(e) => setNotificationSettings({ ...notificationSettings, notify_on_failure: e.target.checked })}
+              />
+              <label htmlFor="notify_on_failure" style={{ fontWeight: 600, fontSize: '1rem' }}>
+                {t('systemSettings.notifications.notify_on_failure')}
+              </label>
+            </div>
+            <small style={{ color: 'var(--text-secondary)', marginLeft: '1.75rem', display: 'block', marginTop: '0.25rem' }}>
+              {t('systemSettings.notifications.notify_on_failure_help')}
+            </small>
+          </div>
+
+          <div className="form-group">
+            <div className="checkbox-group">
+              <input
+                type="checkbox"
+                id="notify_schedule_summary"
+                checked={notificationSettings.notify_schedule_summary}
+                onChange={(e) => setNotificationSettings({ ...notificationSettings, notify_schedule_summary: e.target.checked })}
+              />
+              <label htmlFor="notify_schedule_summary" style={{ fontWeight: 600, fontSize: '1rem' }}>
+                {t('systemSettings.notifications.notify_schedule_summary')}
+              </label>
+            </div>
+            <small style={{ color: 'var(--text-secondary)', marginLeft: '1.75rem', display: 'block', marginTop: '0.25rem' }}>
+              {t('systemSettings.notifications.notify_schedule_summary_help')}
+            </small>
+          </div>
+
+          <div style={{ marginTop: '1.5rem' }}>
+            <button onClick={handleSaveNotifications} className="btn-primary" disabled={saving}>
+              {saving ? t('systemSettings.saving') : t('systemSettings.save_settings')}
             </button>
           </div>
         </div>
