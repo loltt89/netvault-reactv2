@@ -302,13 +302,14 @@ install_application() {
     # Copy backend
     cp -r $CURRENT_DIR/backend/* $INSTALL_DIR/
 
-    # Copy frontend build
-    mkdir -p $INSTALL_DIR/staticfiles
-    cp -r $CURRENT_DIR/frontend/build/* $INSTALL_DIR/staticfiles/
+    # Copy frontend build (separate from Django staticfiles)
+    mkdir -p $INSTALL_DIR/frontend_build
+    cp -r $CURRENT_DIR/frontend/build/* $INSTALL_DIR/frontend_build/
 
     # Create required directories
     mkdir -p $INSTALL_DIR/logs
     mkdir -p $INSTALL_DIR/media
+    mkdir -p $INSTALL_DIR/staticfiles
 
     # Set permissions
     chown -R www-data:www-data $INSTALL_DIR
@@ -533,7 +534,7 @@ User=www-data
 Group=www-data
 WorkingDirectory=${INSTALL_DIR}
 Environment="PATH=${INSTALL_DIR}/venv/bin"
-ExecStart=${INSTALL_DIR}/venv/bin/celery -A netvault beat --loglevel=info
+ExecStart=${INSTALL_DIR}/venv/bin/celery -A netvault beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
 Restart=always
 RestartSec=10
 
@@ -635,8 +636,8 @@ server {
 
     client_max_body_size 100M;
 
-    # React Frontend - serve from staticfiles
-    root ${INSTALL_DIR}/staticfiles;
+    # React Frontend - serve from frontend_build
+    root ${INSTALL_DIR}/frontend_build;
     index index.html;
 
     # Gzip compression
@@ -716,8 +717,8 @@ server {
 
     client_max_body_size 100M;
 
-    # React Frontend - serve from staticfiles
-    root ${INSTALL_DIR}/staticfiles;
+    # React Frontend - serve from frontend_build
+    root ${INSTALL_DIR}/frontend_build;
     index index.html;
 
     # Gzip compression

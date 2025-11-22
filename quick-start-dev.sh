@@ -74,11 +74,24 @@ fi
 # Create logs directory
 mkdir -p "$PROJECT_DIR/logs"
 
+# Check if Redis is running (required for Celery and Channels)
+if ! pgrep -x redis-server > /dev/null; then
+    echo "⚠ Warning: Redis is not running!"
+    echo "  Celery and WebSocket features will not work."
+    echo "  Start Redis with: sudo systemctl start redis-server"
+    echo ""
+    read -p "Continue anyway? [y/N]: " CONTINUE
+    if [[ ! "$CONTINUE" =~ ^[Yy]$ ]]; then
+        echo "Exiting..."
+        exit 0
+    fi
+fi
+
 # Function to cleanup on exit
 cleanup() {
     echo ""
     echo "Stopping services..."
-    kill $BACKEND_PID $FRONTEND_PID 2>/dev/null
+    kill $BACKEND_PID $CELERY_PID $BEAT_PID $FRONTEND_PID 2>/dev/null
     exit 0
 }
 
@@ -92,6 +105,22 @@ source venv/bin/activate
 daphne -b 0.0.0.0 -p 8000 netvault.asgi:application > ../logs/backend.log 2>&1 &
 BACKEND_PID=$!
 echo "✓ Backend started (PID: $BACKEND_PID)"
+
+# Start Celery Worker (for async tasks)
+echo "Starting Celery worker..."
+cd "$PROJECT_DIR/backend"
+source venv/bin/activate
+celery -A netvault worker -l info > ../logs/celery.log 2>&1 &
+CELERY_PID=$!
+echo "✓ Celery worker started (PID: $CELERY_PID)"
+
+# Start Celery Beat (for scheduled tasks)
+echo "Starting Celery beat scheduler..."
+cd "$PROJECT_DIR/backend"
+source venv/bin/activate
+celery -A netvault beat -l info --scheduler django_celery_beat.schedulers:DatabaseScheduler > ../logs/celery-beat.log 2>&1 &
+BEAT_PID=$!
+echo "✓ Celery beat started (PID: $BEAT_PID)"
 
 # Wait for backend to start
 sleep 3
@@ -117,11 +146,13 @@ echo "  Email:    admin@netvault.local"
 echo "  Password: admin123"
 echo ""
 echo "Logs:"
-echo "  Backend:  tail -f logs/backend.log"
-echo "  Frontend: tail -f logs/frontend.log"
+echo "  Backend:     tail -f logs/backend.log"
+echo "  Celery:      tail -f logs/celery.log"
+echo "  Celery Beat: tail -f logs/celery-beat.log"
+echo "  Frontend:    tail -f logs/frontend.log"
 echo ""
 echo "Press Ctrl+C to stop all services"
 echo ""
 
 # Wait for processes
-wait $BACKEND_PID $FRONTEND_PID
+wait $BACKEND_PID $CELERY_PID $BEAT_PID $FRONTEND_PID

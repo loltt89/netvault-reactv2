@@ -1,7 +1,9 @@
-# Environment files with secrets
+# Environment files with secrets (but keep .env.example files)
 .env
 backend/.env
 frontend/.env
+!backend/.env.example
+!frontend/.env.example
 
 # Python
 backend/venv/

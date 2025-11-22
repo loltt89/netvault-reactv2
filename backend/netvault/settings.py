@@ -319,6 +319,13 @@ CONFIG_SEARCH_REGEX_MAX_LENGTH = int(os.getenv('CONFIG_SEARCH_REGEX_MAX_LENGTH',
 # Redis Configuration
 REDIS_URL = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 
+# Helper function to change Redis database number in URL
+def get_redis_url_with_db(base_url, db_number):
+    """Replace database number in Redis URL (e.g., /0 -> /1 for Channel Layers)"""
+    import re
+    # Match redis://[:password@]host:port/db_number
+    return re.sub(r'/\d+$', f'/{db_number}', base_url)
+
 # Celery Configuration
 CELERY_BROKER_URL = REDIS_URL
 CELERY_RESULT_BACKEND = REDIS_URL
@@ -409,7 +416,8 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            "hosts": [os.getenv('REDIS_URL', 'redis://localhost:6379/1')],
+            # Use Redis DB 1 for Channel Layers (separate from Celery DB 0)
+            "hosts": [get_redis_url_with_db(REDIS_URL, 1)],
         },
     },
 }
