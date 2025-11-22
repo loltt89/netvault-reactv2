@@ -256,9 +256,7 @@ def run_scheduled_backups():
     # Find active schedules
     schedules = BackupSchedule.objects.filter(is_active=True)
 
-    # Collect all device IDs that need backup (avoid duplicates across schedules)
-    devices_to_backup = set()
-    schedules_to_update = []
+    total_backups_triggered = 0
 
     for schedule in schedules:
         should_run = False
@@ -293,38 +291,30 @@ def run_scheduled_backups():
 
         if should_run:
             logger.info(f"Schedule due: {schedule.name}")
-            schedules_to_update.append(schedule)
 
             # Get devices for this schedule (with backup_enabled=True)
             from devices.models import Device
 
             # If schedule has specific devices assigned, use them
             if schedule.devices.exists():
-                device_ids = schedule.devices.filter(backup_enabled=True).values_list('id', flat=True)
+                device_ids = list(schedule.devices.filter(backup_enabled=True).values_list('id', flat=True))
             # Otherwise, backup all devices with backup_enabled=True
             else:
-                device_ids = Device.objects.filter(backup_enabled=True).values_list('id', flat=True)
+                device_ids = list(Device.objects.filter(backup_enabled=True).values_list('id', flat=True))
 
-            devices_to_backup.update(device_ids)
+            # Trigger backups for this schedule with schedule_id for statistics
+            if device_ids:
+                logger.info(f"Triggering backup for {len(device_ids)} devices from schedule '{schedule.name}'")
+                backup_multiple_devices.delay(device_ids, backup_type='scheduled', schedule_id=schedule.id)
+                total_backups_triggered += len(device_ids)
 
-    # Run backups for all collected devices (no duplicates)
-    if devices_to_backup:
-        device_ids_list = list(devices_to_backup)
-        logger.info(f"Running backup for {len(device_ids_list)} unique devices")
-
-        # Trigger backups in parallel
-        backup_multiple_devices.delay(device_ids_list, backup_type='scheduled')
-
-        # Update all schedules that were due
-        for schedule in schedules_to_update:
+            # Update schedule stats
             schedule.last_run = now
-            schedule.total_runs += 1
-            schedule.save()
+            schedule.save(update_fields=['last_run'])
 
-    backup_count = len(devices_to_backup)
-    logger.info(f"Scheduled backups completed. Triggered {backup_count} device backups")
+    logger.info(f"Scheduled backups completed. Triggered {total_backups_triggered} device backups")
 
-    return {'success': True, 'backup_count': backup_count}
+    return {'success': True, 'backup_count': total_backups_triggered}
 
 
 @shared_task
