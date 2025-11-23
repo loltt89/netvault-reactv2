@@ -13,8 +13,8 @@ class Command(BaseCommand):
         vendors_data = [
             # Major vendors
             {
-                'name': 'Cisco IOS/IOS-XE',
-                'slug': 'cisco-ios',
+                'name': 'Cisco',
+                'slug': 'cisco',
                 'description': 'Cisco IOS and IOS-XE devices (routers, switches, ASR, ISR)',
                 'backup_commands': {
                     'setup': ['terminal length 0', 'terminal width 0'],
