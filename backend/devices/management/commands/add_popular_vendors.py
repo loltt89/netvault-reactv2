@@ -420,9 +420,10 @@ class Command(BaseCommand):
 
         for vendor_data in vendors_data:
             slug = vendor_data['slug']
+            name = vendor_data['name']
 
-            # Check if vendor already exists
-            existing_vendor = Vendor.objects.filter(slug=slug).first()
+            # Check if vendor already exists (by slug OR name to avoid duplicates)
+            existing_vendor = Vendor.objects.filter(slug=slug).first() or Vendor.objects.filter(name=name).first()
 
             if existing_vendor:
                 # Update only if backup_commands is empty
