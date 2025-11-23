@@ -53,7 +53,7 @@ const BackupManagementPage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="page-container">
+      <div className="devices-page">
         <div className="page-header">
           <h1>📅 {t('backup_management.title')}</h1>
         </div>
@@ -65,7 +65,7 @@ const BackupManagementPage: React.FC = () => {
   }
 
   return (
-    <div className="page-container">
+    <div className="devices-page">
       <div className="page-header">
         <h1>📅 {t('backup_management.title')}</h1>
         <p className="page-subtitle">{t('backup_management.subtitle')}</p>

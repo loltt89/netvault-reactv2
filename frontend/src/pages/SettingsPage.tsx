@@ -9,7 +9,7 @@ const SettingsPage: React.FC = () => {
   const { user } = useAuth();
 
   return (
-    <div className="page-container">
+    <div className="settings-page">
       <div className="page-header">
         <h1>⚙️ {t('settings.system_settings')}</h1>
         <p className="page-subtitle">{t('systemSettings.subtitle')}</p>

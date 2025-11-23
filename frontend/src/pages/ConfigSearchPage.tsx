@@ -87,7 +87,7 @@ const ConfigSearchPage: React.FC = () => {
   };
 
   return (
-    <div className="page-container">
+    <div className="config-search-page">
       <div className="page-header">
         <h1>🔍 {t('config_search.title')}</h1>
         <p className="page-subtitle">{t('config_search.subtitle')}</p>
