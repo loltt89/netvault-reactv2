@@ -80,6 +80,8 @@ class Backup(models.Model):
         Normalize configuration for comparison by removing dynamic lines
         that change on every backup but don't represent actual config changes
         """
+        import re
+
         lines = configuration.split('\n')
         normalized_lines = []
 
@@ -88,8 +90,10 @@ class Backup(models.Model):
             if line.startswith('# ') and ' by RouterOS ' in line:
                 continue
 
-            # Add more vendor-specific filters here if needed
-            # Example: Cisco ASA might have "Generated on..."
+            # FortiGate: Normalize encrypted passwords (they change on every export)
+            # Examples: "set password ENC xxx", "set ppk-secret ENC xxx"
+            if ' ENC ' in line:
+                line = re.sub(r'(set \S+ ENC )\S+', r'\1[REDACTED]', line)
 
             normalized_lines.append(line)
 
