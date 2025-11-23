@@ -71,7 +71,7 @@ const BackupManagementPage: React.FC = () => {
       </div>
 
       <div className="settings-container">
-        <div className="settings-tabs">
+        <div className="tabs">
           <button
             className={`tab-btn ${activeTab === 'schedules' ? 'active' : ''}`}
             onClick={() => setActiveTab('schedules')}
