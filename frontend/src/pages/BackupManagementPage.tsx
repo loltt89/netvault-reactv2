@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import BackupSchedules from '../components/BackupSchedules';
+import BackupRetentionPolicies from '../components/BackupRetentionPolicies';
 import apiService from '../services/api.service';
 import '../styles/Settings.css';
 
 const BackupManagementPage: React.FC = () => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'schedules' | 'retention'>('schedules');
+  const [activeTab, setActiveTab] = useState<'schedules' | 'policies' | 'settings'>('schedules');
   const [retentionDays, setRetentionDays] = useState(90);
   const [parallelWorkers, setParallelWorkers] = useState(5);
   const [loading, setLoading] = useState(true);
@@ -32,7 +33,7 @@ const BackupManagementPage: React.FC = () => {
     }
   };
 
-  const handleSaveRetention = async () => {
+  const handleSaveSettings = async () => {
     try {
       setSaving(true);
       await apiService.systemSettings.update({
@@ -79,10 +80,16 @@ const BackupManagementPage: React.FC = () => {
             🕐 {t('backup_management.tabs.schedules')}
           </button>
           <button
-            className={`tab-btn ${activeTab === 'retention' ? 'active' : ''}`}
-            onClick={() => setActiveTab('retention')}
+            className={`tab-btn ${activeTab === 'policies' ? 'active' : ''}`}
+            onClick={() => setActiveTab('policies')}
           >
-            🗄️ {t('backup_management.tabs.retention')}
+            🗄️ {t('backup_management.tabs.policies')}
+          </button>
+          <button
+            className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`}
+            onClick={() => setActiveTab('settings')}
+          >
+            ⚙️ {t('backup_management.tabs.settings')}
           </button>
         </div>
 
@@ -93,13 +100,20 @@ const BackupManagementPage: React.FC = () => {
           </div>
         )}
 
-        {/* Retention Policy Tab */}
-        {activeTab === 'retention' && (
+        {/* Retention Policies Tab */}
+        {activeTab === 'policies' && (
+          <div className="settings-tab-content">
+            <BackupRetentionPolicies />
+          </div>
+        )}
+
+        {/* Global Settings Tab */}
+        {activeTab === 'settings' && (
           <div className="settings-tab-content">
             <div className="info-card" style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: 'var(--hover-bg)' }}>
               <p style={{ margin: 0, fontSize: '0.9rem' }}>
-                <strong>{t('backup_management.retention.description_title')}</strong><br />
-                {t('backup_management.retention.description')}
+                <strong>{t('systemSettings.backup.title')}</strong><br />
+                {t('systemSettings.backup.description')}
               </p>
             </div>
 
@@ -132,33 +146,29 @@ const BackupManagementPage: React.FC = () => {
             </div>
 
             <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: 'var(--card-bg)', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
-              <h3 style={{ marginTop: 0, fontSize: '1rem' }}>{t('backup_management.retention.current_settings')}</h3>
+              <h3 style={{ marginTop: 0, fontSize: '1rem' }}>{t('backup_management.settings.current_title')}</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{t('backup_management.retention.retention_days')}:</span>
-                  <strong>{retentionDays} {t('backup_management.retention.days')}</strong>
+                  <span>{t('systemSettings.backup.retention_days')}:</span>
+                  <strong>{retentionDays} {t('common.days')}</strong>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>{t('backup_management.retention.parallel_workers')}:</span>
-                  <strong>{parallelWorkers} {t('backup_management.retention.workers')}</strong>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '0.5rem', borderTop: '1px solid var(--border-color)' }}>
-                  <span>{t('backup_management.retention.estimated_cleanup')}:</span>
-                  <strong>{t('backup_management.retention.automatic')}</strong>
+                  <span>{t('systemSettings.backup.parallel_workers')}:</span>
+                  <strong>{parallelWorkers}</strong>
                 </div>
               </div>
             </div>
 
             <div style={{ marginTop: '1.5rem' }}>
-              <button onClick={handleSaveRetention} className="btn-primary" disabled={saving}>
+              <button onClick={handleSaveSettings} className="btn-primary" disabled={saving}>
                 {saving ? t('systemSettings.saving') : t('systemSettings.save_settings')}
               </button>
             </div>
 
             <div className="info-card" style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: '#fff3cd', border: '1px solid #ffc107', color: '#856404' }}>
               <p style={{ margin: 0, fontSize: '0.9rem' }}>
-                <strong>⚠️ {t('backup_management.retention.warning_title')}</strong><br />
-                {t('backup_management.retention.warning_text')}
+                <strong>⚠️ {t('backup_management.settings.warning_title')}</strong><br />
+                {t('backup_management.settings.warning_text')}
               </p>
             </div>
           </div>

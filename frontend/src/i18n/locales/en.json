@@ -144,25 +144,18 @@
     "clear_filters": "Clear Filters"
   },
   "backup_management": {
-    "nav_title": "Backup Management",
-    "title": "Backup Management",
-    "subtitle": "Configure backup schedules and retention policies",
+    "nav_title": "Automation",
+    "title": "Backup Automation",
+    "subtitle": "Schedules, retention policies, and global settings",
     "tabs": {
       "schedules": "Schedules",
-      "retention": "Retention Policy"
+      "policies": "Retention Policies",
+      "settings": "Global Settings"
     },
-    "retention": {
-      "description_title": "Backup Retention Policy:",
-      "description": "Automatically delete old backups to save space. Configure retention period and parallel backup tasks.",
-      "current_settings": "Current Settings",
-      "retention_days": "Keep backups for",
-      "days": "days",
-      "parallel_workers": "Parallel tasks",
-      "workers": "tasks",
-      "estimated_cleanup": "Auto-cleanup",
-      "automatic": "Automatic",
+    "settings": {
+      "current_title": "Current Configuration",
       "warning_title": "Warning!",
-      "warning_text": "Changing these settings requires application restart. Backups older than the specified period will be automatically deleted."
+      "warning_text": "Changing these settings requires application restart to take effect."
     }
   },
   "config_search": {
