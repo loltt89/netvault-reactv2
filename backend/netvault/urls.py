@@ -6,6 +6,7 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
 from .dashboard_views import dashboard_statistics, backup_trend, recent_backups
 from .system_settings_views import (
     get_system_settings,
@@ -33,6 +34,11 @@ urlpatterns = [
     path('api/v1/settings/system/update/', update_system_settings, name='update-system-settings'),
     path('api/v1/settings/test-email/', test_email_settings, name='test-email'),
     path('api/v1/settings/test-telegram/', test_telegram_settings, name='test-telegram'),
+
+    # API Documentation (Swagger/OpenAPI)
+    path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
+    path('api/docs/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
+    path('api/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
 ]
 
 # Serve media files in development

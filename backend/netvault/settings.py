@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'channels',
     'django_celery_beat',
+    'drf_spectacular',
 
     # Local apps
     'accounts',
@@ -211,6 +212,7 @@ REST_FRAMEWORK = {
         'rest_framework.parsers.MultiPartParser',
         'rest_framework.parsers.FormParser',
     ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DATETIME_FORMAT': '%Y-%m-%d %H:%M:%S',
     'DATE_FORMAT': '%Y-%m-%d',
     'EXCEPTION_HANDLER': 'rest_framework.views.exception_handler',
@@ -447,4 +449,45 @@ CHANNEL_LAYERS = {
             "hosts": [get_redis_url_with_db(REDIS_URL, 1)],
         },
     },
+}
+
+# ========================================
+# drf-spectacular (OpenAPI/Swagger) Configuration
+# ========================================
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'NetVault API',
+    'DESCRIPTION': 'Network Device Configuration Backup System - REST API Documentation',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
+
+    # Security
+    'SERVE_AUTHENTICATION': ['accounts.authentication.CookieJWTAuthentication'],
+    'SERVE_PERMISSIONS': ['rest_framework.permissions.IsAuthenticated'],
+
+    # JWT Authentication
+    'SECURITY': [
+        {
+            'BearerAuth': {
+                'type': 'http',
+                'scheme': 'bearer',
+                'bearerFormat': 'JWT',
+            }
+        }
+    ],
+
+    # UI Settings
+    'SWAGGER_UI_SETTINGS': {
+        'deepLinking': True,
+        'persistAuthorization': True,
+        'displayOperationId': False,
+        'filter': True,
+    },
+    'SWAGGER_UI_DIST': 'SIDECAR',
+    'SWAGGER_UI_FAVICON_HREF': 'SIDECAR',
+    'REDOC_DIST': 'SIDECAR',
+
+    # Schema generation
+    'SCHEMA_PATH_PREFIX': '/api/v1/',
+    'SORT_OPERATIONS': True,
 }
