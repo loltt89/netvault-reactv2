@@ -107,7 +107,7 @@ class Command(BaseCommand):
                 'slug': 'huawei-ont',
                 'description': 'Huawei GPON/EPON ONT terminals (HG8245, HG8310, EG8145)',
                 'backup_commands': {
-                    'setup': ['scroll'],
+                    'setup': [],
                     'backup': 'display current-configuration',
                     'enable_mode': False
                 }
