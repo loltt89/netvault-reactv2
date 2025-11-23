@@ -402,6 +402,36 @@ class Command(BaseCommand):
                     'enable_mode': False
                 }
             },
+            {
+                'name': 'Grandstream',
+                'slug': 'grandstream',
+                'description': 'Grandstream VoIP devices and PBX',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': 'show running-config',
+                    'enable_mode': False
+                }
+            },
+            {
+                'name': 'Eltex',
+                'slug': 'eltex',
+                'description': 'Eltex network equipment (MES/ESR series)',
+                'backup_commands': {
+                    'setup': ['terminal datadump'],
+                    'backup': 'show running-config',
+                    'enable_mode': True
+                }
+            },
+            {
+                'name': 'Generic',
+                'slug': 'generic',
+                'description': 'Generic network device (SSH/Telnet)',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': 'show running-config',
+                    'enable_mode': False
+                }
+            },
         ]
 
         created_count = 0
