@@ -427,6 +427,11 @@ run_migrations() {
     ./venv/bin/python manage.py collectstatic --noinput
 
     print_success "Database migrations completed"
+
+    # Add popular network device vendors
+    print_message "$BLUE" "Adding popular network device vendors..."
+    ./venv/bin/python manage.py add_popular_vendors
+    print_success "Vendors added"
 }
 
 # Create admin user
