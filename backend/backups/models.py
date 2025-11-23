@@ -75,10 +75,32 @@ class Backup(models.Model):
     def __str__(self):
         return f'{self.device.name} - {self.created_at.strftime("%Y-%m-%d %H:%M:%S")}'
 
+    def _normalize_config_for_comparison(self, configuration):
+        """
+        Normalize configuration for comparison by removing dynamic lines
+        that change on every backup but don't represent actual config changes
+        """
+        lines = configuration.split('\n')
+        normalized_lines = []
+
+        for line in lines:
+            # Skip Mikrotik timestamp line (e.g., "# 2025-11-23 10:17:44 by RouterOS 7.16")
+            if line.startswith('# ') and ' by RouterOS ' in line:
+                continue
+
+            # Add more vendor-specific filters here if needed
+            # Example: Cisco ASA might have "Generated on..."
+
+            normalized_lines.append(line)
+
+        return '\n'.join(normalized_lines)
+
     def set_configuration(self, configuration):
         """Encrypt and set configuration content"""
         self.configuration_encrypted = encrypt_data(configuration)
-        self.configuration_hash = hashlib.sha256(configuration.encode()).hexdigest()
+        # Normalize config before hashing to ignore timestamp-like changes
+        normalized_config = self._normalize_config_for_comparison(configuration)
+        self.configuration_hash = hashlib.sha256(normalized_config.encode()).hexdigest()
         self.size_bytes = len(configuration)
 
     def get_configuration(self):
