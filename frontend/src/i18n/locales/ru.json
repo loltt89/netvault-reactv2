@@ -141,7 +141,14 @@
     "filter_all_vendors": "Все производители",
     "filter_device_type": "Тип устройства",
     "filter_all_types": "Все типы",
-    "clear_filters": "Очистить фильтры"
+    "clear_filters": "Очистить фильтры",
+    "delete_selected": "Удалить выбранные",
+    "confirm_delete_title": "Подтверждение удаления",
+    "confirm_delete_message": "Вы уверены, что хотите удалить {{count}} резервных копий?",
+    "delete_warning": "Это действие необратимо! Удаленные резервные копии не могут быть восстановлены.",
+    "delete_multiple_success": "Успешно удалено резервных копий: {{count}}",
+    "delete_multiple_partial": "Удалено: {{deleted}}, ошибок: {{failed}}",
+    "failed_delete_multiple": "Не удалось удалить выбранные резервные копии"
   },
   "backup_management": {
     "nav_title": "Автоматизация",
@@ -589,6 +596,7 @@
     "confirm": "Подтвердить",
     "close": "Закрыть",
     "refresh": "Обновить",
+    "warning": "Внимание",
     "days": "дней",
     "weeks": "недель",
     "months": "месяцев"

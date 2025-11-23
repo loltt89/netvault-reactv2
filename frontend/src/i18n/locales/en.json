@@ -141,7 +141,14 @@
     "filter_all_vendors": "All Vendors",
     "filter_device_type": "Device Type",
     "filter_all_types": "All Types",
-    "clear_filters": "Clear Filters"
+    "clear_filters": "Clear Filters",
+    "delete_selected": "Delete Selected",
+    "confirm_delete_title": "Confirm Deletion",
+    "confirm_delete_message": "Are you sure you want to delete {{count}} backups?",
+    "delete_warning": "This action cannot be undone! Deleted backups cannot be recovered.",
+    "delete_multiple_success": "Successfully deleted {{count}} backups",
+    "delete_multiple_partial": "Deleted: {{deleted}}, failed: {{failed}}",
+    "failed_delete_multiple": "Failed to delete selected backups"
   },
   "backup_management": {
     "nav_title": "Automation",
@@ -589,6 +596,7 @@
     "confirm": "Confirm",
     "close": "Close",
     "refresh": "Refresh",
+    "warning": "Warning",
     "days": "days",
     "weeks": "weeks",
     "months": "months"

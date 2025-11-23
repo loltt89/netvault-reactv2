@@ -141,7 +141,14 @@
     "filter_all_vendors": "Барлық өндірушілер",
     "filter_device_type": "Құрылғы түрі",
     "filter_all_types": "Барлық түрлер",
-    "clear_filters": "Сүзгілерді тазалау"
+    "clear_filters": "Сүзгілерді тазалау",
+    "delete_selected": "Таңдалғандарды жою",
+    "confirm_delete_title": "Жоюды растау",
+    "confirm_delete_message": "{{count}} сақтық көшірмені жойғыңыз келетініне сенімдісіз бе?",
+    "delete_warning": "Бұл әрекетті қайтаруға болмайды! Жойылған сақтық көшірмелерді қалпына келтіру мүмкін емес.",
+    "delete_multiple_success": "{{count}} сақтық көшірме сәтті жойылды",
+    "delete_multiple_partial": "Жойылды: {{deleted}}, қателер: {{failed}}",
+    "failed_delete_multiple": "Таңдалған сақтық көшірмелерді жою мүмкін болмады"
   },
   "backup_management": {
     "nav_title": "Автоматтандыру",
@@ -554,6 +561,7 @@
     "confirm": "Растау",
     "close": "Жабу",
     "refresh": "Жаңарту",
+    "warning": "Назар аударыңыз",
     "days": "күндер",
     "weeks": "апталар",
     "months": "айлар"

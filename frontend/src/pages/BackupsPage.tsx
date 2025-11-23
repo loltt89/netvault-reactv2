@@ -39,6 +39,8 @@ const BackupsPage: React.FC = () => {
   const [selectedBackups, setSelectedBackups] = useState<Set<number>>(new Set());
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [downloading, setDownloading] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Filters
   const [dateFilter, setDateFilter] = useState<DateFilterType>('all');
@@ -193,6 +195,41 @@ const BackupsPage: React.FC = () => {
       alert(t('backups.failed_download_multiple'));
     } finally {
       setDownloading(false);
+    }
+  };
+
+  const deleteSelectedBackups = async () => {
+    setShowDeleteConfirm(false);
+
+    try {
+      setDeleting(true);
+      const backupIds = Array.from(selectedBackups);
+      let deleted = 0;
+      let failed = 0;
+
+      for (const backupId of backupIds) {
+        try {
+          await apiService.backups.delete(backupId);
+          deleted++;
+        } catch (error) {
+          console.error(`Error deleting backup ${backupId}:`, error);
+          failed++;
+        }
+      }
+
+      setSelectedBackups(new Set());
+      loadBackups();
+
+      if (failed === 0) {
+        alert(t('backups.delete_multiple_success', { count: deleted }));
+      } else {
+        alert(t('backups.delete_multiple_partial', { deleted, failed }));
+      }
+    } catch (error) {
+      console.error('Error deleting backups:', error);
+      alert(t('backups.failed_delete_multiple'));
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -437,10 +474,19 @@ const BackupsPage: React.FC = () => {
           <button
             onClick={downloadSelectedBackups}
             className="btn-primary"
-            disabled={selectedBackups.size === 0 || downloading}
+            disabled={selectedBackups.size === 0 || downloading || deleting}
             style={{ marginLeft: 'auto' }}
           >
             {downloading ? '⏳' : '📦'} {t('backups.download_selected')} ({selectedBackups.size})
+          </button>
+
+          {/* Delete Selected - Always visible, disabled when nothing selected */}
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="btn-danger"
+            disabled={selectedBackups.size === 0 || downloading || deleting}
+          >
+            {deleting ? '⏳' : '🗑️'} {t('backups.delete_selected')} ({selectedBackups.size})
           </button>
         </div>
       </div>
@@ -557,6 +603,48 @@ const BackupsPage: React.FC = () => {
           ))
         )}
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="modal-overlay" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h2>⚠️ {t('backups.confirm_delete_title')}</h2>
+              <button onClick={() => setShowDeleteConfirm(false)} className="btn-close">✕</button>
+            </div>
+
+            <div className="modal-body">
+              <p>{t('backups.confirm_delete_message', { count: selectedBackups.size })}</p>
+              <div style={{
+                marginTop: '1rem',
+                padding: '1rem',
+                backgroundColor: '#fff3cd',
+                border: '1px solid #ffc107',
+                borderRadius: '4px',
+                color: '#856404'
+              }}>
+                <strong>⚠️ {t('common.warning')}:</strong> {t('backups.delete_warning')}
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="btn-secondary"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                onClick={deleteSelectedBackups}
+                className="btn-danger"
+                disabled={deleting}
+              >
+                {deleting ? '⏳ ' : '🗑️ '}{t('common.delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
