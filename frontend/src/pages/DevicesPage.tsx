@@ -503,34 +503,71 @@ const DevicesPage: React.FC = () => {
                 <div className="form-row">
                   <div className="form-group">
                     <label>{t('devices.vendor')} *</label>
-                    <select
-                      value={formData.vendor}
-                      onChange={(e) => setFormData({ ...formData, vendor: e.target.value })}
+                    <input
+                      type="text"
+                      list="vendors-list"
+                      value={vendors.find(v => v.id === Number(formData.vendor))?.name || ''}
+                      onChange={(e) => {
+                        const selectedVendor = vendors.find(v => v.name === e.target.value);
+                        if (selectedVendor) {
+                          setFormData({ ...formData, vendor: String(selectedVendor.id) });
+                        } else {
+                          setFormData({ ...formData, vendor: '' });
+                        }
+                      }}
+                      onBlur={(e) => {
+                        // Validate on blur - if no valid vendor selected, clear
+                        const selectedVendor = vendors.find(v => v.name === e.target.value);
+                        if (!selectedVendor && e.target.value) {
+                          e.target.value = '';
+                          setFormData({ ...formData, vendor: '' });
+                        }
+                      }}
+                      placeholder="Start typing to search..."
                       required
-                    >
-                      <option value="">Select vendor</option>
+                    />
+                    <datalist id="vendors-list">
                       {vendors.map((vendor) => (
-                        <option key={vendor.id} value={vendor.id}>
-                          {vendor.name}
-                        </option>
+                        <option key={vendor.id} value={vendor.name} />
                       ))}
-                    </select>
+                    </datalist>
+                    <small style={{ color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                      Type to search from {vendors.length} vendors
+                    </small>
                   </div>
 
                   <div className="form-group">
                     <label>{t('devices.device_type')} *</label>
-                    <select
-                      value={formData.device_type}
-                      onChange={(e) => setFormData({ ...formData, device_type: e.target.value })}
+                    <input
+                      type="text"
+                      list="device-types-list"
+                      value={deviceTypes.find(t => t.id === Number(formData.device_type))?.name || ''}
+                      onChange={(e) => {
+                        const selectedType = deviceTypes.find(t => t.name === e.target.value);
+                        if (selectedType) {
+                          setFormData({ ...formData, device_type: String(selectedType.id) });
+                        } else {
+                          setFormData({ ...formData, device_type: '' });
+                        }
+                      }}
+                      onBlur={(e) => {
+                        const selectedType = deviceTypes.find(t => t.name === e.target.value);
+                        if (!selectedType && e.target.value) {
+                          e.target.value = '';
+                          setFormData({ ...formData, device_type: '' });
+                        }
+                      }}
+                      placeholder="Start typing to search..."
                       required
-                    >
-                      <option value="">Select type</option>
+                    />
+                    <datalist id="device-types-list">
                       {deviceTypes.map((type) => (
-                        <option key={type.id} value={type.id}>
-                          {type.name}
-                        </option>
+                        <option key={type.id} value={type.name} />
                       ))}
-                    </select>
+                    </datalist>
+                    <small style={{ color: 'var(--text-secondary)', marginTop: '0.25rem', display: 'block' }}>
+                      Type to search from {deviceTypes.length} types
+                    </small>
                   </div>
                 </div>
 
