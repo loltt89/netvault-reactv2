@@ -73,6 +73,58 @@ def validate_target_host(host: str) -> str:
     return resolved_ip
 
 
+def validate_backup_config(config: str) -> Tuple[bool, str]:
+    """
+    Validate backup configuration content to detect errors and ensure validity
+
+    Two-level validation:
+    1. Minimum 10 lines - real configs are always longer than 10 lines
+    2. Error detection in first 5 lines - most errors appear at the beginning
+
+    Args:
+        config: Configuration text to validate
+
+    Returns:
+        Tuple of (is_valid: bool, error_message: str)
+    """
+    # Error patterns to detect in output
+    ERROR_PATTERNS = [
+        'access denied',
+        'permission denied',
+        'authorization failed',
+        'authentication failed',
+        'invalid command',
+        'command not found',
+        'unknown command',
+        '% invalid',
+        'error:',
+        'login incorrect',
+        'not authorized',
+        'privilege level',
+        'insufficient privilege',
+        'bad command',
+        'incomplete command',
+        'command authorization failed'
+    ]
+
+    if not config or not config.strip():
+        return False, "Configuration is empty"
+
+    lines = [line for line in config.strip().split('\n') if line.strip()]
+
+    # Filter 1: Minimum 10 lines
+    if len(lines) < 10:
+        return False, f"Configuration too short: {len(lines)} lines (minimum 10 required)"
+
+    # Filter 2: Check first 5 lines for error patterns
+    first_lines = '\n'.join(lines[:5]).lower()
+    for pattern in ERROR_PATTERNS:
+        if pattern in first_lines:
+            return False, f"Error detected in configuration output: '{pattern}'"
+
+    return True, ""
+
+
 def tcp_ping(host: str, port: int, timeout: int = 2) -> bool:
     """
     Quick TCP connection check (does NOT consume VTY lines)
@@ -682,10 +734,22 @@ def backup_device_config(host: str, port: int, protocol: str, username: str,
         if protocol.lower() == 'ssh':
             with SSHConnection(resolved_host, port, username, password, enable_password, timeout, vendor) as conn:
                 config = conn.get_config(vendor, backup_commands)
+
+                # Validate configuration content
+                is_valid, error_msg = validate_backup_config(config)
+                if not is_valid:
+                    return False, "", error_msg
+
                 return True, config, ""
         else:
             with TelnetConnection(resolved_host, port, username, password, enable_password, timeout, vendor) as conn:
                 config = conn.get_config(vendor, backup_commands)
+
+                # Validate configuration content
+                is_valid, error_msg = validate_backup_config(config)
+                if not is_valid:
+                    return False, "", error_msg
+
                 return True, config, ""
     except Exception as e:
         return False, "", str(e)
