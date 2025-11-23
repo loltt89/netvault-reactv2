@@ -110,7 +110,16 @@ def validate_backup_config(config: str) -> Tuple[bool, str]:
     if not config or not config.strip():
         return False, "Configuration is empty"
 
-    lines = [line for line in config.strip().split('\n') if line.strip()]
+    # Take only first 15 non-empty lines for validation
+    # (protection against DoS: FortiGate configs can be 36000+ lines)
+    # We only need: 10 lines for size check + 5 lines for error detection
+    lines = []
+    for line in config.strip().split('\n'):
+        stripped = line.strip()
+        if stripped:
+            lines.append(line)
+            if len(lines) >= 15:
+                break
 
     # Filter 1: Minimum 10 lines
     if len(lines) < 10:
