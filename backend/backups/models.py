@@ -84,6 +84,7 @@ class Backup(models.Model):
 
         lines = configuration.split('\n')
         normalized_lines = []
+        in_crypto_block = False
 
         for line in lines:
             # Skip Mikrotik timestamp line (e.g., "# 2025-11-23 10:17:44 by RouterOS 7.16")
@@ -92,8 +93,21 @@ class Backup(models.Model):
 
             # FortiGate: Normalize encrypted passwords (they change on every export)
             # Examples: "set password ENC xxx", "set ppk-secret ENC xxx"
-            if ' ENC ' in line:
+            if ' ENC ' in line and not in_crypto_block:
                 line = re.sub(r'(set \S+ ENC )\S+', r'\1[REDACTED]', line)
+
+            # FortiGate: Skip encrypted private keys and certificates content (they change on every export)
+            if '-----BEGIN' in line:
+                in_crypto_block = True
+                normalized_lines.append('[CRYPTO_BLOCK_START]')
+                continue
+            elif '-----END' in line:
+                in_crypto_block = False
+                normalized_lines.append('[CRYPTO_BLOCK_END]')
+                continue
+
+            if in_crypto_block:
+                continue  # Skip all lines inside crypto blocks
 
             normalized_lines.append(line)
 
