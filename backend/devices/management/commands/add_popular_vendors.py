@@ -405,7 +405,7 @@ class Command(BaseCommand):
             {
                 'name': 'Grandstream',
                 'slug': 'grandstream',
-                'description': 'Grandstream VoIP devices and PBX',
+                'description': 'Grandstream network switches (GWN series) and VoIP devices',
                 'backup_commands': {
                     'setup': [],
                     'backup': 'show running-config',
