@@ -7,6 +7,7 @@ import DashboardPage from './pages/DashboardPage';
 import DevicesListPage from './pages/DevicesListPage';
 import DeviceDetailPage from './pages/DeviceDetailPage';
 import BackupsPage from './pages/BackupsPage';
+import BackupManagementPage from './pages/BackupManagementPage';
 import UsersPage from './pages/UsersPage';
 import AuditLogsPage from './pages/AuditLogsPage';
 import SettingsPage from './pages/SettingsPage';
@@ -90,6 +91,15 @@ function App() {
           element={
             <ProtectedRoute>
               <ConfigSearchPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/backup-management"
+          element={
+            <ProtectedRoute>
+              <BackupManagementPage />
             </ProtectedRoute>
           }
         />
