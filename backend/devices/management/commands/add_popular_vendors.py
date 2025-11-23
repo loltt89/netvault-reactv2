@@ -103,6 +103,16 @@ class Command(BaseCommand):
                 }
             },
             {
+                'name': 'Huawei ONT',
+                'slug': 'huawei-ont',
+                'description': 'Huawei GPON/EPON ONT terminals (HG8245, HG8310, EG8145)',
+                'backup_commands': {
+                    'setup': ['scroll'],
+                    'backup': 'display current-configuration',
+                    'enable_mode': False
+                }
+            },
+            {
                 'name': 'Mikrotik RouterOS',
                 'slug': 'mikrotik',
                 'description': 'Mikrotik routers and switches',
