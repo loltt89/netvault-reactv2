@@ -423,6 +423,16 @@ class Command(BaseCommand):
                 }
             },
             {
+                'name': 'OpenWRT',
+                'slug': 'openwrt',
+                'description': 'OpenWRT firmware for routers and access points',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': 'for file in /etc/config/*; do echo "### $file ###"; cat "$file"; echo ""; done',
+                    'enable_mode': False
+                }
+            },
+            {
                 'name': 'Generic',
                 'slug': 'generic',
                 'description': 'Generic network device (SSH/Telnet)',
