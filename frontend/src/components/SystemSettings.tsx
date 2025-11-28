@@ -30,10 +30,6 @@ interface SystemSettings {
   redis: {
     url: string;
   };
-  backup: {
-    retention_days: number;
-    parallel_workers: number;
-  };
   device_check: {
     interval_minutes: number;
     tcp_timeout: number;
@@ -55,7 +51,7 @@ const SystemSettings: React.FC = () => {
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'email' | 'telegram' | 'notifications' | 'ldap' | 'saml' | 'backup' | 'device_check' | 'jwt' | 'redis' | 'vendors' | 'devicetypes'>('email');
+  const [activeTab, setActiveTab] = useState<'email' | 'telegram' | 'notifications' | 'ldap' | 'saml' | 'device_check' | 'jwt' | 'redis' | 'vendors' | 'devicetypes'>('email');
 
   // Form states
   const [emailSettings, setEmailSettings] = useState({
@@ -106,10 +102,6 @@ const SystemSettings: React.FC = () => {
     want_messages_signed: false,
   });
 
-  const [backupSettings, setBackupSettings] = useState({
-    retention_days: 90,
-    parallel_workers: 5,
-  });
 
   const [deviceCheckSettings, setDeviceCheckSettings] = useState({
     interval_minutes: 5,
@@ -178,10 +170,6 @@ const SystemSettings: React.FC = () => {
         user_search_base: data.ldap.user_search_base,
       });
 
-      setBackupSettings({
-        retention_days: data.backup.retention_days,
-        parallel_workers: data.backup.parallel_workers,
-      });
 
       setDeviceCheckSettings({
         interval_minutes: data.device_check.interval_minutes,
@@ -289,19 +277,6 @@ const SystemSettings: React.FC = () => {
     }
   };
 
-  const handleSaveBackup = async () => {
-    try {
-      setSaving(true);
-      await apiService.systemSettings.update({ backup: backupSettings });
-      alert(t('systemSettings.backup.saved'));
-      await loadSettings();
-    } catch (error) {
-      console.error('Error saving backup settings:', error);
-      alert(t('systemSettings.backup.failed_save'));
-    } finally {
-      setSaving(false);
-    }
-  };
 
   const handleSaveDeviceCheck = async () => {
     try {
@@ -569,12 +544,6 @@ const SystemSettings: React.FC = () => {
           onClick={() => setActiveTab('saml')}
         >
           🔑 SAML SSO
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'backup' ? 'active' : ''}`}
-          onClick={() => setActiveTab('backup')}
-        >
-          💾 {t('systemSettings.tabs.backup')}
         </button>
         <button
           className={`tab-btn ${activeTab === 'device_check' ? 'active' : ''}`}
@@ -1253,51 +1222,6 @@ const SystemSettings: React.FC = () => {
         </div>
       )}
 
-      {/* Backup Settings */}
-      {activeTab === 'backup' && (
-        <div className="settings-tab-content">
-          <div className="info-card" style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: 'var(--hover-bg)' }}>
-            <p style={{ margin: 0, fontSize: '0.9rem' }}>
-              <strong>{t('systemSettings.backup.title')}</strong><br />
-              {t('systemSettings.backup.description')}
-            </p>
-          </div>
-
-          <div className="form-group">
-            <label>{t('systemSettings.backup.retention_days')} *</label>
-            <input
-              type="number"
-              value={backupSettings.retention_days}
-              onChange={(e) => setBackupSettings({ ...backupSettings, retention_days: parseInt(e.target.value) })}
-              min="1"
-              max="3650"
-            />
-            <small style={{ color: 'var(--text-secondary)' }}>
-              {t('systemSettings.backup.retention_help')}
-            </small>
-          </div>
-
-          <div className="form-group">
-            <label>{t('systemSettings.backup.parallel_workers')} *</label>
-            <input
-              type="number"
-              value={backupSettings.parallel_workers}
-              onChange={(e) => setBackupSettings({ ...backupSettings, parallel_workers: parseInt(e.target.value) })}
-              min="1"
-              max="20"
-            />
-            <small style={{ color: 'var(--text-secondary)' }}>
-              {t('systemSettings.backup.workers_help')}
-            </small>
-          </div>
-
-          <div style={{ marginTop: '1.5rem' }}>
-            <button onClick={handleSaveBackup} className="btn-primary" disabled={saving}>
-              {saving ? t('systemSettings.saving') : t('systemSettings.save_settings')}
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Device Check Settings */}
       {activeTab === 'device_check' && (
