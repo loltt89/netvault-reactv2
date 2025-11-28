@@ -494,29 +494,16 @@ def check_devices_status():
 
     if not device_ids:
         logger.info("No devices to check")
-        return {'success': True, 'total_devices': 0, 'updated_count': 0}
+        return {'success': True, 'total_devices': 0}
 
-    # Check devices in parallel using Celery group
+    # Check devices in parallel using Celery group (fire and forget - don't wait for results)
     from celery import group
     job = group(check_single_device_status.s(device_id) for device_id in device_ids)
-    result = job.apply_async()
+    job.apply_async()
 
-    # Wait for all checks to complete (with timeout)
-    try:
-        results = result.get(timeout=60)  # 60 seconds timeout
-        updated_count = sum(1 for r in results if r.get('changed', False))
+    logger.info(f"Device status check triggered for {len(device_ids)} devices")
 
-        logger.info(f"Device status check completed. Checked {len(device_ids)} devices, updated {updated_count}")
-
-        return {
-            'success': True,
-            'total_devices': len(device_ids),
-            'updated_count': updated_count
-        }
-    except Exception as e:
-        logger.error(f"Error waiting for device status checks: {str(e)}")
-        return {
-            'success': False,
-            'error': str(e),
-            'total_devices': len(device_ids)
-        }
+    return {
+        'success': True,
+        'total_devices': len(device_ids)
+    }
