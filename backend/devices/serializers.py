@@ -1,17 +1,6 @@
 from rest_framework import serializers
 from .models import Vendor, DeviceType, Device
-
-
-def sanitize_csv_value(value: str) -> str:
-    """
-    Sanitize value to prevent CSV injection (formula injection in Excel)
-
-    Excel interprets cells starting with =, +, -, @, tab, or carriage return as formulas.
-    Prepending a single quote prevents formula execution.
-    """
-    if value and isinstance(value, str) and value[0] in ('=', '+', '-', '@', '\t', '\r'):
-        return "'" + value
-    return value
+from core.utils import sanitize_csv_value
 
 
 def validate_custom_commands(value):

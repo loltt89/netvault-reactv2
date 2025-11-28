@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
-from devices.models import Device, encrypt_data, decrypt_data
+from devices.models import Device
+from core.crypto import encrypt_data, decrypt_data
 import hashlib
 
 

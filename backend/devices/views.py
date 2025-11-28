@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 from .models import Vendor, DeviceType, Device
 from .serializers import (
     VendorSerializer, DeviceTypeSerializer,
-    DeviceSerializer, DeviceCreateSerializer, DeviceDetailSerializer,
-    sanitize_csv_value
+    DeviceSerializer, DeviceCreateSerializer, DeviceDetailSerializer
 )
+from core.utils import sanitize_csv_value
 
 
 class VendorViewSet(viewsets.ModelViewSet):

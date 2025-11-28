@@ -1,25 +1,7 @@
 from django.db import models
 from django.conf import settings
-from cryptography.fernet import Fernet
+from core.crypto import encrypt_data, decrypt_data
 import json
-
-
-def encrypt_data(data):
-    """Encrypt sensitive data"""
-    if not settings.ENCRYPTION_KEY:
-        raise ValueError('ENCRYPTION_KEY not set in settings')
-    f = Fernet(settings.ENCRYPTION_KEY.encode())
-    return f.encrypt(data.encode()).decode()
-
-
-def decrypt_data(encrypted_data):
-    """Decrypt sensitive data"""
-    if not settings.ENCRYPTION_KEY:
-        raise ValueError('ENCRYPTION_KEY not set in settings')
-    if not encrypted_data:
-        return ''
-    f = Fernet(settings.ENCRYPTION_KEY.encode())
-    return f.decrypt(encrypted_data.encode()).decode()
 
 
 class Vendor(models.Model):

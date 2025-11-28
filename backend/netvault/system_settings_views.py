@@ -3,26 +3,16 @@ System-wide settings API views
 """
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.conf import settings
+from accounts.permissions import IsAdministrator
 import os
 
 
-def is_admin(user):
-    """Check if user is administrator"""
-    return user.is_authenticated and user.role == 'administrator'
-
-
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdministrator])
 def get_system_settings(request):
     """Get current system settings (admin only)"""
-    if not is_admin(request.user):
-        return Response(
-            {'error': 'Permission denied. Administrator access required.'},
-            status=status.HTTP_403_FORBIDDEN
-        )
 
     # Read current settings from .env or Django settings
     settings_data = {
@@ -94,14 +84,9 @@ def get_system_settings(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdministrator])
 def update_system_settings(request):
     """Update system settings (admin only)"""
-    if not is_admin(request.user):
-        return Response(
-            {'error': 'Permission denied. Administrator access required.'},
-            status=status.HTTP_403_FORBIDDEN
-        )
 
     data = request.data
     env_file_path = os.path.join(settings.BASE_DIR, '.env')
@@ -234,14 +219,9 @@ def update_system_settings(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdministrator])
 def test_email_settings(request):
     """Test email configuration by sending a test email"""
-    if not is_admin(request.user):
-        return Response(
-            {'error': 'Permission denied'},
-            status=status.HTTP_403_FORBIDDEN
-        )
 
     try:
         from django.core.mail import send_mail
@@ -268,14 +248,9 @@ def test_email_settings(request):
 
 
 @api_view(['POST'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAdministrator])
 def test_telegram_settings(request):
     """Test Telegram configuration"""
-    if not is_admin(request.user):
-        return Response(
-            {'error': 'Permission denied'},
-            status=status.HTTP_403_FORBIDDEN
-        )
 
     try:
         import requests

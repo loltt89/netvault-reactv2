@@ -432,6 +432,11 @@ run_migrations() {
     print_message "$BLUE" "Adding popular network device vendors..."
     ./venv/bin/python manage.py add_popular_vendors
     print_success "Vendors added"
+
+    # Add popular device types
+    print_message "$BLUE" "Adding popular device types..."
+    ./venv/bin/python manage.py add_popular_device_types
+    print_success "Device types added"
 }
 
 # Create admin user
