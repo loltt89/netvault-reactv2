@@ -7,6 +7,7 @@ from datetime import timedelta
 from devices.models import Device
 from devices.connection import backup_device_config
 from .models import Backup, BackupSchedule
+from core.redis_lock import DeviceLock, DeviceLockError
 import logging
 
 # Real-time WebSocket log streaming
@@ -72,36 +73,65 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
     try:
         logger.info(f"Starting backup for device {device.name} ({device.ip_address})")
         send_log('info', f"Task {self.request.id} received")
-        send_log('info', f"Connecting to {device.ip_address}:{device.port} via {device.protocol}...")
 
-        # Get device credentials
-        username = device.username
-        password = device.get_password()
-        enable_password = device.get_enable_password() if device.enable_password_encrypted else None
-
-        # Get backup commands (custom or vendor defaults)
-        backup_commands = None
-        if device.custom_commands:
-            backup_commands = device.custom_commands
-        elif device.vendor and device.vendor.backup_commands:
-            backup_commands = device.vendor.backup_commands
-
-        # Get vendor slug (with fallback if vendor is None)
-        vendor_slug = device.vendor.slug if device.vendor else 'generic'
-
-        # Perform backup
-        from django.conf import settings
-        success, config, error_message = backup_device_config(
-            host=device.ip_address,
-            port=device.port,
-            protocol=device.protocol,
-            username=username,
-            password=password,
-            vendor=vendor_slug,
-            enable_password=enable_password,
-            timeout=settings.BACKUP_CONNECTION_TIMEOUT,
-            backup_commands=backup_commands
+        # ===== Acquire distributed lock to prevent concurrent connections =====
+        # This prevents exhausting VTY lines (typically 5 on Cisco devices)
+        lock = DeviceLock(
+            device_id=device_id,
+            operation='backup',
+            ttl=120,  # Max 2 minutes for backup operation
+            blocking=False  # Don't wait, fail immediately if device is busy
         )
+
+        if not lock.acquire():
+            # Device is currently locked by another operation
+            error_msg = f"Device {device.name} is currently busy (another backup or check in progress)"
+            logger.warning(error_msg)
+            send_log('warning', error_msg)
+
+            backup.status = 'failed'
+            backup.success = False
+            backup.error_message = 'Device locked by another operation'
+            backup.completed_at = timezone.now()
+            backup.duration_seconds = (backup.completed_at - backup.started_at).total_seconds()
+            backup.save()
+
+            return {'success': False, 'error': 'Device busy', 'locked': True}
+
+        try:
+            send_log('info', f"Lock acquired, connecting to {device.ip_address}:{device.port} via {device.protocol}...")
+
+            # Get device credentials
+            username = device.username
+            password = device.get_password()
+            enable_password = device.get_enable_password() if device.enable_password_encrypted else None
+
+            # Get backup commands (custom or vendor defaults)
+            backup_commands = None
+            if device.custom_commands:
+                backup_commands = device.custom_commands
+            elif device.vendor and device.vendor.backup_commands:
+                backup_commands = device.vendor.backup_commands
+
+            # Get vendor slug (with fallback if vendor is None)
+            vendor_slug = device.vendor.slug if device.vendor else 'generic'
+
+            # Perform backup (inside lock to prevent concurrent connections)
+            from django.conf import settings
+            success, config, error_message = backup_device_config(
+                host=device.ip_address,
+                port=device.port,
+                protocol=device.protocol,
+                username=username,
+                password=password,
+                vendor=vendor_slug,
+                enable_password=enable_password,
+                timeout=settings.BACKUP_CONNECTION_TIMEOUT,
+                backup_commands=backup_commands
+            )
+        finally:
+            # Always release lock, even if backup fails
+            lock.release()
 
         if success and config:
             send_log('info', f"Received configuration ({len(config)} bytes)")
@@ -435,27 +465,45 @@ def check_single_device_status(device_id: int):
         # LEVEL 2: TCP failed → Full SSH check (may consume VTY)
         logger.info(f"TCP check failed for {device.name}, trying SSH...")
 
-        username = device.username
-        password = device.get_password()
-        enable_password = device.get_enable_password() if device.enable_password_encrypted else None
-
-        success, message = test_connection(
-            host=device.ip_address,
-            port=device.port,
-            protocol=device.protocol,
-            username=username,
-            password=password,
-            enable_password=enable_password,
-            timeout=ssh_timeout
+        # ===== Acquire lock for SSH check to prevent VTY exhaustion =====
+        lock = DeviceLock(
+            device_id=device_id,
+            operation='status_check',
+            ttl=30,  # SSH check should complete in 30 seconds
+            blocking=False  # Don't wait, skip check if device is busy
         )
 
-        if success:
-            # SSH works (device behind firewall/NAT)
-            device.status = 'online'
-            device.last_seen = timezone.now()
-        else:
-            # Both TCP and SSH failed → offline
-            device.status = 'offline'
+        if not lock.acquire():
+            # Device is locked (backup in progress or another check running)
+            # Skip SSH check, keep current status
+            logger.info(f"Device {device.name} locked, skipping SSH status check")
+            return {'device_id': device_id, 'status': device.status, 'changed': False, 'method': 'skipped', 'locked': True}
+
+        try:
+            username = device.username
+            password = device.get_password()
+            enable_password = device.get_enable_password() if device.enable_password_encrypted else None
+
+            success, message = test_connection(
+                host=device.ip_address,
+                port=device.port,
+                protocol=device.protocol,
+                username=username,
+                password=password,
+                enable_password=enable_password,
+                timeout=ssh_timeout
+            )
+
+            if success:
+                # SSH works (device behind firewall/NAT)
+                device.status = 'online'
+                device.last_seen = timezone.now()
+            else:
+                # Both TCP and SSH failed → offline
+                device.status = 'offline'
+        finally:
+            # Always release lock
+            lock.release()
 
         # Save if status changed
         if old_status != device.status:
