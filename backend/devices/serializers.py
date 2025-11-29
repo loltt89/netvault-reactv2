@@ -131,10 +131,15 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
 
-    def create(self, validated_data):
-        password = validated_data.pop('password')
-        enable_password = validated_data.pop('enable_password', '')
+    def _validate_and_sanitize_data(self, validated_data):
+        """
+        Validate and sanitize device data (shared logic for create/update)
 
+        - Restricts custom_commands to administrators only (RCE prevention)
+        - Sanitizes text fields to prevent CSV injection
+        - Validates username doesn't start with dangerous CSV characters
+        - Validates custom_commands structure
+        """
         # Only administrators can set custom_commands (prevents RCE by operators)
         user = self.context['request'].user
         if user.role != 'administrator':
@@ -156,6 +161,13 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
         # Validate custom_commands structure
         if 'custom_commands' in validated_data and validated_data['custom_commands']:
             validate_custom_commands(validated_data['custom_commands'])
+
+    def create(self, validated_data):
+        password = validated_data.pop('password')
+        enable_password = validated_data.pop('enable_password', '')
+
+        # Validate and sanitize data
+        self._validate_and_sanitize_data(validated_data)
 
         device = Device(**validated_data)
         device.set_password(password)
@@ -170,27 +182,8 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
         password = validated_data.pop('password', None)
         enable_password = validated_data.pop('enable_password', None)
 
-        # Only administrators can set custom_commands (prevents RCE by operators)
-        user = self.context['request'].user
-        if user.role != 'administrator':
-            validated_data.pop('custom_commands', None)
-
-        # Sanitize text fields to prevent CSV injection
-        for field in ['name', 'description', 'location']:
-            if field in validated_data and validated_data[field]:
-                validated_data[field] = sanitize_csv_value(validated_data[field])
-
-        # Validate username doesn't start with dangerous CSV characters
-        if 'username' in validated_data and validated_data['username']:
-            username = validated_data['username']
-            if username and username[0] in ('=', '+', '-', '@'):
-                raise serializers.ValidationError({
-                    'username': f'Username cannot start with {username[0]} (CSV injection risk)'
-                })
-
-        # Validate custom_commands structure
-        if 'custom_commands' in validated_data and validated_data['custom_commands']:
-            validate_custom_commands(validated_data['custom_commands'])
+        # Validate and sanitize data
+        self._validate_and_sanitize_data(validated_data)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
