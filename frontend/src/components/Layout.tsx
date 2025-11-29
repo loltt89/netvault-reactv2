@@ -155,7 +155,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         wsRef.current = null;
       }
     };
-  }, [user]);
+  }, [user?.id]); // Only reconnect when user ID changes, not on every user object update
 
   // Handle terminal close
   const handleTerminalClose = () => {

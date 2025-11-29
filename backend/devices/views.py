@@ -499,12 +499,12 @@ class DeviceViewSet(viewsets.ModelViewSet):
 
                 if existing:
                     if update_existing:
-                        # Update existing device (sanitize to prevent CSV injection)
-                        existing.name = sanitize_csv_value(name)
+                        # Update existing device (store RAW values, sanitization only for CSV export)
+                        existing.name = name
                         if mapped_row.get('location'):
-                            existing.location = sanitize_csv_value(mapped_row['location'])
+                            existing.location = mapped_row['location']
                         if mapped_row.get('description'):
-                            existing.description = sanitize_csv_value(mapped_row['description'])
+                            existing.description = mapped_row['description']
                         existing.save()
                         updated += 1
                     else:
@@ -529,10 +529,9 @@ class DeviceViewSet(viewsets.ModelViewSet):
                     backup_enabled_val = mapped_row.get('backup_enabled', 'yes').lower()
                     backup_enabled = backup_enabled_val in ['yes', 'да', 'иә', 'true', '1']
 
-                    # Sanitize text fields to prevent CSV injection
-                    name = sanitize_csv_value(name)
-                    location = sanitize_csv_value(mapped_row.get('location', ''))
-                    description = sanitize_csv_value(mapped_row.get('description', ''))
+                    # Store RAW values in database (sanitization only for CSV export)
+                    location = mapped_row.get('location', '')
+                    description = mapped_row.get('description', '')
 
                     device = Device(
                         name=name,
