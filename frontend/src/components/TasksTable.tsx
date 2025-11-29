@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import './TasksTable.css';
 
@@ -45,6 +46,7 @@ type SortField = 'started_at' | 'device' | 'status' | 'duration_seconds';
 type SortOrder = 'asc' | 'desc';
 
 const TasksTable: React.FC<TasksTableProps> = ({ onClose, isConnected }) => {
+  const { t } = useTranslation();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -172,16 +174,7 @@ const TasksTable: React.FC<TasksTableProps> = ({ onClose, isConnected }) => {
   };
 
   const getTaskName = (backupType: string) => {
-    switch (backupType) {
-      case 'manual':
-        return 'Manual Backup';
-      case 'scheduled':
-        return 'Scheduled Backup';
-      case 'automatic':
-        return 'Automatic Backup';
-      default:
-        return 'Backup';
-    }
+    return t(`tasks.task_types.${backupType}`, { defaultValue: t('tasks.task_types.manual') });
   };
 
   const getRunningTasks = () => tasks.filter(t => t.status === 'running' || t.status === 'pending').length;
@@ -192,12 +185,12 @@ const TasksTable: React.FC<TasksTableProps> = ({ onClose, isConnected }) => {
     <div className="tasks-panel">
       <div className="tasks-header">
         <div className="tasks-title">
-          <h2>Tasks</h2>
+          <h2>{t('tasks.title')}</h2>
           <span className={`connection-badge ${isConnected ? 'connected' : 'disconnected'}`}>
-            {isConnected ? '🟢 Live' : '🔴 Offline'}
+            {isConnected ? `🟢 ${t('tasks.live')}` : `🔴 ${t('tasks.offline')}`}
           </span>
         </div>
-        <button onClick={onClose} className="tasks-close-btn" title="Close Tasks">
+        <button onClick={onClose} className="tasks-close-btn" title={t('tasks.close')}>
           ✕
         </button>
       </div>
@@ -208,28 +201,28 @@ const TasksTable: React.FC<TasksTableProps> = ({ onClose, isConnected }) => {
           className={`filter-tab ${statusFilter === 'all' ? 'active' : ''}`}
           onClick={() => setStatusFilter('all')}
         >
-          All ({tasks.length})
+          {t('tasks.all')} ({tasks.length})
         </button>
         <button
           className={`filter-tab ${statusFilter === 'running' ? 'active' : ''}`}
           onClick={() => setStatusFilter('running')}
         >
-          Running ({getRunningTasks()})
+          {t('tasks.running')} ({getRunningTasks()})
         </button>
         <button
           className={`filter-tab ${statusFilter === 'completed' ? 'active' : ''}`}
           onClick={() => setStatusFilter('completed')}
         >
-          Completed ({getCompletedTasks()})
+          {t('tasks.completed')} ({getCompletedTasks()})
         </button>
         <button
           className={`filter-tab ${statusFilter === 'failed' ? 'active' : ''}`}
           onClick={() => setStatusFilter('failed')}
         >
-          Failed ({getFailedTasks()})
+          {t('tasks.failed')} ({getFailedTasks()})
         </button>
-        <button onClick={fetchTasks} className="refresh-btn" title="Refresh">
-          🔄 Refresh
+        <button onClick={fetchTasks} className="refresh-btn" title={t('tasks.refresh')}>
+          🔄 {t('tasks.refresh')}
         </button>
       </div>
 
@@ -238,29 +231,29 @@ const TasksTable: React.FC<TasksTableProps> = ({ onClose, isConnected }) => {
         <table className="tasks-table">
           <thead>
             <tr>
-              <th className="col-status">Status</th>
-              <th className="col-task">Task</th>
+              <th className="col-status">{t('tasks.status')}</th>
+              <th className="col-task">{t('tasks.task')}</th>
               <th className="col-target" onClick={() => handleSort('device')}>
-                Target {sortField === 'device' && (sortOrder === 'asc' ? '↑' : '↓')}
+                {t('tasks.target')} {sortField === 'device' && (sortOrder === 'asc' ? '↑' : '↓')}
               </th>
-              <th className="col-progress">Progress</th>
-              <th className="col-initiator">Initiator</th>
+              <th className="col-progress">{t('tasks.progress')}</th>
+              <th className="col-initiator">{t('tasks.initiator')}</th>
               <th className="col-time" onClick={() => handleSort('started_at')}>
-                Start Time {sortField === 'started_at' && (sortOrder === 'asc' ? '↑' : '↓')}
+                {t('tasks.start_time')} {sortField === 'started_at' && (sortOrder === 'asc' ? '↑' : '↓')}
               </th>
               <th className="col-duration" onClick={() => handleSort('duration_seconds')}>
-                Duration {sortField === 'duration_seconds' && (sortOrder === 'asc' ? '↑' : '↓')}
+                {t('tasks.duration')} {sortField === 'duration_seconds' && (sortOrder === 'asc' ? '↑' : '↓')}
               </th>
             </tr>
           </thead>
           <tbody>
             {loading && tasks.length === 0 ? (
               <tr>
-                <td colSpan={7} className="loading-row">Loading tasks...</td>
+                <td colSpan={7} className="loading-row">{t('tasks.loading_tasks')}</td>
               </tr>
             ) : tasks.length === 0 ? (
               <tr>
-                <td colSpan={7} className="empty-row">No tasks found</td>
+                <td colSpan={7} className="empty-row">{t('tasks.no_tasks')}</td>
               </tr>
             ) : (
               tasks.map(task => (
@@ -276,7 +269,7 @@ const TasksTable: React.FC<TasksTableProps> = ({ onClose, isConnected }) => {
                   </td>
                   <td className="col-task">
                     <div className="task-name">{getTaskName(task.backup_type)}</div>
-                    {task.has_changes && <span className="changes-badge">📝 Changes</span>}
+                    {task.has_changes && <span className="changes-badge">{t('tasks.changes_badge')}</span>}
                   </td>
                   <td className="col-target">
                     <div className="target-device">
@@ -296,14 +289,14 @@ const TasksTable: React.FC<TasksTableProps> = ({ onClose, isConnected }) => {
                     )}
                   </td>
                   <td className="col-initiator">
-                    {task.triggered_by_email || <em>System</em>}
+                    {task.triggered_by_email || <em>{t('tasks.system')}</em>}
                   </td>
                   <td className="col-time">
                     {formatTimestamp(task.started_at)}
                   </td>
                   <td className="col-duration">
                     {task.status === 'running' || task.status === 'pending' ? (
-                      <span className="running-duration">Running...</span>
+                      <span className="running-duration">{t('tasks.running_status')}</span>
                     ) : (
                       formatDuration(task.duration_seconds)
                     )}
@@ -322,14 +315,14 @@ const TasksTable: React.FC<TasksTableProps> = ({ onClose, isConnected }) => {
             onClick={() => setPage(p => Math.max(1, p - 1))}
             disabled={page === 1}
           >
-            ← Previous
+            {t('tasks.previous')}
           </button>
-          <span className="page-info">Page {page} of {totalPages}</span>
+          <span className="page-info">{t('tasks.page_info', { current: page, total: totalPages })}</span>
           <button
             onClick={() => setPage(p => Math.min(totalPages, p + 1))}
             disabled={page === totalPages}
           >
-            Next →
+            {t('tasks.next')}
           </button>
         </div>
       )}
@@ -339,51 +332,51 @@ const TasksTable: React.FC<TasksTableProps> = ({ onClose, isConnected }) => {
         <div className="task-modal-overlay" onClick={() => setSelectedTask(null)}>
           <div className="task-modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
-              <h3>Task Details: {getTaskName(selectedTask.backup_type)}</h3>
+              <h3>{t('tasks.details.title', { name: getTaskName(selectedTask.backup_type) })}</h3>
               <button onClick={() => setSelectedTask(null)}>✕</button>
             </div>
             <div className="modal-content">
               <div className="detail-section">
-                <h4>General</h4>
+                <h4>{t('tasks.details.general')}</h4>
                 <table className="detail-table">
                   <tbody>
                     <tr>
-                      <td>Device:</td>
+                      <td>{t('tasks.details.device')}</td>
                       <td><strong>{selectedTask.device.name}</strong> ({selectedTask.device.ip_address})</td>
                     </tr>
                     <tr>
-                      <td>Status:</td>
+                      <td>{t('tasks.details.status')}</td>
                       <td className={getStatusClass(selectedTask.status)}>
-                        {getStatusIcon(selectedTask.status)} {selectedTask.status.toUpperCase()}
+                        {getStatusIcon(selectedTask.status)} {t(`tasks.status_labels.${selectedTask.status}`)}
                       </td>
                     </tr>
                     <tr>
-                      <td>Type:</td>
+                      <td>{t('tasks.details.type')}</td>
                       <td>{selectedTask.backup_type}</td>
                     </tr>
                     <tr>
-                      <td>Size:</td>
+                      <td>{t('tasks.details.size')}</td>
                       <td>{formatBytes(selectedTask.size_bytes)}</td>
                     </tr>
                     <tr>
-                      <td>Changes:</td>
-                      <td>{selectedTask.has_changes ? `✓ ${selectedTask.changes_summary}` : '✗ No changes'}</td>
+                      <td>{t('tasks.details.changes')}</td>
+                      <td>{selectedTask.has_changes ? t('tasks.details.has_changes', { summary: selectedTask.changes_summary }) : t('tasks.details.no_changes')}</td>
                     </tr>
                     <tr>
-                      <td>Started:</td>
+                      <td>{t('tasks.details.started')}</td>
                       <td>{formatTimestamp(selectedTask.started_at)}</td>
                     </tr>
                     <tr>
-                      <td>Completed:</td>
+                      <td>{t('tasks.details.completed')}</td>
                       <td>{selectedTask.completed_at ? formatTimestamp(selectedTask.completed_at) : '-'}</td>
                     </tr>
                     <tr>
-                      <td>Duration:</td>
+                      <td>{t('tasks.details.duration')}</td>
                       <td>{formatDuration(selectedTask.duration_seconds)}</td>
                     </tr>
                     <tr>
-                      <td>Initiator:</td>
-                      <td>{selectedTask.triggered_by_email || 'System'}</td>
+                      <td>{t('tasks.details.initiator')}</td>
+                      <td>{selectedTask.triggered_by_email || t('tasks.system')}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -391,14 +384,14 @@ const TasksTable: React.FC<TasksTableProps> = ({ onClose, isConnected }) => {
 
               {selectedTask.error_message && (
                 <div className="detail-section error-section">
-                  <h4>Error Message</h4>
+                  <h4>{t('tasks.details.error_message')}</h4>
                   <pre className="error-message">{selectedTask.error_message}</pre>
                 </div>
               )}
 
               {selectedTask.output_log && (
                 <div className="detail-section">
-                  <h4>Output Log</h4>
+                  <h4>{t('tasks.details.output_log')}</h4>
                   <pre className="output-log">{selectedTask.output_log}</pre>
                 </div>
               )}
