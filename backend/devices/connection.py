@@ -8,9 +8,19 @@ import socket
 import re
 import ipaddress
 import logging
+from abc import ABC, abstractmethod
 from typing import Optional, Tuple, List
 
 logger = logging.getLogger(__name__)
+
+# ===== Compiled Regex Patterns (for performance) =====
+# These are compiled once at module load instead of on every line of config
+ANSI_ESCAPE_PATTERN = re.compile(r'\x1b\[[0-9;]*m')
+CARRIAGE_RETURN_PATTERN = re.compile(r'\r')
+MORE_PAGING_PATTERN = re.compile(r'--More--|-- More --|<--- More --->')
+MIKROTIK_PROMPT_PATTERN = re.compile(r'^\[.*?\]\s*[>\/]')
+FORTINET_PROMPT_PATTERN = re.compile(r'^[A-Z0-9]+\s+\(.*\)\s+[#>]')
+DEVICE_PROMPT_PATTERN = re.compile(r'^[^\s#>]+[#>]\s*$')
 
 
 class LoggingAutoAddPolicy(paramiko.MissingHostKeyPolicy):
@@ -179,12 +189,12 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
     cleaned_lines = []
 
     for line in lines:
-        # Remove ANSI escape codes
-        line = re.sub(r'\x1b\[[0-9;]*m', '', line)
+        # Remove ANSI escape codes (using pre-compiled pattern)
+        line = ANSI_ESCAPE_PATTERN.sub('', line)
         # Remove carriage returns and other control characters
-        line = re.sub(r'\r', '', line)
+        line = CARRIAGE_RETURN_PATTERN.sub('', line)
         # Remove --More-- and similar paging markers
-        line = re.sub(r'--More--|-- More --|<--- More --->', '', line)
+        line = MORE_PAGING_PATTERN.sub('', line)
 
         # Strip whitespace for checking
         stripped = line.strip()
@@ -196,7 +206,7 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
         # MikroTik specific cleaning
         if vendor == 'mikrotik':
             # Skip MikroTik prompts: [admin@MikroTik] > or [admin@MikroTik] /export
-            if re.match(r'^\[.*?\]\s*[>\/]', stripped):
+            if MIKROTIK_PROMPT_PATTERN.match(stripped):
                 continue
             # Keep everything else including comments starting with #
             cleaned_lines.append(line.rstrip())
@@ -208,7 +218,7 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
                 continue
             if stripped.lower() in ['set output standard', 'end']:
                 continue
-            if re.match(r'^[A-Z0-9]+\s+\(.*\)\s+[#>]', stripped):
+            if FORTINET_PROMPT_PATTERN.match(stripped):
                 continue
 
         # Skip the command echo (exact match or at end of prompt)
@@ -217,7 +227,7 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
 
         # Skip device prompts (ending with # or >)
         # Router#, Switch>, etc
-        if re.match(r'^[^\s#>]+[#>]\s*$', stripped):
+        if DEVICE_PROMPT_PATTERN.match(stripped):
             continue
 
         # Keep the line
@@ -228,11 +238,26 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
     return result.strip()
 
 
-class SSHConnection:
-    """SSH connection handler for network devices"""
+class BaseDeviceConnection(ABC):
+    """
+    Abstract base class for device connections (SSH, Telnet, etc.)
+    Implements common logic shared across all connection types
+    """
 
     def __init__(self, host: str, port: int, username: str, password: str,
                  enable_password: Optional[str] = None, timeout: int = 30, vendor: str = ''):
+        """
+        Initialize connection parameters (common for all protocols)
+
+        Args:
+            host: Device hostname or IP address
+            port: Connection port
+            username: Authentication username
+            password: Authentication password
+            enable_password: Optional enable/privileged mode password
+            timeout: Connection timeout in seconds
+            vendor: Device vendor slug (cisco, juniper, etc.)
+        """
         self.host = host
         self.port = port
         self.username = username
@@ -240,9 +265,126 @@ class SSHConnection:
         self.enable_password = enable_password
         self.timeout = timeout
         self.vendor = vendor
+        self.backup_commands: Optional[dict] = None
+
+    @abstractmethod
+    def connect(self) -> None:
+        """Establish connection (protocol-specific implementation required)"""
+        pass
+
+    @abstractmethod
+    def send_command(self, command: str, wait_time: float = 2, handle_paging: bool = True) -> str:
+        """Send single command (protocol-specific implementation required)"""
+        pass
+
+    @abstractmethod
+    def disconnect(self) -> None:
+        """Close connection (protocol-specific implementation required)"""
+        pass
+
+    def send_commands(self, commands: List[str], wait_time: float = 2) -> List[str]:
+        """
+        Send multiple commands and return their outputs
+
+        Args:
+            commands: List of commands to execute
+            wait_time: Time to wait between commands
+
+        Returns:
+            List of command outputs
+        """
+        outputs = []
+        for command in commands:
+            output = self.send_command(command, wait_time)
+            outputs.append(output)
+        return outputs
+
+    def enable_mode(self) -> str:
+        """
+        Enter enable/privileged mode (for Cisco-like devices)
+
+        Returns:
+            Output from enable commands
+        """
+        if not self.enable_password:
+            return ""
+
+        output = self.send_command("enable", wait_time=1)
+        output += self.send_command(self.enable_password, wait_time=1)
+        return output
+
+    def _get_logout_commands(self) -> List[str]:
+        """
+        Get vendor-specific logout commands
+
+        Returns:
+            List of logout commands (defaults to ['end', 'exit'])
+        """
+        if self.backup_commands and isinstance(self.backup_commands, dict):
+            logout_cmds = self.backup_commands.get('logout', [])
+            if isinstance(logout_cmds, list) and logout_cmds:
+                return logout_cmds
+
+        return ['end', 'exit']
+
+    def get_config(self, vendor: str, backup_commands: dict = None) -> str:
+        """
+        Get device configuration based on vendor
+
+        Args:
+            vendor: Device vendor slug (cisco, juniper, huawei, etc.)
+            backup_commands: Optional dict with 'setup' and 'backup' commands
+                           Format: {'setup': ['cmd1', 'cmd2'], 'backup': 'show running-config'}
+
+        Returns:
+            Configuration as string
+        """
+        vendor = vendor.lower()
+        self.backup_commands = backup_commands
+
+        # Parse backup commands
+        if backup_commands:
+            setup_commands = backup_commands.get('setup', [])
+            show_command = backup_commands.get('backup', 'show running-config')
+            need_enable = backup_commands.get('enable_mode', False)
+        else:
+            setup_commands = []
+            show_command = 'show running-config'
+            need_enable = False
+
+        # Enter enable mode if needed
+        if need_enable:
+            self.enable_mode()
+
+        # Run setup commands (terminal length, paging, etc.)
+        for cmd in setup_commands:
+            self.send_command(cmd, wait_time=1)
+
+        # Get configuration
+        wait_time = 10 if vendor == 'mikrotik' else 3
+        config = self.send_command(show_command, wait_time=wait_time)
+
+        return clean_device_output(config, vendor, show_command)
+
+    def __enter__(self):
+        """Context manager entry"""
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit"""
+        self.disconnect()
+
+
+class SSHConnection(BaseDeviceConnection):
+    """SSH connection handler for network devices"""
+
+    def __init__(self, host: str, port: int, username: str, password: str,
+                 enable_password: Optional[str] = None, timeout: int = 30, vendor: str = ''):
+        super().__init__(host, port, username, password, enable_password, timeout, vendor)
+        # SSH-specific attributes
         self.client: Optional[paramiko.SSHClient] = None
         self.shell: Optional[paramiko.Channel] = None
-        self.backup_commands: Optional[dict] = None  # Store backup_commands for logout
 
     def connect(self) -> None:
         """Establish SSH connection"""
@@ -359,100 +501,47 @@ class SSHConnection:
         except Exception as e:
             raise DeviceConnectionError(f"Error executing command: {str(e)}")
 
-    def send_commands(self, commands: List[str], wait_time: float = 2) -> List[str]:
-        """
-        Send multiple commands and return their outputs
-
-        Args:
-            commands: List of commands to execute
-            wait_time: Time to wait between commands
-
-        Returns:
-            List of command outputs
-        """
-        outputs = []
-        for command in commands:
-            output = self.send_command(command, wait_time)
-            outputs.append(output)
-        return outputs
-
-    def enable_mode(self) -> str:
-        """Enter enable/privileged mode (for Cisco-like devices)"""
-        if not self.enable_password:
-            return ""
-
-        output = self.send_command("enable", wait_time=1)
-        output += self.send_command(self.enable_password, wait_time=1)
-        return output
-
     def get_config(self, vendor: str, backup_commands: dict = None) -> str:
         """
-        Get device configuration based on vendor
+        Get device configuration (SSH-specific override for MikroTik)
+
+        MikroTik requires exec_command instead of invoke_shell for /export command.
+        All other logic is inherited from BaseDeviceConnection.
 
         Args:
-            vendor: Device vendor slug (cisco, juniper, huawei, etc.)
-            backup_commands: Optional dict with 'setup' and 'backup' commands
-                           Format: {'setup': ['cmd1', 'cmd2'], 'backup': 'show running-config'}
+            vendor: Device vendor slug
+            backup_commands: Optional dict with backup commands
 
         Returns:
             Configuration as string
         """
         vendor = vendor.lower()
-
-        # Store backup_commands for logout (used in disconnect())
         self.backup_commands = backup_commands
 
-        # Backup commands should come from database (Vendor model)
-        # If not provided, use generic fallback
+        # Parse and prepare environment (common logic from base class)
         if backup_commands:
             setup_commands = backup_commands.get('setup', [])
             show_command = backup_commands.get('backup', 'show running-config')
             need_enable = backup_commands.get('enable_mode', False)
         else:
-            # Fallback for missing vendor config (should not happen in production)
             setup_commands = []
             show_command = 'show running-config'
             need_enable = False
 
-        # Enable mode if needed
         if need_enable:
             self.enable_mode()
 
-        # Execute setup commands (don't capture output)
         for cmd in setup_commands:
             self.send_command(cmd, wait_time=1)
 
-        # MikroTik requires exec_command instead of invoke_shell for /export
+        # MikroTik-specific: use exec_command instead of shell (SSH only)
         if vendor == 'mikrotik':
             config = self.send_command_exec(show_command, timeout=30)
         else:
-            # Get configuration (different wait times per vendor)
             wait_time = 10 if vendor == 'mikrotik' else 3
             config = self.send_command(show_command, wait_time=wait_time)
 
         return clean_device_output(config, vendor, show_command)
-
-    def _get_logout_commands(self) -> List[str]:
-        """
-        Get vendor-specific logout commands from backup_commands or fallback to defaults
-
-        Logout commands can be customized in backup_commands JSON field.
-        Structure: {"logout": ["end", "exit"]}
-
-        Returns multiple commands to handle different modes (enable, config, etc.)
-
-        Returns:
-            List of logout commands to send sequentially
-        """
-        # Try to get logout commands from stored backup_commands (from DB)
-        if self.backup_commands and isinstance(self.backup_commands, dict):
-            logout_cmds = self.backup_commands.get('logout', [])
-            if isinstance(logout_cmds, list) and logout_cmds:
-                return logout_cmds
-
-        # Fallback to default for backward compatibility and generic devices
-        # Default: 'end' to exit config mode, then 'exit' to logout (works for most Cisco-like devices)
-        return ['end', 'exit']
 
     def disconnect(self) -> None:
         """Close SSH connection gracefully with vendor-specific logout commands"""
@@ -486,30 +575,15 @@ class SSHConnection:
             except:
                 pass
 
-    def __enter__(self):
-        """Context manager entry"""
-        self.connect()
-        return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit"""
-        self.disconnect()
-
-
-class TelnetConnection:
+class TelnetConnection(BaseDeviceConnection):
     """Telnet connection handler for network devices"""
 
     def __init__(self, host: str, port: int, username: str, password: str,
                  enable_password: Optional[str] = None, timeout: int = 30, vendor: str = ''):
-        self.host = host
-        self.port = port
-        self.username = username
-        self.password = password
-        self.enable_password = enable_password
-        self.timeout = timeout
-        self.vendor = vendor
+        super().__init__(host, port, username, password, enable_password, timeout, vendor)
+        # Telnet-specific attributes
         self.connection: Optional[telnetlib.Telnet] = None
-        self.backup_commands: Optional[dict] = None  # Store backup_commands for logout
 
     def connect(self) -> None:
         """Establish Telnet connection"""
@@ -567,89 +641,6 @@ class TelnetConnection:
         except Exception as e:
             raise DeviceConnectionError(f"Error sending command: {str(e)}")
 
-    def send_commands(self, commands: List[str], wait_time: float = 2) -> List[str]:
-        """Send multiple commands"""
-        outputs = []
-        for command in commands:
-            output = self.send_command(command, wait_time)
-            outputs.append(output)
-        return outputs
-
-    def enable_mode(self) -> str:
-        """Enter enable mode"""
-        if not self.enable_password:
-            return ""
-
-        output = self.send_command("enable", wait_time=1)
-        output += self.send_command(self.enable_password, wait_time=1)
-        return output
-
-    def get_config(self, vendor: str, backup_commands: dict = None) -> str:
-        """
-        Get device configuration based on vendor
-
-        Args:
-            vendor: Device vendor slug (cisco, juniper, huawei, etc.)
-            backup_commands: Optional dict with 'setup' and 'backup' commands
-                           Format: {'setup': ['cmd1', 'cmd2'], 'backup': 'show running-config'}
-
-        Returns:
-            Configuration as string
-        """
-        vendor = vendor.lower()
-
-        # Store backup_commands for logout (used in disconnect())
-        self.backup_commands = backup_commands
-
-        # Backup commands should come from database (Vendor model)
-        # If not provided, use generic fallback
-        if backup_commands:
-            setup_commands = backup_commands.get('setup', [])
-            show_command = backup_commands.get('backup', 'show running-config')
-            need_enable = backup_commands.get('enable_mode', False)
-        else:
-            # Fallback for missing vendor config (should not happen in production)
-            setup_commands = []
-            show_command = 'show running-config'
-            need_enable = False
-
-        # Enable mode if needed
-        if need_enable:
-            self.enable_mode()
-
-        # Execute setup commands (don't capture output)
-        for cmd in setup_commands:
-            self.send_command(cmd, wait_time=1)
-
-        # Get configuration (MikroTik needs more time)
-        wait_time = 10 if vendor == 'mikrotik' else 3
-        config = self.send_command(show_command, wait_time=wait_time)
-
-        # Use the same cleaning method
-        return clean_device_output(config, vendor, show_command)
-
-    def _get_logout_commands(self) -> List[str]:
-        """
-        Get vendor-specific logout commands from backup_commands or fallback to defaults
-
-        Logout commands can be customized in backup_commands JSON field.
-        Structure: {"logout": ["end", "exit"]}
-
-        Returns multiple commands to handle different modes (enable, config, etc.)
-
-        Returns:
-            List of logout commands to send sequentially
-        """
-        # Try to get logout commands from stored backup_commands (from DB)
-        if self.backup_commands and isinstance(self.backup_commands, dict):
-            logout_cmds = self.backup_commands.get('logout', [])
-            if isinstance(logout_cmds, list) and logout_cmds:
-                return logout_cmds
-
-        # Fallback to default for backward compatibility and generic devices
-        # Default: 'end' to exit config mode, then 'exit' to logout (works for most Cisco-like devices)
-        return ['end', 'exit']
-
     def disconnect(self) -> None:
         """Close Telnet connection gracefully with vendor-specific logout commands"""
         try:
@@ -673,15 +664,6 @@ class TelnetConnection:
                     self.connection.close()
             except:
                 pass
-
-    def __enter__(self):
-        """Context manager entry"""
-        self.connect()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit"""
-        self.disconnect()
 
 
 def test_connection(host: str, port: int, protocol: str, username: str,
