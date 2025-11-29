@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import UserProfileModal from './UserProfileModal';
-import TaskTerminal from './TaskTerminal';
+import TasksTable from './TasksTable';
 import '../styles/Layout.css';
 
 interface LayoutProps {
@@ -264,13 +264,11 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         {children}
       </main>
 
-      {/* Real-time Task Terminal */}
+      {/* Tasks Panel (VMware-style) */}
       {showTerminal && (
-        <TaskTerminal
-          logs={logs}
+        <TasksTable
           onClose={handleTerminalClose}
           isConnected={isConnected}
-          onClear={handleClearLogs}
         />
       )}
     </div>
