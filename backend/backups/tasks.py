@@ -22,6 +22,23 @@ from notifications.services import notify_backup_failed, notify_backup_success
 logger = logging.getLogger(__name__)
 
 
+def update_schedule_stats(schedule_id: int, success: bool):
+    """
+    Update backup schedule statistics atomically
+
+    Args:
+        schedule_id: BackupSchedule ID to update
+        success: True for successful run, False for failed run
+    """
+    if not schedule_id:
+        return
+
+    field = 'successful_runs' if success else 'failed_runs'
+    BackupSchedule.objects.filter(id=schedule_id).update(
+        **{field: F(field) + 1}
+    )
+
+
 @shared_task(bind=True, max_retries=3)
 def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type: str = 'manual', schedule_id: int = None):
     """
@@ -151,11 +168,8 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
                 backup.compare_with_previous()
                 backup.save()
 
-                # Update schedule statistics if this was a scheduled backup (atomic increment)
-                if schedule_id:
-                    BackupSchedule.objects.filter(id=schedule_id).update(
-                        successful_runs=F('successful_runs') + 1
-                    )
+                # Update schedule statistics if this was a scheduled backup
+                update_schedule_stats(schedule_id, success=True)
 
                 # Update device status and last backup time
                 device.last_backup = timezone.now()
@@ -193,11 +207,8 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
                 backup.duration_seconds = (backup.completed_at - backup.started_at).total_seconds()
                 backup.save()
 
-                # Update schedule statistics if this was a scheduled backup (atomic increment)
-                if schedule_id:
-                    BackupSchedule.objects.filter(id=schedule_id).update(
-                        failed_runs=F('failed_runs') + 1
-                    )
+                # Update schedule statistics if this was a scheduled backup
+                update_schedule_stats(schedule_id, success=False)
 
                 device.backup_status = 'failed'
                 device.status = 'offline'
@@ -225,10 +236,8 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
             backup.save()
 
             # Update schedule statistics if this was a scheduled backup (only after all retries exhausted)
-            if schedule_id and self.request.retries >= self.max_retries:
-                BackupSchedule.objects.filter(id=schedule_id).update(
-                    failed_runs=F('failed_runs') + 1
-                )
+            if self.request.retries >= self.max_retries:
+                update_schedule_stats(schedule_id, success=False)
 
             device.backup_status = 'failed'
             device.status = 'offline'

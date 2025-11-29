@@ -305,12 +305,13 @@ class BackupViewSet(viewsets.ModelViewSet):
             success=True
         ).order_by('-created_at').values('id')[:1]
 
-        # Get devices with their latest backup ID
+        # Get devices with their latest backup ID (with limit to prevent excessive search)
+        MAX_SEARCH_DEVICES = 100
         devices_with_backup = Device.objects.filter(
             backups__success=True
         ).annotate(
             latest_backup_id=Subquery(latest_backup_subquery)
-        ).distinct()
+        ).distinct()[:MAX_SEARCH_DEVICES]
 
         # Fetch all latest backups in one query
         latest_backup_ids = [d.latest_backup_id for d in devices_with_backup if d.latest_backup_id]
