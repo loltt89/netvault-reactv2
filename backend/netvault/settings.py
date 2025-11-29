@@ -104,9 +104,13 @@ else:
             'PASSWORD': os.getenv('DB_PASSWORD', ''),
             'HOST': os.getenv('DB_HOST', 'localhost'),
             'PORT': os.getenv('DB_PORT', '3306'),
+            'CONN_MAX_AGE': 600,  # Keep connections alive for 10 minutes
             'OPTIONS': {
                 'charset': 'utf8mb4',
                 'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+                'connect_timeout': 10,
+                'read_timeout': 30,
+                'write_timeout': 30,
             },
         }
     }
@@ -315,11 +319,6 @@ BACKUP_PARALLEL_WORKERS = int(os.getenv('BACKUP_PARALLEL_WORKERS', '5'))
 
 # Security: Allow public registration (disabled by default for corporate environments)
 ALLOW_PUBLIC_REGISTRATION = os.getenv('ALLOW_PUBLIC_REGISTRATION', 'False') == 'True'
-
-# Device Check Configuration (always uses hybrid mode: TCP first, then SSH fallback)
-DEVICE_CHECK_INTERVAL_MINUTES = int(os.getenv('DEVICE_CHECK_INTERVAL_MINUTES', '5'))
-DEVICE_CHECK_TCP_TIMEOUT = int(os.getenv('DEVICE_CHECK_TCP_TIMEOUT', '2'))
-DEVICE_CHECK_SSH_TIMEOUT = int(os.getenv('DEVICE_CHECK_SSH_TIMEOUT', '5'))
 
 # SSRF Protection - Allowed Private Network Ranges
 # Leave empty to allow all private IPs (default for backward compatibility)

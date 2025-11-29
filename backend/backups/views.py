@@ -3,7 +3,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Count, Q
+from django.db.models import Count, Sum, Q
 from django.utils import timezone
 from accounts.permissions import CanManageBackups, CanManageDevices
 
@@ -81,7 +81,7 @@ class BackupViewSet(viewsets.ModelViewSet):
 
         total_size = Backup.objects.aggregate(
             total=Count('id'),
-            size=Count('size_bytes')
+            size=Sum('size_bytes')
         )
 
         return Response({
@@ -160,12 +160,21 @@ class BackupViewSet(viewsets.ModelViewSet):
         from collections import defaultdict
         from datetime import datetime
 
+        MAX_GROUPED_BACKUPS = 1000  # Prevent Out of Memory on large datasets
+
         group_by = request.query_params.get('group_by', 'date')  # date, vendor, device_type
         queryset = self.filter_queryset(self.get_queryset())
 
+        # Check total count and limit to prevent OOM
+        total_count = queryset.count()
+        truncated = total_count > MAX_GROUPED_BACKUPS
+        if truncated:
+            queryset = queryset[:MAX_GROUPED_BACKUPS]
+
         grouped_data = defaultdict(list)
 
-        for backup in queryset.select_related('device__vendor', 'device__device_type'):
+        # Use iterator() to save memory on large querysets
+        for backup in queryset.select_related('device__vendor', 'device__device_type').iterator():
             if group_by == 'date':
                 # Group by date (YYYY-MM-DD)
                 key = backup.created_at.strftime('%Y-%m-%d')
@@ -197,7 +206,9 @@ class BackupViewSet(viewsets.ModelViewSet):
             'group_by': group_by,
             'groups': result,
             'total_groups': len(result),
-            'total_backups': sum(g['count'] for g in result)
+            'total_backups': sum(g['count'] for g in result),
+            'truncated': truncated,
+            'total_count': total_count
         })
 
     @action(detail=False, methods=['post'])

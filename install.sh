@@ -524,7 +524,7 @@ User=www-data
 Group=www-data
 WorkingDirectory=${INSTALL_DIR}
 Environment="PATH=${INSTALL_DIR}/venv/bin"
-ExecStart=${INSTALL_DIR}/venv/bin/celery -A netvault worker --loglevel=info
+ExecStart=${INSTALL_DIR}/venv/bin/celery -A netvault worker --loglevel=info --concurrency=10
 Restart=always
 RestartSec=10
 

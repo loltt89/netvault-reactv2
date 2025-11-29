@@ -74,7 +74,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
     search_fields = ['name', 'ip_address', 'location', 'description']
     ordering_fields = ['name', 'ip_address', 'created_at', 'last_backup']
     ordering = ['name']
-    filterset_fields = ['vendor', 'device_type', 'group', 'status', 'criticality', 'protocol']
+    filterset_fields = ['vendor', 'device_type', 'status', 'backup_enabled', 'protocol']
 
     def get_serializer_class(self):
         """Return appropriate serializer based on action"""

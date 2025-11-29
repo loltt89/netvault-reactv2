@@ -30,11 +30,6 @@ interface SystemSettings {
   redis: {
     url: string;
   };
-  device_check: {
-    interval_minutes: number;
-    tcp_timeout: number;
-    ssh_timeout: number;
-  };
   jwt: {
     access_token_lifetime: number;
     refresh_token_lifetime: number;
@@ -51,7 +46,7 @@ const SystemSettings: React.FC = () => {
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<'email' | 'telegram' | 'notifications' | 'ldap' | 'saml' | 'device_check' | 'jwt' | 'redis' | 'vendors' | 'devicetypes'>('email');
+  const [activeTab, setActiveTab] = useState<'email' | 'telegram' | 'notifications' | 'ldap' | 'saml' | 'jwt' | 'redis' | 'vendors' | 'devicetypes'>('email');
 
   // Form states
   const [emailSettings, setEmailSettings] = useState({
@@ -100,13 +95,6 @@ const SystemSettings: React.FC = () => {
     default_role: 'viewer',
     want_assertions_signed: true,
     want_messages_signed: false,
-  });
-
-
-  const [deviceCheckSettings, setDeviceCheckSettings] = useState({
-    interval_minutes: 5,
-    tcp_timeout: 2,
-    ssh_timeout: 5,
   });
 
   const [jwtSettings, setJwtSettings] = useState({
@@ -168,13 +156,6 @@ const SystemSettings: React.FC = () => {
         bind_dn: data.ldap.bind_dn,
         bind_password: '',
         user_search_base: data.ldap.user_search_base,
-      });
-
-
-      setDeviceCheckSettings({
-        interval_minutes: data.device_check.interval_minutes,
-        tcp_timeout: data.device_check.tcp_timeout,
-        ssh_timeout: data.device_check.ssh_timeout,
       });
 
       setJwtSettings({
@@ -272,21 +253,6 @@ const SystemSettings: React.FC = () => {
     } catch (error) {
       console.error('Error saving LDAP settings:', error);
       alert(t('systemSettings.ldap.failed_save'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-
-  const handleSaveDeviceCheck = async () => {
-    try {
-      setSaving(true);
-      await apiService.systemSettings.update({ device_check: deviceCheckSettings });
-      alert(t('systemSettings.device_check.saved'));
-      await loadSettings();
-    } catch (error) {
-      console.error('Error saving device check settings:', error);
-      alert(t('systemSettings.device_check.failed_save'));
     } finally {
       setSaving(false);
     }
@@ -544,12 +510,6 @@ const SystemSettings: React.FC = () => {
           onClick={() => setActiveTab('saml')}
         >
           🔑 SAML SSO
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'device_check' ? 'active' : ''}`}
-          onClick={() => setActiveTab('device_check')}
-        >
-          🔍 {t('systemSettings.tabs.device_check')}
         </button>
         <button
           className={`tab-btn ${activeTab === 'jwt' ? 'active' : ''}`}
@@ -1218,70 +1178,6 @@ const SystemSettings: React.FC = () => {
                 </div>
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-
-      {/* Device Check Settings */}
-      {activeTab === 'device_check' && (
-        <div className="settings-tab-content">
-          <div className="info-card" style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: 'var(--hover-bg)' }}>
-            <p style={{ margin: 0, fontSize: '0.9rem' }}>
-              <strong>{t('systemSettings.device_check.title')}</strong><br />
-              {t('systemSettings.device_check.description')}<br />
-              <br />
-              <strong>{t('systemSettings.device_check.hybrid_mode')}</strong><br />
-              {t('systemSettings.device_check.hybrid_description')}
-            </p>
-          </div>
-
-          <div className="form-group">
-            <label>{t('systemSettings.device_check.interval')} *</label>
-            <input
-              type="number"
-              value={deviceCheckSettings.interval_minutes}
-              onChange={(e) => setDeviceCheckSettings({ ...deviceCheckSettings, interval_minutes: parseInt(e.target.value) })}
-              min="1"
-              max="60"
-            />
-            <small style={{ color: 'var(--text-secondary)' }}>
-              {t('systemSettings.device_check.interval_help')}
-            </small>
-          </div>
-
-          <div className="form-group">
-            <label>{t('systemSettings.device_check.tcp_timeout')} *</label>
-            <input
-              type="number"
-              value={deviceCheckSettings.tcp_timeout}
-              onChange={(e) => setDeviceCheckSettings({ ...deviceCheckSettings, tcp_timeout: parseInt(e.target.value) })}
-              min="1"
-              max="10"
-            />
-            <small style={{ color: 'var(--text-secondary)' }}>
-              {t('systemSettings.device_check.tcp_timeout_help')}
-            </small>
-          </div>
-
-          <div className="form-group">
-            <label>{t('systemSettings.device_check.ssh_timeout')} *</label>
-            <input
-              type="number"
-              value={deviceCheckSettings.ssh_timeout}
-              onChange={(e) => setDeviceCheckSettings({ ...deviceCheckSettings, ssh_timeout: parseInt(e.target.value) })}
-              min="1"
-              max="30"
-            />
-            <small style={{ color: 'var(--text-secondary)' }}>
-              {t('systemSettings.device_check.ssh_timeout_help')}
-            </small>
-          </div>
-
-          <div style={{ marginTop: '1.5rem' }}>
-            <button onClick={handleSaveDeviceCheck} className="btn-primary" disabled={saving}>
-              {saving ? t('systemSettings.saving') : t('systemSettings.save_settings')}
-            </button>
           </div>
         </div>
       )}

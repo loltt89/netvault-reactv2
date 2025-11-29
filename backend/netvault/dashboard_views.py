@@ -44,38 +44,50 @@ def dashboard_statistics(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def backup_trend(request):
-    """Get backup trend data for last N days"""
+    """Get backup trend data for last N days (optimized with single query)"""
+    from django.db.models import Count, Q
+    from django.db.models.functions import TruncDate
 
     days = int(request.query_params.get('days', 7))
-
-    trend_data = []
     now = timezone.now()
+    start_date = now - timedelta(days=days)
 
+    # Single optimized query with aggregation
+    trend = Backup.objects.filter(
+        created_at__gte=start_date
+    ).annotate(
+        date=TruncDate('created_at')
+    ).values('date').annotate(
+        successful=Count('id', filter=Q(success=True)),
+        failed=Count('id', filter=Q(success=False))
+    ).order_by('date')
+
+    # Convert to dict for fast lookup
+    trend_dict = {
+        item['date']: {
+            'successful': item['successful'],
+            'failed': item['failed'],
+            'total': item['successful'] + item['failed']
+        }
+        for item in trend
+    }
+
+    # Fill in missing dates with zeros
+    trend_data = []
     for i in range(days):
-        day_start = now - timedelta(days=i+1)
-        day_end = now - timedelta(days=i)
-
-        successful = Backup.objects.filter(
-            created_at__gte=day_start,
-            created_at__lt=day_end,
-            success=True
-        ).count()
-
-        failed = Backup.objects.filter(
-            created_at__gte=day_start,
-            created_at__lt=day_end,
-            success=False
-        ).count()
-
-        trend_data.append({
-            'date': day_start.strftime('%Y-%m-%d'),
-            'successful': successful,
-            'failed': failed,
-            'total': successful + failed
-        })
-
-    # Reverse to show oldest first
-    trend_data.reverse()
+        day = (now - timedelta(days=days-i)).date()
+        if day in trend_dict:
+            trend_data.append({
+                'date': day.strftime('%Y-%m-%d'),
+                **trend_dict[day]
+            })
+        else:
+            trend_data.append({
+                'date': day.strftime('%Y-%m-%d'),
+                'successful': 0,
+                'failed': 0,
+                'total': 0
+            })
 
     return Response(trend_data)
 

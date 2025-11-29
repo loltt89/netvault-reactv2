@@ -3,6 +3,8 @@ Celery tasks for backup operations
 """
 from celery import shared_task
 from django.utils import timezone
+from django.db import transaction
+from django.db.models import F
 from datetime import timedelta
 from devices.models import Device
 from devices.connection import backup_device_config
@@ -137,33 +139,30 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
             send_log('info', f"Received configuration ({len(config)} bytes)")
             send_log('info', "Encrypting and saving to database...")
 
-            # Save configuration
-            backup.set_configuration(config)
-            backup.status = 'success'
-            backup.success = True
-            backup.completed_at = timezone.now()
-            backup.duration_seconds = (backup.completed_at - backup.started_at).total_seconds()
+            # Save configuration with transaction
+            with transaction.atomic():
+                backup.set_configuration(config)
+                backup.status = 'success'
+                backup.success = True
+                backup.completed_at = timezone.now()
+                backup.duration_seconds = (backup.completed_at - backup.started_at).total_seconds()
 
-            # Compare with previous backup
-            backup.compare_with_previous()
-            backup.save()
+                # Compare with previous backup
+                backup.compare_with_previous()
+                backup.save()
 
-            # Update schedule statistics if this was a scheduled backup
-            if schedule_id:
-                from backups.models import BackupSchedule
-                try:
-                    schedule = BackupSchedule.objects.get(id=schedule_id)
-                    schedule.successful_runs += 1
-                    schedule.save(update_fields=['successful_runs'])
-                except BackupSchedule.DoesNotExist:
-                    pass
+                # Update schedule statistics if this was a scheduled backup (atomic increment)
+                if schedule_id:
+                    BackupSchedule.objects.filter(id=schedule_id).update(
+                        successful_runs=F('successful_runs') + 1
+                    )
 
-            # Update device status and last backup time
-            device.last_backup = timezone.now()
-            device.last_seen = timezone.now()
-            device.backup_status = 'success'
-            device.status = 'online'
-            device.save()
+                # Update device status and last backup time
+                device.last_backup = timezone.now()
+                device.last_seen = timezone.now()
+                device.backup_status = 'success'
+                device.status = 'online'
+                device.save(update_fields=['last_backup', 'last_seen', 'backup_status', 'status'])
 
             logger.info(f"Backup completed successfully for {device.name}")
             send_log('success', f"Backup complete! Has Changes: {backup.has_changes}, Size: {backup.size_bytes} bytes")
@@ -186,26 +185,23 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
             # Backup failed
             send_log('error', f"Backup failed: {error_message}")
 
-            backup.status = 'failed'
-            backup.success = False
-            backup.error_message = error_message
-            backup.completed_at = timezone.now()
-            backup.duration_seconds = (backup.completed_at - backup.started_at).total_seconds()
-            backup.save()
+            with transaction.atomic():
+                backup.status = 'failed'
+                backup.success = False
+                backup.error_message = error_message
+                backup.completed_at = timezone.now()
+                backup.duration_seconds = (backup.completed_at - backup.started_at).total_seconds()
+                backup.save()
 
-            # Update schedule statistics if this was a scheduled backup
-            if schedule_id:
-                from backups.models import BackupSchedule
-                try:
-                    schedule = BackupSchedule.objects.get(id=schedule_id)
-                    schedule.failed_runs += 1
-                    schedule.save(update_fields=['failed_runs'])
-                except BackupSchedule.DoesNotExist:
-                    pass
+                # Update schedule statistics if this was a scheduled backup (atomic increment)
+                if schedule_id:
+                    BackupSchedule.objects.filter(id=schedule_id).update(
+                        failed_runs=F('failed_runs') + 1
+                    )
 
-            device.backup_status = 'failed'
-            device.status = 'offline'
-            device.save()
+                device.backup_status = 'failed'
+                device.status = 'offline'
+                device.save(update_fields=['backup_status', 'status'])
 
             logger.error(f"Backup failed for {device.name}: {error_message}")
 
@@ -219,27 +215,24 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
         logger.error(f"Error during backup of device {device.name}: {str(e)}")
         send_log('error', f"Critical task error: {str(e)}")
 
-        backup.status = 'failed'
-        backup.success = False
-        backup.error_message = str(e)
-        backup.completed_at = timezone.now()
-        if backup.started_at:
-            backup.duration_seconds = (backup.completed_at - backup.started_at).total_seconds()
-        backup.save()
+        with transaction.atomic():
+            backup.status = 'failed'
+            backup.success = False
+            backup.error_message = str(e)
+            backup.completed_at = timezone.now()
+            if backup.started_at:
+                backup.duration_seconds = (backup.completed_at - backup.started_at).total_seconds()
+            backup.save()
 
-        # Update schedule statistics if this was a scheduled backup (only after all retries exhausted)
-        if schedule_id and self.request.retries >= self.max_retries:
-            from backups.models import BackupSchedule
-            try:
-                schedule = BackupSchedule.objects.get(id=schedule_id)
-                schedule.failed_runs += 1
-                schedule.save(update_fields=['failed_runs'])
-            except BackupSchedule.DoesNotExist:
-                pass
+            # Update schedule statistics if this was a scheduled backup (only after all retries exhausted)
+            if schedule_id and self.request.retries >= self.max_retries:
+                BackupSchedule.objects.filter(id=schedule_id).update(
+                    failed_runs=F('failed_runs') + 1
+                )
 
-        device.backup_status = 'failed'
-        device.status = 'offline'
-        device.save()
+            device.backup_status = 'failed'
+            device.status = 'offline'
+            device.save(update_fields=['backup_status', 'status'])
 
         # Retry if possible
         if self.request.retries < self.max_retries:
@@ -255,7 +248,7 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
 @shared_task
 def backup_multiple_devices(device_ids: list, triggered_by_id: int = None, backup_type: str = 'manual', schedule_id: int = None):
     """
-    Backup multiple devices in parallel
+    Backup multiple devices with rate limiting to prevent task storm
 
     Args:
         device_ids: List of device IDs to backup
@@ -264,15 +257,28 @@ def backup_multiple_devices(device_ids: list, triggered_by_id: int = None, backu
         schedule_id: BackupSchedule ID if this is a scheduled backup
     """
     from celery import group
+    from django.conf import settings
 
-    # Create a group of backup tasks
-    job = group(backup_device.s(device_id, triggered_by_id, backup_type, schedule_id) for device_id in device_ids)
-    results = job.apply_async()
+    # Rate limiting: split into chunks to prevent overwhelming the queue
+    chunk_size = getattr(settings, 'BACKUP_PARALLEL_WORKERS', 10)
+    delay_between_chunks = 5  # seconds between chunk groups
+
+    total_chunks = 0
+    for i in range(0, len(device_ids), chunk_size):
+        chunk = device_ids[i:i+chunk_size]
+        job = group(
+            backup_device.s(device_id, triggered_by_id, backup_type, schedule_id)
+            for device_id in chunk
+        )
+        # Stagger chunk execution with countdown
+        job.apply_async(countdown=total_chunks * delay_between_chunks)
+        total_chunks += 1
 
     return {
         'success': True,
         'task_count': len(device_ids),
-        'group_id': results.id
+        'chunks': total_chunks,
+        'chunk_size': chunk_size
     }
 
 
@@ -423,135 +429,3 @@ def test_device_connection(device_id: int):
         return {'success': False, 'message': 'Device not found'}
     except Exception as e:
         return {'success': False, 'message': str(e)}
-
-
-@shared_task
-def check_single_device_status(device_id: int):
-    """
-    Check status of a single device using hybrid two-level approach:
-    LEVEL 1: Fast TCP check (does NOT consume VTY) - 95% of checks stop here
-    LEVEL 2: Full SSH check only if TCP fails (consumes VTY) - catches devices behind firewall
-
-    This approach saves ~95% of VTY lines compared to SSH-only checks.
-
-    Args:
-        device_id: Device ID to check
-    """
-    from devices.connection import test_connection, tcp_ping
-    from django.conf import settings
-
-    try:
-        device = Device.objects.get(id=device_id)
-        old_status = device.status
-
-        tcp_timeout = getattr(settings, 'DEVICE_CHECK_TCP_TIMEOUT', 2)
-        ssh_timeout = getattr(settings, 'DEVICE_CHECK_SSH_TIMEOUT', 5)
-
-        # LEVEL 1: Fast TCP check (2 seconds, NO VTY consumption)
-        port_open = tcp_ping(device.ip_address, device.port, timeout=tcp_timeout)
-
-        if port_open:
-            # Port is open → device is online
-            device.status = 'online'
-            device.last_seen = timezone.now()
-
-            if old_status != device.status:
-                device.save(update_fields=['status', 'last_seen'])
-                logger.info(f"Device {device.name} online (TCP check)")
-                return {'device_id': device_id, 'status': 'online', 'changed': True, 'method': 'tcp'}
-
-            return {'device_id': device_id, 'status': 'online', 'changed': False, 'method': 'tcp'}
-
-        # LEVEL 2: TCP failed → Full SSH check (may consume VTY)
-        logger.info(f"TCP check failed for {device.name}, trying SSH...")
-
-        # ===== Acquire lock for SSH check to prevent VTY exhaustion =====
-        lock = DeviceLock(
-            device_id=device_id,
-            operation='status_check',
-            ttl=30,  # SSH check should complete in 30 seconds
-            blocking=False  # Don't wait, skip check if device is busy
-        )
-
-        if not lock.acquire():
-            # Device is locked (backup in progress or another check running)
-            # Skip SSH check, keep current status
-            logger.info(f"Device {device.name} locked, skipping SSH status check")
-            return {'device_id': device_id, 'status': device.status, 'changed': False, 'method': 'skipped', 'locked': True}
-
-        try:
-            username = device.username
-            password = device.get_password()
-            enable_password = device.get_enable_password() if device.enable_password_encrypted else None
-
-            success, message = test_connection(
-                host=device.ip_address,
-                port=device.port,
-                protocol=device.protocol,
-                username=username,
-                password=password,
-                enable_password=enable_password,
-                timeout=ssh_timeout
-            )
-
-            if success:
-                # SSH works (device behind firewall/NAT)
-                device.status = 'online'
-                device.last_seen = timezone.now()
-            else:
-                # Both TCP and SSH failed → offline
-                device.status = 'offline'
-        finally:
-            # Always release lock
-            lock.release()
-
-        # Save if status changed
-        if old_status != device.status:
-            device.save(update_fields=['status', 'last_seen'])
-            logger.info(f"Device {device.name} {device.status} (SSH check)")
-            return {'device_id': device_id, 'status': device.status, 'changed': True, 'method': 'ssh'}
-
-        return {'device_id': device_id, 'status': device.status, 'changed': False, 'method': 'ssh'}
-
-    except Device.DoesNotExist:
-        logger.error(f"Device {device_id} not found")
-        return {'device_id': device_id, 'error': 'Device not found'}
-    except Exception as e:
-        logger.error(f"Error checking status for device {device_id}: {str(e)}")
-        try:
-            device = Device.objects.get(id=device_id)
-            if device.status != 'offline':
-                device.status = 'offline'
-                device.save(update_fields=['status'])
-                return {'device_id': device_id, 'status': 'offline', 'changed': True, 'error': str(e)}
-        except:
-            pass
-        return {'device_id': device_id, 'error': str(e)}
-
-
-@shared_task
-def check_devices_status():
-    """
-    Check status of all devices by attempting to connect (parallel execution)
-
-    This task runs periodically to update device online/offline status
-    """
-    logger.info("Starting devices status check")
-
-    device_ids = list(Device.objects.values_list('id', flat=True))
-
-    if not device_ids:
-        logger.info("No devices to check")
-        return {'success': True, 'total_devices': 0}
-
-    # Check devices in parallel using Celery group (fire and forget - don't wait for results)
-    from celery import group
-    job = group(check_single_device_status.s(device_id) for device_id in device_ids)
-    job.apply_async()
-
-    logger.info(f"Device status check triggered for {len(device_ids)} devices")
-
-    return {
-        'success': True,
-        'total_devices': len(device_ids)
-    }

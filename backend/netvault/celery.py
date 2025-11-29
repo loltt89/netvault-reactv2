@@ -22,10 +22,6 @@ app.conf.beat_schedule = {
         'task': 'backups.tasks.run_scheduled_backups',
         'schedule': crontab(minute='*/5'),  # Every 5 minutes
     },
-    'check-devices-status': {
-        'task': 'backups.tasks.check_devices_status',
-        'schedule': crontab(minute='*/2'),  # Every 2 minutes
-    },
     'cleanup-old-backups': {
         'task': 'backups.tasks.cleanup_old_backups',
         'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM

@@ -59,13 +59,6 @@ def get_system_settings(request):
             'parallel_workers': getattr(settings, 'BACKUP_PARALLEL_WORKERS', 5),
         },
 
-        # Device Check Settings (always uses hybrid mode for VTY optimization)
-        'device_check': {
-            'interval_minutes': getattr(settings, 'DEVICE_CHECK_INTERVAL_MINUTES', 5),
-            'tcp_timeout': getattr(settings, 'DEVICE_CHECK_TCP_TIMEOUT', 2),
-            'ssh_timeout': getattr(settings, 'DEVICE_CHECK_SSH_TIMEOUT', 5),
-        },
-
         # JWT Session Settings
         'jwt': {
             'access_token_lifetime': int(os.getenv('JWT_ACCESS_TOKEN_LIFETIME', '60')),
@@ -148,16 +141,6 @@ def update_system_settings(request):
                 updated_vars['LDAP_BIND_PASSWORD'] = ldap['bind_password']
             if 'user_search_base' in ldap:
                 updated_vars['LDAP_USER_SEARCH_BASE'] = ldap['user_search_base']
-
-        # Device check settings
-        if 'device_check' in data:
-            device_check = data['device_check']
-            if 'interval_minutes' in device_check:
-                updated_vars['DEVICE_CHECK_INTERVAL_MINUTES'] = str(device_check['interval_minutes'])
-            if 'tcp_timeout' in device_check:
-                updated_vars['DEVICE_CHECK_TCP_TIMEOUT'] = str(device_check['tcp_timeout'])
-            if 'ssh_timeout' in device_check:
-                updated_vars['DEVICE_CHECK_SSH_TIMEOUT'] = str(device_check['ssh_timeout'])
 
         # Backup settings
         if 'backup' in data:

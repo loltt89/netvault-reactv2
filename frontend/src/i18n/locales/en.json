@@ -360,7 +360,6 @@
       "ldap": "LDAP/AD",
       "saml": "SAML SSO",
       "backup": "Backup",
-      "device_check": "Device Check",
       "jwt": "Sessions",
       "redis": "Redis",
       "vendors": "Vendors",
@@ -505,20 +504,6 @@
       "workers_help": "Maximum number of concurrent backup tasks (1-20). Higher = faster, but more load.",
       "saved": "Backup settings saved successfully! Please restart the application.",
       "failed_save": "Failed to save backup settings"
-    },
-    "device_check": {
-      "title": "Device Status Check:",
-      "description": "Configure periodic device availability checking. Changes require application restart to take effect.",
-      "hybrid_mode": "Hybrid Mode (Recommended):",
-      "hybrid_description": "Level 1: Fast TCP port check (does NOT consume VTY lines). Level 2: SSH check only if TCP fails (for devices behind Firewall). Saves ~95% of VTY lines!",
-      "interval": "Check Interval (minutes)",
-      "interval_help": "How often to check all device statuses (1-60 minutes).",
-      "tcp_timeout": "TCP Timeout (seconds)",
-      "tcp_timeout_help": "Timeout for fast port check (1-10 seconds). Recommended: 2 seconds.",
-      "ssh_timeout": "SSH Timeout (seconds)",
-      "ssh_timeout_help": "Timeout for full SSH check (1-30 seconds). Recommended: 5 seconds.",
-      "saved": "Device check settings saved successfully! Please restart the application.",
-      "failed_save": "Failed to save device check settings"
     },
     "jwt": {
       "title": "Session Settings (JWT):",
