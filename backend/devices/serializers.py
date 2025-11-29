@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from .models import Vendor, DeviceType, Device
-from core.utils import sanitize_csv_value
+from core.utils import validate_csv_safe
 
 
 def validate_custom_commands(value):
@@ -133,30 +133,32 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
 
     def _validate_and_sanitize_data(self, validated_data):
         """
-        Validate and sanitize device data (shared logic for create/update)
+        Validate device data (shared logic for create/update)
 
         - Restricts custom_commands to administrators only (RCE prevention)
-        - Sanitizes text fields to prevent CSV injection
-        - Validates username doesn't start with dangerous CSV characters
+        - Validates text fields for CSV safety (rejects dangerous values)
         - Validates custom_commands structure
+
+        Note: CSV sanitization (adding ' prefix) is done at EXPORT time, not storage time.
+        Database stores raw values.
         """
         # Only administrators can set custom_commands (prevents RCE by operators)
         user = self.context['request'].user
         if user.role != 'administrator':
             validated_data.pop('custom_commands', None)
 
-        # Sanitize text fields to prevent CSV injection
-        for field in ['name', 'description', 'location']:
-            if field in validated_data and validated_data[field]:
-                validated_data[field] = sanitize_csv_value(validated_data[field])
+        # Validate text fields are safe for CSV export (reject dangerous values)
+        validation_errors = {}
 
-        # Validate username doesn't start with dangerous CSV characters
-        if 'username' in validated_data and validated_data['username']:
-            username = validated_data['username']
-            if username and username[0] in ('=', '+', '-', '@'):
-                raise serializers.ValidationError({
-                    'username': f'Username cannot start with {username[0]} (CSV injection risk)'
-                })
+        for field in ['name', 'description', 'location', 'username']:
+            if field in validated_data and validated_data[field]:
+                try:
+                    validate_csv_safe(validated_data[field], field_name=field.capitalize())
+                except ValueError as e:
+                    validation_errors[field] = str(e)
+
+        if validation_errors:
+            raise serializers.ValidationError(validation_errors)
 
         # Validate custom_commands structure
         if 'custom_commands' in validated_data and validated_data['custom_commands']:

@@ -76,49 +76,17 @@ class Backup(models.Model):
     def __str__(self):
         return f'{self.device.name} - {self.created_at.strftime("%Y-%m-%d %H:%M:%S")}'
 
-    def _normalize_config_for_comparison(self, configuration):
-        """
-        Normalize configuration for comparison by removing dynamic lines
-        that change on every backup but don't represent actual config changes
-        """
-        import re
-
-        lines = configuration.split('\n')
-        normalized_lines = []
-        in_crypto_block = False
-
-        for line in lines:
-            # Skip Mikrotik timestamp line (e.g., "# 2025-11-23 10:17:44 by RouterOS 7.16")
-            if line.startswith('# ') and ' by RouterOS ' in line:
-                continue
-
-            # FortiGate: Normalize encrypted passwords (they change on every export)
-            # Examples: "set password ENC xxx", "set ppk-secret ENC xxx"
-            if ' ENC ' in line and not in_crypto_block:
-                line = re.sub(r'(set \S+ ENC )\S+', r'\1[REDACTED]', line)
-
-            # FortiGate: Skip encrypted private keys and certificates content (they change on every export)
-            if '-----BEGIN' in line:
-                in_crypto_block = True
-                normalized_lines.append('[CRYPTO_BLOCK_START]')
-                continue
-            elif '-----END' in line:
-                in_crypto_block = False
-                normalized_lines.append('[CRYPTO_BLOCK_END]')
-                continue
-
-            if in_crypto_block:
-                continue  # Skip all lines inside crypto blocks
-
-            normalized_lines.append(line)
-
-        return '\n'.join(normalized_lines)
-
     def set_configuration(self, configuration):
         """Encrypt and set configuration content"""
+        from .config_normalizer import normalize_config
+
         self.configuration_encrypted = encrypt_data(configuration)
-        # Normalize config before hashing to ignore timestamp-like changes
-        normalized_config = self._normalize_config_for_comparison(configuration)
+
+        # Normalize config before hashing to ignore vendor-specific dynamic content
+        # (timestamps, encrypted passwords, crypto blocks, etc.)
+        vendor_slug = self.device.vendor.slug if self.device.vendor else None
+        normalized_config = normalize_config(configuration, vendor_slug)
+
         self.configuration_hash = hashlib.sha256(normalized_config.encode()).hexdigest()
         self.size_bytes = len(configuration)
 

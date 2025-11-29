@@ -143,6 +143,47 @@ export const isAuthenticated = (): boolean => {
 };
 
 /**
+ * CRUD Service Factory
+ * Creates reusable CRUD methods for resources to avoid code duplication
+ */
+interface CrudService {
+  list: (params?: any) => Promise<any>;
+  get: (id: number) => Promise<any>;
+  create: (data: any) => Promise<any>;
+  update: (id: number, data: any) => Promise<any>;
+  delete: (id: number) => Promise<any>;
+}
+
+function createCrudService(resource: string): CrudService {
+  return {
+    list: async (params?: any) => {
+      const response = await apiClient.get(`/${resource}/`, { params });
+      return response.data;
+    },
+
+    get: async (id: number) => {
+      const response = await apiClient.get(`/${resource}/${id}/`);
+      return response.data;
+    },
+
+    create: async (data: any) => {
+      const response = await apiClient.post(`/${resource}/`, data);
+      return response.data;
+    },
+
+    update: async (id: number, data: any) => {
+      const response = await apiClient.patch(`/${resource}/${id}/`, data);
+      return response.data;
+    },
+
+    delete: async (id: number) => {
+      const response = await apiClient.delete(`/${resource}/${id}/`);
+      return response.data;
+    },
+  };
+}
+
+/**
  * API Service
  */
 class APIService {
@@ -292,92 +333,21 @@ class APIService {
   /**
    * Vendors endpoints
    */
-  vendors = {
-    list: async (params?: any) => {
-      const response = await apiClient.get('/devices/vendors/', { params });
-      return response.data;
-    },
-
-    get: async (id: number) => {
-      const response = await apiClient.get(`/devices/vendors/${id}/`);
-      return response.data;
-    },
-
-    create: async (data: any) => {
-      const response = await apiClient.post('/devices/vendors/', data);
-      return response.data;
-    },
-
-    update: async (id: number, data: any) => {
-      const response = await apiClient.patch(`/devices/vendors/${id}/`, data);
-      return response.data;
-    },
-
-    delete: async (id: number) => {
-      const response = await apiClient.delete(`/devices/vendors/${id}/`);
-      return response.data;
-    },
-  };
+  vendors = createCrudService('devices/vendors');
 
   /**
    * Device Types endpoints
    */
-  deviceTypes = {
-    list: async (params?: any) => {
-      const response = await apiClient.get('/devices/device-types/', { params });
-      return response.data;
-    },
-
-    get: async (id: number) => {
-      const response = await apiClient.get(`/devices/device-types/${id}/`);
-      return response.data;
-    },
-
-    create: async (data: any) => {
-      const response = await apiClient.post('/devices/device-types/', data);
-      return response.data;
-    },
-
-    update: async (id: number, data: any) => {
-      const response = await apiClient.patch(`/devices/device-types/${id}/`, data);
-      return response.data;
-    },
-
-    delete: async (id: number) => {
-      const response = await apiClient.delete(`/devices/device-types/${id}/`);
-      return response.data;
-    },
-  };
+  deviceTypes = createCrudService('devices/device-types');
 
   /**
    * Devices endpoints
    */
   devices = {
-    list: async (params?: any) => {
-      const response = await apiClient.get('/devices/devices/', { params });
-      return response.data;
-    },
+    // Standard CRUD operations (via factory)
+    ...createCrudService('devices/devices'),
 
-    get: async (id: number) => {
-      const response = await apiClient.get(`/devices/devices/${id}/`);
-      return response.data;
-    },
-
-    create: async (data: any) => {
-      const response = await apiClient.post('/devices/devices/', data);
-      return response.data;
-    },
-
-    update: async (id: number, data: any) => {
-      const response = await apiClient.patch(`/devices/devices/${id}/`, data);
-      return response.data;
-    },
-
-    delete: async (id: number) => {
-      const response = await apiClient.delete(`/devices/devices/${id}/`);
-      return response.data;
-    },
-
+    // Custom device-specific endpoints
     testConnection: async (id: number) => {
       const response = await apiClient.post(`/devices/devices/${id}/test_connection/`);
       return response.data;
@@ -492,31 +462,10 @@ class APIService {
    * Backup Schedules endpoints
    */
   backupSchedules = {
-    list: async (params?: any) => {
-      const response = await apiClient.get('/backups/schedules/', { params });
-      return response.data;
-    },
+    // Standard CRUD operations (via factory)
+    ...createCrudService('backups/schedules'),
 
-    get: async (id: number) => {
-      const response = await apiClient.get(`/backups/schedules/${id}/`);
-      return response.data;
-    },
-
-    create: async (data: any) => {
-      const response = await apiClient.post('/backups/schedules/', data);
-      return response.data;
-    },
-
-    update: async (id: number, data: any) => {
-      const response = await apiClient.patch(`/backups/schedules/${id}/`, data);
-      return response.data;
-    },
-
-    delete: async (id: number) => {
-      const response = await apiClient.delete(`/backups/schedules/${id}/`);
-      return response.data;
-    },
-
+    // Custom schedule-specific endpoints
     toggleActive: async (id: number) => {
       const response = await apiClient.post(`/backups/schedules/${id}/toggle_active/`);
       return response.data;
@@ -529,31 +478,10 @@ class APIService {
   };
 
   retentionPolicies = {
-    list: async (params?: any) => {
-      const response = await apiClient.get('/backups/retention-policies/', { params });
-      return response.data;
-    },
+    // Standard CRUD operations (via factory)
+    ...createCrudService('backups/retention-policies'),
 
-    get: async (id: number) => {
-      const response = await apiClient.get(`/backups/retention-policies/${id}/`);
-      return response.data;
-    },
-
-    create: async (data: any) => {
-      const response = await apiClient.post('/backups/retention-policies/', data);
-      return response.data;
-    },
-
-    update: async (id: number, data: any) => {
-      const response = await apiClient.patch(`/backups/retention-policies/${id}/`, data);
-      return response.data;
-    },
-
-    delete: async (id: number) => {
-      const response = await apiClient.delete(`/backups/retention-policies/${id}/`);
-      return response.data;
-    },
-
+    // Custom retention policy-specific endpoint
     applyNow: async (id: number) => {
       const response = await apiClient.post(`/backups/retention-policies/${id}/apply_now/`);
       return response.data;
