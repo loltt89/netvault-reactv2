@@ -3,7 +3,7 @@ System-wide settings stored in database
 """
 from django.db import models
 from django.core.cache import cache
-from core.encryption import encrypt_value, decrypt_value
+from core.crypto import encrypt_data, decrypt_data
 
 
 class SystemSettings(models.Model):
@@ -85,40 +85,40 @@ class SystemSettings(models.Model):
     def set_email_password(self, password: str):
         """Encrypt and store email password"""
         if password:
-            self.email_host_password_encrypted = encrypt_value(password)
+            self.email_host_password_encrypted = encrypt_data(password)
         else:
             self.email_host_password_encrypted = ''
 
     def get_email_password(self) -> str:
         """Decrypt and return email password"""
         if self.email_host_password_encrypted:
-            return decrypt_value(self.email_host_password_encrypted)
+            return decrypt_data(self.email_host_password_encrypted)
         return ''
 
     # ===== Telegram Token Methods =====
     def set_telegram_bot_token(self, token: str):
         """Encrypt and store Telegram bot token"""
         if token:
-            self.telegram_bot_token_encrypted = encrypt_value(token)
+            self.telegram_bot_token_encrypted = encrypt_data(token)
         else:
             self.telegram_bot_token_encrypted = ''
 
     def get_telegram_bot_token(self) -> str:
         """Decrypt and return Telegram bot token"""
         if self.telegram_bot_token_encrypted:
-            return decrypt_value(self.telegram_bot_token_encrypted)
+            return decrypt_data(self.telegram_bot_token_encrypted)
         return ''
 
     # ===== LDAP Password Methods =====
     def set_ldap_bind_password(self, password: str):
         """Encrypt and store LDAP bind password"""
         if password:
-            self.ldap_bind_password_encrypted = encrypt_value(password)
+            self.ldap_bind_password_encrypted = encrypt_data(password)
         else:
             self.ldap_bind_password_encrypted = ''
 
     def get_ldap_bind_password(self) -> str:
         """Decrypt and return LDAP bind password"""
         if self.ldap_bind_password_encrypted:
-            return decrypt_value(self.ldap_bind_password_encrypted)
+            return decrypt_data(self.ldap_bind_password_encrypted)
         return ''
