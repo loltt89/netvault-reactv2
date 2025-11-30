@@ -300,7 +300,7 @@ def run_scheduled_backups():
     """
     logger.info("Running scheduled backups check")
 
-    now = timezone.now()
+    now = timezone.localtime(timezone.now())
     current_time = now.time()
     current_weekday = now.weekday()  # Monday=0, Sunday=6
 
