@@ -525,6 +525,9 @@ Group=www-data
 WorkingDirectory=${INSTALL_DIR}
 Environment="PATH=${INSTALL_DIR}/venv/bin"
 ExecStart=${INSTALL_DIR}/venv/bin/celery -A netvault worker --loglevel=info --concurrency=10
+ExecStop=/bin/kill -TERM \$MAINPID
+TimeoutStopSec=300
+KillMode=mixed
 Restart=always
 RestartSec=10
 
@@ -545,6 +548,9 @@ Group=www-data
 WorkingDirectory=${INSTALL_DIR}
 Environment="PATH=${INSTALL_DIR}/venv/bin"
 ExecStart=${INSTALL_DIR}/venv/bin/celery -A netvault beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+ExecStop=/bin/kill -TERM \$MAINPID
+TimeoutStopSec=30
+KillMode=mixed
 Restart=always
 RestartSec=10
 
