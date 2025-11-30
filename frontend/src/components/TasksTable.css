@@ -2,7 +2,7 @@
 .tasks-panel {
   position: fixed;
   bottom: 0;
-  left: 0;
+  left: 260px; /* Offset by sidebar width */
   right: 0;
   height: 33vh;
   background: #ffffff;
@@ -647,4 +647,11 @@
   background: #1e1e1e;
   border-color: #444;
   color: #e0e0e0;
+}
+
+/* Responsive - match sidebar width */
+@media (max-width: 768px) {
+  .tasks-panel {
+    left: 60px; /* Match collapsed sidebar width */
+  }
 }
