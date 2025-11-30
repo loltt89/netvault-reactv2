@@ -104,7 +104,7 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
       // Always refresh, but with different intervals based on task status
       // This ensures new tasks are picked up even when table is empty/completed
       fetchTasks();
-    }, 5000); // Check every 5 seconds
+    }, 1000); // Check every 1 second (60 req/min = 3.6% of rate limit)
 
     return () => clearInterval(interval);
   }, [fetchTasks]);
