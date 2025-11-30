@@ -27,7 +27,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   // ===== Real-time Terminal State =====
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showTerminal, setShowTerminal] = useState(false);
-  const [isTasksPanelMinimized, setIsTasksPanelMinimized] = useState(false);
+  const [isTasksPanelMinimized, setIsTasksPanelMinimized] = useState(true); // Start minimized
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
