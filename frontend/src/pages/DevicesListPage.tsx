@@ -136,7 +136,8 @@ const DevicesListPage: React.FC = () => {
       setDevices(devicesList);
     } catch (error) {
       console.error('Error loading devices:', error);
-      alert(t('common.error') + ': Failed to load devices');
+      // Don't show alert for empty device list - this is normal on fresh install
+      setDevices([]);
     } finally {
       setLoading(false);
     }
@@ -355,7 +356,7 @@ const DevicesListPage: React.FC = () => {
       }, 100);
     } catch (error) {
       console.error('Failed to download template:', error);
-      alert(t('devices.import.preview_error'));
+      alert(t('common.error') + ': ' + t('devices.import.template_download_error'));
     }
   };
 

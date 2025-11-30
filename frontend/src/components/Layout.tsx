@@ -257,7 +257,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       />
 
       {/* Main Content */}
-      <main className="main-content" style={{ paddingBottom: isTasksPanelMinimized ? '50px' : '60vh' }}>
+      <main className="main-content" style={{ paddingBottom: isTasksPanelMinimized ? '50px' : '33vh' }}>
         {children}
       </main>
 

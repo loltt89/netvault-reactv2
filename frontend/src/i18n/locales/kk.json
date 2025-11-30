@@ -92,6 +92,7 @@
       "updated_count": "Жаңартылды",
       "skipped_count": "Өткізілді",
       "preview_error": "Файлды өңдеу мүмкін болмады",
+      "template_download_error": "CSV үлгісін жүктеу мүмкін болмады",
       "import_error": "Құрылғыларды импорттау мүмкін болмады"
     }
   },

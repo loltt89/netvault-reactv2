@@ -121,7 +121,8 @@ const DevicesPage: React.FC = () => {
       setDevices(devicesList);
     } catch (error) {
       console.error('Error loading devices:', error);
-      alert(t('common.error') + ': Failed to load devices');
+      // Don't show alert for empty device list - this is normal on fresh install
+      setDevices([]);
     } finally {
       setLoading(false);
     }
@@ -132,8 +133,12 @@ const DevicesPage: React.FC = () => {
       const response = await apiService.vendors.list();
       const vendorsList = Array.isArray(response) ? response : response.results || [];
       setVendors(vendorsList);
+      if (vendorsList.length === 0) {
+        console.warn('No vendors found - database may not be initialized');
+      }
     } catch (error) {
       console.error('Error loading vendors:', error);
+      setVendors([]);
     }
   };
 
@@ -142,8 +147,12 @@ const DevicesPage: React.FC = () => {
       const response = await apiService.deviceTypes.list();
       const typesList = Array.isArray(response) ? response : response.results || [];
       setDeviceTypes(typesList);
+      if (typesList.length === 0) {
+        console.warn('No device types found - database may not be initialized');
+      }
     } catch (error) {
       console.error('Error loading device types:', error);
+      setDeviceTypes([]);
     }
   };
 

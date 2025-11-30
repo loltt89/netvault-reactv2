@@ -92,6 +92,7 @@
       "updated_count": "Обновлено",
       "skipped_count": "Пропущено",
       "preview_error": "Не удалось обработать файл",
+      "template_download_error": "Не удалось скачать CSV шаблон",
       "import_error": "Не удалось импортировать устройства"
     }
   },

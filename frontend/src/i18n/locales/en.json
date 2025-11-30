@@ -92,6 +92,7 @@
       "updated_count": "Updated",
       "skipped_count": "Skipped",
       "preview_error": "Failed to preview file",
+      "template_download_error": "Failed to download CSV template",
       "import_error": "Failed to import devices"
     }
   },
