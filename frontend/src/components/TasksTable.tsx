@@ -97,13 +97,14 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
   useEffect(() => {
     fetchTasks();
 
-    // Auto-refresh every 5 seconds if there are running tasks
+    // Auto-refresh: faster if there are running tasks, slower if all completed
     const interval = setInterval(() => {
-      // Use ref to avoid dependency on tasks state
-      if (tasksRef.current.some(t => t.status === 'running' || t.status === 'pending')) {
-        fetchTasks();
-      }
-    }, 5000);
+      const hasRunningTasks = tasksRef.current.some(t => t.status === 'running' || t.status === 'pending');
+
+      // Always refresh, but with different intervals based on task status
+      // This ensures new tasks are picked up even when table is empty/completed
+      fetchTasks();
+    }, 5000); // Check every 5 seconds
 
     return () => clearInterval(interval);
   }, [fetchTasks]);
