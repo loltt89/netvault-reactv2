@@ -2,8 +2,8 @@
 Notification services for email and Telegram
 """
 import logging
-from django.conf import settings
-from django.core.mail import send_mail
+from django.core.mail import send_mail, EmailMessage
+from django.core.mail.backends.smtp import EmailBackend
 import requests
 
 logger = logging.getLogger(__name__)
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 def send_email_notification(subject: str, message: str, recipient_list: list = None):
     """
-    Send email notification
+    Send email notification using system settings from database
 
     Args:
         subject: Email subject
@@ -19,7 +19,12 @@ def send_email_notification(subject: str, message: str, recipient_list: list = N
         recipient_list: List of recipient emails (defaults to admin email)
     """
     try:
-        if not getattr(settings, 'EMAIL_HOST', None):
+        # Get system settings from database (cached)
+        from netvault.models import SystemSettings
+        sys_settings = SystemSettings.get_settings()
+
+        # Check if email is configured
+        if not sys_settings.email_host or not sys_settings.email_host_user:
             logger.warning("Email not configured, skipping notification")
             return False
 
@@ -32,13 +37,25 @@ def send_email_notification(subject: str, message: str, recipient_list: list = N
                 return False
             recipient_list = [admin.email]
 
-        send_mail(
-            subject=f'[NetVault] {subject}',
-            message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=recipient_list,
+        # Create email backend with settings from database
+        connection = EmailBackend(
+            host=sys_settings.email_host,
+            port=sys_settings.email_port,
+            username=sys_settings.email_host_user,
+            password=sys_settings.get_email_password(),  # Decrypted
+            use_tls=sys_settings.email_use_tls,
             fail_silently=False,
         )
+
+        # Send email using custom backend
+        email = EmailMessage(
+            subject=f'[NetVault] {subject}',
+            body=message,
+            from_email=sys_settings.email_from_address,
+            to=recipient_list,
+            connection=connection,
+        )
+        email.send()
 
         logger.info(f"Email sent to {recipient_list}: {subject}")
         return True
@@ -50,19 +67,23 @@ def send_email_notification(subject: str, message: str, recipient_list: list = N
 
 def send_telegram_notification(message: str):
     """
-    Send Telegram notification
+    Send Telegram notification using system settings from database
 
     Args:
         message: Message text
     """
     try:
-        telegram_enabled = getattr(settings, 'TELEGRAM_ENABLED', False)
-        if not telegram_enabled:
+        # Get system settings from database (cached)
+        from netvault.models import SystemSettings
+        sys_settings = SystemSettings.get_settings()
+
+        # Check if Telegram is enabled
+        if not sys_settings.telegram_enabled:
             logger.debug("Telegram not enabled, skipping notification")
             return False
 
-        bot_token = getattr(settings, 'TELEGRAM_BOT_TOKEN', '')
-        chat_id = getattr(settings, 'TELEGRAM_CHAT_ID', '')
+        bot_token = sys_settings.get_telegram_bot_token()  # Decrypted
+        chat_id = sys_settings.telegram_chat_id
 
         if not bot_token or not chat_id:
             logger.warning("Telegram not configured properly")
@@ -97,10 +118,11 @@ def notify_backup_success(device_name: str, backup_id: int = None, size_bytes: i
         size_bytes: Backup size in bytes
         has_changes: Whether config changed
     """
-    from django.conf import settings
+    # Check if notifications are enabled (from database settings)
+    from netvault.models import SystemSettings
+    sys_settings = SystemSettings.get_settings()
 
-    # Check if notifications are enabled
-    if not getattr(settings, 'NOTIFY_ON_BACKUP_SUCCESS', False):
+    if not sys_settings.notify_on_backup_success:
         return
 
     subject = f"Backup Success: {device_name}"
@@ -129,10 +151,11 @@ def notify_backup_failed(device_name: str, error_message: str, backup_id: int = 
         error_message: Error description
         backup_id: Backup record ID
     """
-    from django.conf import settings
+    # Check if notifications are enabled (from database settings)
+    from netvault.models import SystemSettings
+    sys_settings = SystemSettings.get_settings()
 
-    # Check if notifications are enabled
-    if not getattr(settings, 'NOTIFY_ON_BACKUP_FAILURE', True):
+    if not sys_settings.notify_on_backup_failure:
         return
 
     subject = f"Backup Failed: {device_name}"

@@ -266,10 +266,12 @@ def backup_multiple_devices(device_ids: list, triggered_by_id: int = None, backu
         schedule_id: BackupSchedule ID if this is a scheduled backup
     """
     from celery import group
-    from django.conf import settings
+    from netvault.models import SystemSettings
 
     # Rate limiting: split into chunks to prevent overwhelming the queue
-    chunk_size = getattr(settings, 'BACKUP_PARALLEL_WORKERS', 10)
+    # Get parallel workers from database settings
+    sys_settings = SystemSettings.get_settings()
+    chunk_size = sys_settings.backup_parallel_workers
     delay_between_chunks = 5  # seconds between chunk groups
 
     total_chunks = 0
@@ -384,13 +386,19 @@ def run_scheduled_backups():
 
 
 @shared_task
-def cleanup_old_backups(retention_days: int = 90):
+def cleanup_old_backups(retention_days: int = None):
     """
-    Delete old backups based on retention policy
+    Delete old backups based on retention policy from system settings
 
     Args:
-        retention_days: Number of days to keep backups
+        retention_days: Number of days to keep backups (optional, defaults to system settings)
     """
+    # Get retention days from system settings if not provided
+    if retention_days is None:
+        from netvault.models import SystemSettings
+        sys_settings = SystemSettings.get_settings()
+        retention_days = sys_settings.backup_retention_days
+
     logger.info(f"Cleaning up backups older than {retention_days} days")
 
     cutoff_date = timezone.now() - timedelta(days=retention_days)

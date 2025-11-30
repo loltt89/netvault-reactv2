@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'drf_spectacular',
 
     # Local apps
+    'netvault.apps.NetvaultConfig',  # Core app with SystemSettings
     'accounts',
     'devices',
     'backups',

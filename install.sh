@@ -434,6 +434,10 @@ run_migrations() {
 
     print_success "Database migrations completed"
 
+    # Initialize system settings from .env
+    print_message "$BLUE" "Initializing system settings..."
+    ./venv/bin/python manage.py init_system_settings
+
     # Add popular network device vendors
     print_message "$BLUE" "Adding popular network device vendors..."
     ./venv/bin/python manage.py add_popular_vendors
