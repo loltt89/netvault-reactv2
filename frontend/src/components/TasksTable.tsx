@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import './TasksTable.css';
@@ -56,6 +56,7 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+  const tasksRef = useRef<Task[]>([]);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -78,7 +79,9 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
       }
 
       const response = await apiService.backups.list(params);
-      setTasks(response.results || response);
+      const newTasks = response.results || response;
+      setTasks(newTasks);
+      tasksRef.current = newTasks;
 
       // Handle pagination
       if (response.count) {
@@ -96,13 +99,14 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
 
     // Auto-refresh every 5 seconds if there are running tasks
     const interval = setInterval(() => {
-      if (tasks.some(t => t.status === 'running' || t.status === 'pending')) {
+      // Use ref to avoid dependency on tasks state
+      if (tasksRef.current.some(t => t.status === 'running' || t.status === 'pending')) {
         fetchTasks();
       }
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [fetchTasks, tasks]);
+  }, [fetchTasks]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
