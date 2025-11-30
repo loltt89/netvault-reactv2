@@ -198,9 +198,9 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
-        'anon': '1000/hour',  # Anonymous users: 10 requests per hour
-        'user': '10000/hour',  # Authenticated users: 1000 per hour
-        'login': '20/hour',  # Login attempts: 5 per hour per IP
+        'anon': '10000/hour',  # Anonymous users: 10000 requests per hour
+        'user': '100000/hour',  # Authenticated users: 100000 per hour
+        'login': '200/hour',  # Login attempts: 200 per hour per IP
     },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
