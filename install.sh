@@ -122,6 +122,12 @@ setup_redis_password() {
         # Bind only to localhost
         sed -i 's/^bind .*/bind 127.0.0.1/' /etc/redis/redis.conf
 
+        # Enable Redis persistence (AOF mode)
+        sed -i '/^appendonly /d' /etc/redis/redis.conf
+        echo "appendonly yes" >> /etc/redis/redis.conf
+        sed -i '/^appendfsync /d' /etc/redis/redis.conf
+        echo "appendfsync everysec" >> /etc/redis/redis.conf
+
         # Restart Redis
         systemctl restart redis-server
 
@@ -558,6 +564,26 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
+    # Flower service (Celery monitoring)
+    cat > /etc/systemd/system/netvault-flower.service <<EOF
+[Unit]
+Description=NetVault Flower (Celery Monitoring)
+After=network.target redis.service netvault-celery-worker.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=${INSTALL_DIR}
+Environment="PATH=${INSTALL_DIR}/venv/bin"
+ExecStart=${INSTALL_DIR}/venv/bin/celery -A netvault flower --port=5555 --address=127.0.0.1
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
     # Reload systemd
     systemctl daemon-reload
 
@@ -565,10 +591,12 @@ EOF
     systemctl enable netvault-backend.service
     systemctl enable netvault-celery-worker.service
     systemctl enable netvault-celery-beat.service
+    systemctl enable netvault-flower.service
 
     systemctl start netvault-backend.service
     systemctl start netvault-celery-worker.service
     systemctl start netvault-celery-beat.service
+    systemctl start netvault-flower.service
 
     print_success "Systemd services configured and started"
 }
@@ -707,6 +735,15 @@ $(generate_admin_ip_whitelist)        proxy_pass http://127.0.0.1:8000;
         proxy_read_timeout 86400;
     }
 
+    # Flower (Celery monitoring, IP restricted for security)
+    location /flower/ {
+$(generate_admin_ip_whitelist)        proxy_pass http://127.0.0.1:5555/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
     # Frontend routes (React Router)
     location / {
         try_files \$uri \$uri/ /index.html;
@@ -786,6 +823,15 @@ $(generate_admin_ip_whitelist)        proxy_pass http://127.0.0.1:8000;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_read_timeout 86400;
+    }
+
+    # Flower (Celery monitoring, IP restricted for security)
+    location /flower/ {
+$(generate_admin_ip_whitelist)        proxy_pass http://127.0.0.1:5555/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
     # Frontend routes (React Router)

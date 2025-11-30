@@ -617,9 +617,19 @@ class TelnetConnection(BaseDeviceConnection):
             output = ""
             max_iterations = 100
             iteration = 0
+            start_time = time.time()
+            read_timeout = 60  # Total timeout for reading command output
 
             while iteration < max_iterations:
-                chunk = self.connection.read_very_eager().decode('utf-8', errors='ignore')
+                # Check total timeout
+                if time.time() - start_time > read_timeout:
+                    break
+
+                try:
+                    chunk = self.connection.read_very_eager().decode('utf-8', errors='ignore')
+                except EOFError:
+                    break
+
                 if chunk:
                     output += chunk
 
