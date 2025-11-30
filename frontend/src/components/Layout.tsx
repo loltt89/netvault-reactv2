@@ -27,6 +27,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   // ===== Real-time Terminal State =====
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [showTerminal, setShowTerminal] = useState(false);
+  const [isTasksPanelMinimized, setIsTasksPanelMinimized] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -157,13 +158,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     };
   }, [user?.id]); // Only reconnect when user ID changes, not on every user object update
 
-  // Handle terminal close
-  const handleTerminalClose = () => {
-    setShowTerminal(false);
-    setLogs([]);
-    if (autoCloseTimeoutRef.current) {
-      clearTimeout(autoCloseTimeoutRef.current);
-    }
+  // Handle tasks panel minimize/maximize toggle
+  const handleToggleTasksPanel = () => {
+    setIsTasksPanelMinimized(!isTasksPanelMinimized);
   };
 
   // Handle log clear
@@ -260,17 +257,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       />
 
       {/* Main Content */}
-      <main className="main-content" style={{ paddingBottom: showTerminal ? '170px' : '0' }}>
+      <main className="main-content" style={{ paddingBottom: isTasksPanelMinimized ? '50px' : '60vh' }}>
         {children}
       </main>
 
-      {/* Tasks Panel (VMware-style) */}
-      {showTerminal && (
-        <TasksTable
-          onClose={handleTerminalClose}
-          isConnected={isConnected}
-        />
-      )}
+      {/* Tasks Panel (VMware-style) - Always visible */}
+      <TasksTable
+        onToggle={handleToggleTasksPanel}
+        isMinimized={isTasksPanelMinimized}
+        isConnected={isConnected}
+      />
     </div>
   );
 };

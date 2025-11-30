@@ -12,6 +12,19 @@
   flex-direction: column;
   z-index: 999;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  transition: height 0.3s ease;
+}
+
+/* Minimized State */
+.tasks-panel.minimized {
+  height: 48px;
+  overflow: hidden;
+}
+
+.tasks-panel.minimized .tasks-filters,
+.tasks-panel.minimized .tasks-table-container,
+.tasks-panel.minimized .tasks-pagination {
+  display: none;
 }
 
 /* Dark theme support */
@@ -79,25 +92,26 @@
   color: #ef5350;
 }
 
-.tasks-close-btn {
+.tasks-toggle-btn {
   background: none;
   border: none;
-  font-size: 20px;
+  font-size: 18px;
   color: #666;
   cursor: pointer;
   padding: 4px 8px;
-  transition: color 0.2s;
+  transition: all 0.2s;
 }
 
-.tasks-close-btn:hover {
+.tasks-toggle-btn:hover {
   color: #333;
+  transform: scale(1.1);
 }
 
-[data-theme="dark"] .tasks-close-btn {
+[data-theme="dark"] .tasks-toggle-btn {
   color: #aaa;
 }
 
-[data-theme="dark"] .tasks-close-btn:hover {
+[data-theme="dark"] .tasks-toggle-btn:hover {
   color: #fff;
 }
 

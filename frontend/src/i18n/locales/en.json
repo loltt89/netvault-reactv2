@@ -575,6 +575,8 @@
     "live": "Live",
     "offline": "Offline",
     "close": "Close",
+    "minimize": "Minimize",
+    "maximize": "Maximize",
     "status": "Status",
     "task": "Task",
     "target": "Target",

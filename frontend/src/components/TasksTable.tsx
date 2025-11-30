@@ -37,7 +37,8 @@ interface TaskDetail extends Task {
 }
 
 interface TasksTableProps {
-  onClose: () => void;
+  onToggle: () => void;
+  isMinimized: boolean;
   isConnected: boolean;
 }
 
@@ -45,7 +46,7 @@ type StatusFilter = 'all' | 'running' | 'completed' | 'failed';
 type SortField = 'started_at' | 'device' | 'status' | 'duration_seconds';
 type SortOrder = 'asc' | 'desc';
 
-const TasksTable: React.FC<TasksTableProps> = ({ onClose, isConnected }) => {
+const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnected }) => {
   const { t } = useTranslation();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(false);
@@ -182,16 +183,16 @@ const TasksTable: React.FC<TasksTableProps> = ({ onClose, isConnected }) => {
   const getFailedTasks = () => tasks.filter(t => t.status === 'failed').length;
 
   return (
-    <div className="tasks-panel">
-      <div className="tasks-header">
+    <div className={`tasks-panel ${isMinimized ? 'minimized' : ''}`}>
+      <div className="tasks-header" onClick={isMinimized ? onToggle : undefined} style={{ cursor: isMinimized ? 'pointer' : 'default' }}>
         <div className="tasks-title">
           <h2>{t('tasks.title')}</h2>
           <span className={`connection-badge ${isConnected ? 'connected' : 'disconnected'}`}>
             {isConnected ? `🟢 ${t('tasks.live')}` : `🔴 ${t('tasks.offline')}`}
           </span>
         </div>
-        <button onClick={onClose} className="tasks-close-btn" title={t('tasks.close')}>
-          ✕
+        <button onClick={onToggle} className="tasks-toggle-btn" title={isMinimized ? t('tasks.maximize') : t('tasks.minimize')}>
+          {isMinimized ? '▲' : '▼'}
         </button>
       </div>
 
