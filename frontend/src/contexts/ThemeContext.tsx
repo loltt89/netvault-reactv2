@@ -24,7 +24,7 @@ interface ThemeProviderProps {
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const [theme, setThemeState] = useState<ThemeName>(() => {
     const saved = localStorage.getItem('theme');
-    return (saved as ThemeName) || 'neumorphism';
+    return (saved as ThemeName) || 'industrial';
   });
 
   useEffect(() => {

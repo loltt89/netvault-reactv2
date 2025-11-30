@@ -74,11 +74,12 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('ru', 'Russian'),
         ('kk', 'Kazakh'),
     ])
-    theme = models.CharField(max_length=20, default='light', choices=[
-        ('light', 'Light'),
-        ('dark_blue', 'Dark Blue'),
-        ('teal_light', 'Teal Light'),
-        ('deep_dark', 'Deep Dark'),
+    theme = models.CharField(max_length=20, default='industrial', choices=[
+        ('industrial', 'Industrial'),
+        ('neumorphism', 'Neumorphism'),
+        ('isometric', 'Isometric'),
+        ('glassmorphism', 'Glassmorphism'),
+        ('blueprint', 'Blueprint'),
     ])
 
     objects = UserManager()
