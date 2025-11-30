@@ -199,7 +199,7 @@ REST_FRAMEWORK = {
     ],
     'DEFAULT_THROTTLE_RATES': {
         'anon': '10/hour',  # Anonymous users: 10 requests per hour
-        'user': '1000/hour',  # Authenticated users: 1000 per hour
+        'user': '10000/hour',  # Authenticated users: 1000 per hour
         'login': '5/hour',  # Login attempts: 5 per hour per IP
     },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
