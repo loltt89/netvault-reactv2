@@ -472,3 +472,150 @@ class DeviceValidationTestCase(TestCase):
                 created_by=self.user
             )
             self.assertEqual(device.criticality, crit)
+
+
+class DeviceAPIAdvancedTestCase(APITestCase):
+    """Advanced tests for Device API endpoints"""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='admin_adv@example.com',
+            username='adminadv',
+            password='TestPass123!',
+            role='administrator'
+        )
+        self.operator = User.objects.create_user(
+            email='operator@example.com',
+            username='operator',
+            password='TestPass123!',
+            role='operator'
+        )
+        self.client = APIClient()
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-adv')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-adv')
+        self.device = Device.objects.create(
+            name='Adv-Device',
+            ip_address='10.0.0.50',
+            vendor=self.vendor,
+            device_type=self.device_type,
+            username='admin',
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.admin
+        )
+
+    def test_update_device_admin(self):
+        """Test admin can update device"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(f'/api/v1/devices/devices/{self.device.id}/', {
+            'name': 'Updated-Device',
+            'location': 'New Location'
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.name, 'Updated-Device')
+
+    def test_delete_device_admin(self):
+        """Test admin can delete device"""
+        self.client.force_authenticate(user=self.admin)
+        device_id = self.device.id
+        response = self.client.delete(f'/api/v1/devices/devices/{device_id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Device.objects.filter(id=device_id).exists())
+
+    def test_operator_can_view(self):
+        """Test operator can view devices"""
+        self.client.force_authenticate(user=self.operator)
+        response = self.client.get('/api/v1/devices/devices/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_bulk_delete_admin(self):
+        """Test admin can bulk delete devices"""
+        self.client.force_authenticate(user=self.admin)
+        device2 = Device.objects.create(
+            name='Bulk-Device-2',
+            ip_address='10.0.0.51',
+            vendor=self.vendor,
+            device_type=self.device_type,
+            username='admin',
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.admin
+        )
+        response = self.client.post('/api/v1/devices/devices/bulk_delete/', {
+            'device_ids': [self.device.id, device2.id]
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(Device.objects.count(), 0)
+
+    def test_bulk_delete_non_admin(self):
+        """Test non-admin cannot bulk delete"""
+        self.client.force_authenticate(user=self.operator)
+        response = self.client.post('/api/v1/devices/devices/bulk_delete/', {
+            'device_ids': [self.device.id]
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class VendorAPITestCase(APITestCase):
+    """Tests for Vendor API"""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='vendor_admin@example.com',
+            username='vendoradmin',
+            password='TestPass123!',
+            role='administrator'
+        )
+        self.client = APIClient()
+
+    def test_list_vendors(self):
+        """Test listing vendors"""
+        self.client.force_authenticate(user=self.admin)
+        Vendor.objects.create(name='Cisco', slug='cisco-v')
+        Vendor.objects.create(name='Juniper', slug='juniper-v')
+
+        response = self.client.get('/api/v1/devices/vendors/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Response may be paginated or direct list
+        if isinstance(response.data, dict) and 'results' in response.data:
+            self.assertEqual(len(response.data['results']), 2)
+        else:
+            self.assertEqual(len(response.data), 2)
+
+    def test_create_vendor_admin(self):
+        """Test admin can create vendor"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/devices/vendors/', {
+            'name': 'New Vendor',
+            'slug': 'new-vendor'
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+
+class DeviceTypeAPITestCase(APITestCase):
+    """Tests for DeviceType API"""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='dtype_admin@example.com',
+            username='dtypeadmin',
+            password='TestPass123!',
+            role='administrator'
+        )
+        self.client = APIClient()
+
+    def test_list_device_types(self):
+        """Test listing device types"""
+        self.client.force_authenticate(user=self.admin)
+        DeviceType.objects.create(name='Router', slug='router-dt')
+        DeviceType.objects.create(name='Switch', slug='switch-dt')
+
+        response = self.client.get('/api/v1/devices/device-types/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Response may be paginated or direct list
+        if isinstance(response.data, dict) and 'results' in response.data:
+            self.assertEqual(len(response.data['results']), 2)
+        else:
+            self.assertEqual(len(response.data), 2)

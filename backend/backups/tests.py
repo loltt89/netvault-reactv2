@@ -464,3 +464,163 @@ class BackupSecurityTestCase(TestCase):
             backup1.configuration_encrypted,
             backup2.configuration_encrypted
         )
+
+
+class BackupAPIAdvancedTestCase(APITestCase):
+    """Advanced tests for Backup API endpoints"""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='backup_adv@example.com',
+            username='backupadv',
+            password='TestPass123!',
+            role='administrator'
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+
+        self.vendor = Vendor.objects.create(
+            name='Cisco',
+            slug='cisco-adv',
+            backup_commands=['show running-config']
+        )
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-adv')
+        self.device = Device.objects.create(
+            name='Adv-Backup-Device',
+            ip_address='192.168.1.10',
+            vendor=self.vendor,
+            device_type=self.device_type,
+            username='admin',
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.admin
+        )
+
+    def test_get_backup_detail(self):
+        """Test getting backup details"""
+        backup = Backup.objects.create(
+            device=self.device,
+            status='success',
+            success=True,
+            configuration_encrypted=encrypt_data('hostname Router'),
+            configuration_hash='abc123'
+        )
+
+        response = self.client.get(f'/api/v1/backups/backups/{backup.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['id'], backup.id)
+
+    def test_list_backups_filter_by_device(self):
+        """Test filtering backups by device"""
+        Backup.objects.create(
+            device=self.device,
+            status='success',
+            configuration_encrypted=encrypt_data('config'),
+            configuration_hash='hash1'
+        )
+
+        response = self.client.get(f'/api/v1/backups/backups/?device={self.device.id}')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_delete_backup_admin(self):
+        """Test admin can delete backup"""
+        backup = Backup.objects.create(
+            device=self.device,
+            status='success',
+            configuration_encrypted=encrypt_data('config'),
+            configuration_hash='hash1'
+        )
+        backup_id = backup.id
+
+        response = self.client.delete(f'/api/v1/backups/backups/{backup_id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Backup.objects.filter(id=backup_id).exists())
+
+
+class BackupScheduleAPITestCase(APITestCase):
+    """Tests for BackupSchedule API"""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='sched_admin@example.com',
+            username='schedadmin',
+            password='TestPass123!',
+            role='administrator'
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-sched')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-sched')
+        self.device = Device.objects.create(
+            name='Sched-Device',
+            ip_address='192.168.1.20',
+            vendor=self.vendor,
+            device_type=self.device_type,
+            username='admin',
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.admin
+        )
+
+    def test_list_schedules(self):
+        """Test listing backup schedules"""
+        schedule = BackupSchedule.objects.create(
+            name='Daily Backup',
+            frequency='daily',
+            run_time='02:00:00',
+            is_active=True
+        )
+        schedule.devices.add(self.device)
+
+        response = self.client.get('/api/v1/backups/schedules/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_create_schedule(self):
+        """Test creating a backup schedule"""
+        response = self.client.post('/api/v1/backups/schedules/', {
+            'name': 'New Schedule',
+            'frequency': 'daily',
+            'run_time': '03:00:00',
+            'is_active': True,
+            'devices': [self.device.id]
+        })
+        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_200_OK])
+
+
+class BackupRetentionPolicyAPITestCase(APITestCase):
+    """Tests for BackupRetentionPolicy API"""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='ret_admin@example.com',
+            username='retadmin',
+            password='TestPass123!',
+            role='administrator'
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+
+    def test_list_policies(self):
+        """Test listing retention policies"""
+        BackupRetentionPolicy.objects.create(
+            name='Standard Policy',
+            keep_last_n=20,
+            is_active=True
+        )
+
+        response = self.client.get('/api/v1/backups/retention-policies/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_create_policy(self):
+        """Test creating a retention policy"""
+        response = self.client.post('/api/v1/backups/retention-policies/', {
+            'name': 'New Policy',
+            'keep_last_n': 30,
+            'keep_daily': 14,
+            'keep_weekly': 8,
+            'keep_monthly': 12,
+            'is_active': True
+        })
+        self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_200_OK])
