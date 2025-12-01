@@ -78,7 +78,7 @@ class Device(models.Model):
     protocol = models.CharField(max_length=10, choices=PROTOCOL_CHOICES, default='ssh')
     port = models.IntegerField(default=22)
     username = models.CharField(max_length=255)
-    password_encrypted = models.TextField()  # Encrypted password
+    password_encrypted = models.TextField(blank=True, default='')  # Encrypted password (can be empty for some devices)
     enable_password_encrypted = models.TextField(blank=True)  # Encrypted enable password for Cisco
 
     # Organization
@@ -167,7 +167,7 @@ class DeviceCredential(models.Model):
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='credentials')
     credential_type = models.CharField(max_length=50)  # enable, tacacs, radius, etc.
     username = models.CharField(max_length=255, blank=True)
-    password_encrypted = models.TextField()
+    password_encrypted = models.TextField(blank=True, default='')
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

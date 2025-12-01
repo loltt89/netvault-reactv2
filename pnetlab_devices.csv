@@ -1,0 +1,74 @@
+Name;IP Address;Vendor;Device Type;Protocol;Port;Username;Password;Enable Password;Location;Description;Backup Enabled;Criticality
+Cisco-SSH-150;192.168.100.150;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-151;192.168.100.151;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-152;192.168.100.152;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-153;192.168.100.153;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-154;192.168.100.154;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-155;192.168.100.155;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-156;192.168.100.156;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-157;192.168.100.157;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-158;192.168.100.158;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-159;192.168.100.159;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-160;192.168.100.160;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-161;192.168.100.161;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-162;192.168.100.162;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-163;192.168.100.163;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-164;192.168.100.164;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-165;192.168.100.165;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-166;192.168.100.166;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-167;192.168.100.167;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-168;192.168.100.168;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-169;192.168.100.169;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-170;192.168.100.170;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-171;192.168.100.171;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-172;192.168.100.172;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-173;192.168.100.173;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-174;192.168.100.174;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-175;192.168.100.175;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-176;192.168.100.176;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-177;192.168.100.177;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-178;192.168.100.178;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-179;192.168.100.179;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-180;192.168.100.180;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-181;192.168.100.181;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-182;192.168.100.182;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-183;192.168.100.183;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-184;192.168.100.184;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-185;192.168.100.185;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-186;192.168.100.186;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-187;192.168.100.187;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-188;192.168.100.188;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-189;192.168.100.189;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-190;192.168.100.190;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-191;192.168.100.191;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-192;192.168.100.192;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-193;192.168.100.193;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-194;192.168.100.194;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-195;192.168.100.195;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-196;192.168.100.196;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-197;192.168.100.197;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-23;192.168.100.23;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-SSH-39;192.168.100.39;cisco;router;ssh;22;test;test;;PNetLab;Cisco IOS SSH v1;true;medium
+Cisco-Telnet-40;192.168.100.40;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-41;192.168.100.41;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-42;192.168.100.42;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-43;192.168.100.43;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-44;192.168.100.44;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-45;192.168.100.45;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-46;192.168.100.46;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-47;192.168.100.47;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-48;192.168.100.48;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-49;192.168.100.49;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-50;192.168.100.50;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-51;192.168.100.51;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-52;192.168.100.52;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-53;192.168.100.53;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-54;192.168.100.54;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-55;192.168.100.55;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-56;192.168.100.56;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-57;192.168.100.57;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-58;192.168.100.58;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-59;192.168.100.59;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Cisco-Telnet-60;192.168.100.60;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
+Extreme-61;192.168.100.61;extreme;switch;ssh;22;admin;;;PNetLab;Extreme SSH v2;true;medium
+Extreme-62;192.168.100.62;extreme;switch;ssh;22;admin;;;PNetLab;Extreme SSH v2;true;medium

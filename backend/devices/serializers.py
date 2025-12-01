@@ -125,8 +125,8 @@ class DeviceSerializer(serializers.ModelSerializer):
 class DeviceCreateSerializer(serializers.ModelSerializer):
     """Device serializer for create/update with password handling"""
 
-    password = serializers.CharField(write_only=True, required=True)
-    enable_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True, default='')
+    enable_password = serializers.CharField(write_only=True, required=False, allow_blank=True, default='')
 
     class Meta:
         model = Device
