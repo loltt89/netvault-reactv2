@@ -541,7 +541,7 @@ class SSHConnection(BaseDeviceConnection):
         self.use_pexpect: bool = False  # Flag for SSH v1 devices
 
     def connect(self) -> None:
-        """Establish SSH connection with legacy algorithm support and system SSH fallback"""
+        """Establish SSH connection with smart fallback chain"""
         # Try paramiko first (faster and more features)
         try:
             self.client = paramiko.SSHClient()
@@ -575,39 +575,61 @@ class SSHConnection(BaseDeviceConnection):
             logger.info(f"Connected to {self.host} via paramiko SSH")
 
         except (paramiko.SSHException, socket.error) as e:
-            # Paramiko failed - try system SSH as fallback for very old devices
-            logger.warning(f"Paramiko SSH failed for {self.host}, trying system SSH: {str(e)}")
-            try:
-                # Test system SSH with a simple command
-                success, output = try_system_ssh(
+            error_msg = str(e).lower()
+
+            # Check if it's SSH v1 incompatibility - skip System SSH and go straight to pexpect
+            if any(keyword in error_msg for keyword in ['incompatible version', 'version 1', 'ssh-1', 'protocol version 1']):
+                logger.warning(f"SSH v1 detected for {self.host} (paramiko error), trying pexpect")
+                success, output = try_ssh_v1_pexpect(
                     self.host, self.port, self.username, self.password,
                     'echo "SSH_OK"', timeout=10
                 )
                 if success and 'SSH_OK' in output:
+                    self.use_pexpect = True
                     self.use_system_ssh = True
-                    logger.info(f"Connected to {self.host} via system SSH (legacy device)")
+                    logger.info(f"Connected to {self.host} via pexpect (SSH v1)")
                 else:
-                    # System SSH failed - check if it's SSH v1
-                    if 'Protocol major versions differ' in output or 'SSH protocol v.1' in output:
-                        # Try pexpect for SSH v1 devices
-                        logger.warning(f"SSH v1 detected for {self.host}, trying pexpect")
-                        success_v1, output_v1 = try_ssh_v1_pexpect(
-                            self.host, self.port, self.username, self.password,
-                            'echo "SSH_OK"', timeout=10
-                        )
-                        if success_v1 and 'SSH_OK' in output_v1:
-                            self.use_pexpect = True
-                            self.use_system_ssh = True
-                            logger.info(f"Connected to {self.host} via pexpect (SSH v1 device)")
-                        else:
-                            raise DeviceConnectionError(f"All SSH methods failed. Pexpect: {output_v1}")
+                    raise DeviceConnectionError(f"Paramiko and pexpect failed. Paramiko: {str(e)}, Pexpect: {output}")
+            else:
+                # Not SSH v1 issue - try System SSH for legacy algorithms
+                logger.warning(f"Paramiko failed for {self.host}, trying system SSH: {str(e)}")
+                try:
+                    success, output = try_system_ssh(
+                        self.host, self.port, self.username, self.password,
+                        'echo "SSH_OK"', timeout=10
+                    )
+                    if success and 'SSH_OK' in output:
+                        self.use_system_ssh = True
+                        logger.info(f"Connected to {self.host} via system SSH (legacy algorithms)")
                     else:
-                        raise DeviceConnectionError(f"System SSH failed: {output}")
-            except Exception as fallback_error:
-                raise DeviceConnectionError(
-                    f"Both paramiko and system SSH failed for {self.host}. "
-                    f"Paramiko: {str(e)}, System SSH: {str(fallback_error)}"
-                )
+                        # System SSH failed - check if it's SSH v1
+                        if 'Protocol major versions differ' in output or 'SSH protocol v.1' in output:
+                            logger.warning(f"SSH v1 detected for {self.host} (system SSH error), trying pexpect")
+                            success_v1, output_v1 = try_ssh_v1_pexpect(
+                                self.host, self.port, self.username, self.password,
+                                'echo "SSH_OK"', timeout=10
+                            )
+                            if success_v1 and 'SSH_OK' in output_v1:
+                                self.use_pexpect = True
+                                self.use_system_ssh = True
+                                logger.info(f"Connected to {self.host} via pexpect (SSH v1)")
+                            else:
+                                raise DeviceConnectionError(
+                                    f"All SSH methods failed for {self.host}. "
+                                    f"Paramiko: {str(e)}, System SSH: {output}, Pexpect: {output_v1}"
+                                )
+                        else:
+                            raise DeviceConnectionError(
+                                f"Paramiko and system SSH failed for {self.host}. "
+                                f"Paramiko: {str(e)}, System SSH: {output}"
+                            )
+                except DeviceConnectionError:
+                    raise
+                except Exception as fallback_error:
+                    raise DeviceConnectionError(
+                        f"Paramiko and system SSH failed for {self.host}. "
+                        f"Paramiko: {str(e)}, System SSH: {str(fallback_error)}"
+                    )
         except paramiko.AuthenticationException:
             raise DeviceConnectionError(f"Authentication failed for {self.host}")
         except socket.timeout:
