@@ -1,0 +1,229 @@
+name: NetVault CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '18'
+
+jobs:
+  # Backend Tests
+  backend-tests:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpassword
+          MYSQL_DATABASE: netvault_test
+          MYSQL_USER: netvault_test
+          MYSQL_PASSWORD: testpassword
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libmariadb-dev pkg-config
+
+      - name: Install Python dependencies
+        working-directory: ./backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install coverage
+
+      - name: Create .env file
+        working-directory: ./backend
+        run: |
+          cat > .env << EOF
+          DEBUG=False
+          SECRET_KEY=test-secret-key-for-ci-testing-only
+          DB_NAME=netvault_test
+          DB_USER=netvault_test
+          DB_PASSWORD=testpassword
+          DB_HOST=127.0.0.1
+          DB_PORT=3306
+          REDIS_URL=redis://localhost:6379/0
+          ALLOWED_HOSTS=localhost,127.0.0.1
+          ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+          EOF
+
+      - name: Run migrations
+        working-directory: ./backend
+        run: python manage.py migrate --run-syncdb
+
+      - name: Run backend tests with coverage
+        working-directory: ./backend
+        run: |
+          coverage run --source='.' manage.py test core accounts devices backups notifications
+          coverage report --fail-under=50
+          coverage xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./backend/coverage.xml
+          flags: backend
+          fail_ci_if_error: false
+
+  # Frontend Tests & Build
+  frontend-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: './frontend/package-lock.json'
+
+      - name: Install dependencies
+        working-directory: ./frontend
+        run: npm ci
+
+      - name: Type check
+        working-directory: ./frontend
+        run: npx tsc --noEmit
+
+      - name: Build frontend
+        working-directory: ./frontend
+        run: npm run build
+        env:
+          CI: false  # Prevent treating warnings as errors
+
+  # Security checks
+  security-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install safety
+        run: pip install safety bandit
+
+      - name: Check Python dependencies for vulnerabilities
+        working-directory: ./backend
+        run: safety check -r requirements.txt --ignore 70612 || true
+
+      - name: Run Bandit security linter
+        working-directory: ./backend
+        run: bandit -r . -x ./venv,./tests --severity-level medium -f json -o bandit-report.json || true
+
+      - name: Upload Bandit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: bandit-security-report
+          path: backend/bandit-report.json
+
+  # Lint checks
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install linters
+        run: pip install flake8 isort
+
+      - name: Run flake8
+        working-directory: ./backend
+        run: flake8 . --max-line-length=120 --exclude=venv,migrations --count --statistics || true
+
+      - name: Check import sorting
+        working-directory: ./backend
+        run: isort . --check-only --skip venv --skip migrations || true
+
+  # Build installer archive
+  build-installer:
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-build]
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Build frontend
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build
+        env:
+          CI: false
+
+      - name: Create installer archive
+        run: |
+          tar --exclude='backend/venv' \
+              --exclude='frontend/node_modules' \
+              --exclude='backend/__pycache__' \
+              --exclude='backend/*/__pycache__' \
+              --exclude='backend/.env' \
+              --exclude='frontend/.env' \
+              --exclude='.git' \
+              --exclude='.github' \
+              --exclude='.claude' \
+              --exclude='backend/celerybeat-schedule' \
+              -czf netvault-installer.tar.gz \
+              backend frontend install.sh README.md
+          md5sum netvault-installer.tar.gz > netvault-installer.tar.gz.md5
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: netvault-installer
+          path: |
+            netvault-installer.tar.gz
+            netvault-installer.tar.gz.md5
+          retention-days: 30
