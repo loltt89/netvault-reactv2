@@ -402,13 +402,12 @@ def try_plink(host: str, port: int, username: str, password: str,
         # Build plink command
         # -ssh: force SSH protocol
         # -1 or -2: SSH protocol version
-        # -batch: disable interactive prompts
         # -pw: password authentication
+        # Note: NOT using -batch to allow automatic host key acceptance
         plink_cmd = [
             '/usr/bin/plink',
             '-ssh',
             f'-{ssh_version}',  # -1 for SSH v1, -2 for SSH v2
-            '-batch',  # Non-interactive mode
             '-P', str(port),
             '-l', username,
             '-pw', password,
@@ -416,8 +415,10 @@ def try_plink(host: str, port: int, username: str, password: str,
             command
         ]
 
+        # Send "y\n" to automatically accept host key on first connection
         result = subprocess.run(
             plink_cmd,
+            input='y\n',  # Accept host key automatically
             capture_output=True,
             timeout=timeout,
             text=True,
@@ -490,12 +491,13 @@ class SSHConnection(BaseDeviceConnection):
             logger.warning(f"Paramiko failed for {self.host}: {str(e)}")
             logger.info(f"Trying plink SSH v2 for {self.host}")
 
+            # Use empty string as test command - just check if connection succeeds
             success, output = try_plink(
                 self.host, self.port, self.username, self.password,
-                'echo "SSH_OK"', timeout=10, ssh_version=2
+                '', timeout=10, ssh_version=2
             )
 
-            if success and 'SSH_OK' in output:
+            if success:
                 self.use_plink = True
                 self.plink_ssh_version = 2
                 logger.info(f"Connected to {self.host} via plink (SSH v2)")
@@ -506,10 +508,10 @@ class SSHConnection(BaseDeviceConnection):
 
                 success_v1, output_v1 = try_plink(
                     self.host, self.port, self.username, self.password,
-                    'echo "SSH_OK"', timeout=10, ssh_version=1
+                    '', timeout=10, ssh_version=1
                 )
 
-                if success_v1 and 'SSH_OK' in output_v1:
+                if success_v1:
                     self.use_plink = True
                     self.plink_ssh_version = 1
                     logger.info(f"Connected to {self.host} via plink (SSH v1)")
