@@ -53,24 +53,52 @@ const DeviceDetailPage: React.FC = () => {
   const [compareBackup2, setCompareBackup2] = useState<Backup | null>(null);
   const [diffContent, setDiffContent] = useState<string>('');
 
-  useEffect(() => {
-    if (id) {
-      loadDeviceDetails();
-      loadDeviceBackups();
-    }
-  }, [id]);
+  // Ref to store interval ID for cleanup
+  const pollIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
 
-  const loadDeviceDetails = async () => {
-    try {
-      const data = await apiService.devices.get(parseInt(id!));
-      setDevice(data);
-    } catch (error) {
-      console.error('Error loading device:', error);
-      alert(t('common.error') + ': Failed to load device');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Cleanup interval on unmount
+  useEffect(() => {
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadData = async () => {
+      if (id) {
+        try {
+          const [deviceData] = await Promise.all([
+            apiService.devices.get(parseInt(id)),
+          ]);
+          if (isMounted) {
+            setDevice(deviceData);
+            // Load backups separately
+            const response = await apiService.backups.list({ device: id, ordering: '-created_at' });
+            const backupsList = Array.isArray(response) ? response : response.results || [];
+            if (isMounted) setBackups(backupsList);
+          }
+        } catch (error) {
+          if (isMounted) {
+            console.error('Error loading device:', error);
+            alert(t('common.error') + ': Failed to load device');
+          }
+        } finally {
+          if (isMounted) setLoading(false);
+        }
+      }
+    };
+
+    loadData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [id, t]);
 
   const loadDeviceBackups = async () => {
     try {
@@ -92,14 +120,20 @@ const DeviceDetailPage: React.FC = () => {
       // Queue backup task - WebSocket in Layout will show real-time progress
       await apiService.devices.backupNow(device.id);
 
+      // Clear any existing poll interval
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+
       // Reload backups every 2 seconds for up to 30 seconds to catch the new backup
       let attempts = 0;
       const maxAttempts = 15;
-      const pollInterval = setInterval(async () => {
+      pollIntervalRef.current = setInterval(async () => {
         attempts++;
         await loadDeviceBackups();
-        if (attempts >= maxAttempts) {
-          clearInterval(pollInterval);
+        if (attempts >= maxAttempts && pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
         }
       }, 2000);
     } catch (error: any) {

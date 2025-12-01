@@ -35,21 +35,30 @@ def validate_custom_commands(value):
         if not isinstance(value['enable_mode'], bool):
             raise serializers.ValidationError('enable_mode must be a boolean')
 
-    # Validate backup command doesn't contain shell metacharacters (security)
-    backup_cmd = value.get('backup', '')
-    dangerous_chars = ['|', '&', ';', '`', '$', '(', ')']
-    if any(char in backup_cmd for char in dangerous_chars):
-        raise serializers.ValidationError(
-            f'Backup command cannot contain shell metacharacters: {" ".join(dangerous_chars)}'
-        )
+    # Validate commands using whitelist approach (more secure than blacklist)
+    # Allowed: alphanumeric, spaces, common network command chars
+    import re
+    SAFE_COMMAND_PATTERN = re.compile(r'^[a-zA-Z0-9\s\-_.:/@#]+$')
 
-    # Validate setup commands too
+    def validate_command(cmd, cmd_type):
+        """Validate single command against whitelist"""
+        if not cmd or not cmd.strip():
+            raise serializers.ValidationError(f'{cmd_type} command cannot be empty')
+        if len(cmd) > 500:
+            raise serializers.ValidationError(f'{cmd_type} command too long (max 500 chars)')
+        if not SAFE_COMMAND_PATTERN.match(cmd):
+            raise serializers.ValidationError(
+                f'{cmd_type} command contains invalid characters. '
+                f'Allowed: letters, numbers, spaces, - _ . : / @ #'
+            )
+
+    # Validate backup command
+    validate_command(value.get('backup', ''), 'Backup')
+
+    # Validate setup commands
     if 'setup' in value:
-        for cmd in value['setup']:
-            if any(char in cmd for char in dangerous_chars):
-                raise serializers.ValidationError(
-                    f'Setup commands cannot contain shell metacharacters: {" ".join(dangerous_chars)}'
-                )
+        for i, cmd in enumerate(value['setup']):
+            validate_command(cmd, f'Setup[{i}]')
 
     # Warn about unknown keys
     known_keys = {'setup', 'backup', 'enable_mode'}

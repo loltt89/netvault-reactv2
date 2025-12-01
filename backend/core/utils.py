@@ -21,13 +21,16 @@ def validate_csv_safe(value: str, field_name: str = 'Field') -> str:
     if not isinstance(value, str):
         value = str(value)
 
-    dangerous_chars = ['=', '+', '-', '@', '\t', '\r']
+    dangerous_chars = ['=', '+', '-', '@', '\t', '\r', '\n']
 
-    if value and value[0] in dangerous_chars:
-        raise ValueError(
-            f'{field_name} cannot start with "{value[0]}" character (CSV formula injection risk). '
-            f'Please remove or escape this character.'
-        )
+    # Check both original and stripped value to prevent bypass with leading spaces
+    # Excel/LibreOffice will strip spaces before interpreting formulas
+    for check_value in [value, value.lstrip()]:
+        if check_value and check_value[0] in dangerous_chars:
+            raise ValueError(
+                f'{field_name} cannot start with "{check_value[0]}" character (CSV formula injection risk). '
+                f'Please remove or escape this character.'
+            )
 
     return value
 
@@ -48,9 +51,13 @@ def sanitize_csv_value(value):
     if not isinstance(value, str):
         value = str(value)
 
-    dangerous_chars = ['=', '+', '-', '@', '\t', '\r']
+    dangerous_chars = ['=', '+', '-', '@', '\t', '\r', '\n']
 
+    # Check both original and stripped value to prevent bypass with leading spaces
+    stripped = value.lstrip()
     if value and value[0] in dangerous_chars:
+        return "'" + value
+    if stripped and stripped[0] in dangerous_chars:
         return "'" + value
 
     return value

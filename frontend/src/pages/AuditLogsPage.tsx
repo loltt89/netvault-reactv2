@@ -34,14 +34,10 @@ const AuditLogsPage: React.FC = () => {
   // Check if current user can view all logs
   const canViewAll = currentUser?.role === 'administrator' || currentUser?.role === 'auditor';
 
-  useEffect(() => {
-    loadLogs();
-  }, []);
-
-  const loadLogs = async () => {
+  const loadLogs = React.useCallback(async (currentFilters = filters) => {
     try {
       setLoading(true);
-      const data = await apiService.auditLogs.list(filters);
+      const data = await apiService.auditLogs.list(currentFilters);
       // Handle both paginated and non-paginated responses
       setLogs(Array.isArray(data) ? data : data.results || []);
     } catch (error) {
@@ -50,21 +46,27 @@ const AuditLogsPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [t]);
+
+  useEffect(() => {
+    loadLogs(filters);
+  }, []); // Load only on mount
 
   const applyFilters = () => {
-    loadLogs();
+    loadLogs(filters);
   };
 
   const clearFilters = () => {
-    setFilters({
+    const emptyFilters = {
       action: '',
       resource_type: '',
       user: '',
       success: '',
       search: ''
-    });
-    setTimeout(loadLogs, 0);
+    };
+    setFilters(emptyFilters);
+    // Load with empty filters immediately
+    loadLogs(emptyFilters);
   };
 
   const getActionIcon = (action: string) => {

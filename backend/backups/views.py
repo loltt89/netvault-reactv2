@@ -109,14 +109,20 @@ class BackupViewSet(viewsets.ModelViewSet):
     def download(self, request, pk=None):
         """Download backup configuration as file"""
         from django.http import HttpResponse
+        from urllib.parse import quote
+        import re
 
         backup = self.get_object()
         config = backup.get_configuration()
 
-        filename = f'{backup.device.name}_{backup.created_at.strftime("%Y%m%d_%H%M%S")}.txt'
+        # Sanitize filename to prevent path traversal and CRLF injection
+        # Remove path separators and control characters
+        safe_name = re.sub(r'[/\\:\r\n\t]', '_', backup.device.name)
+        filename = f'{safe_name}_{backup.created_at.strftime("%Y%m%d_%H%M%S")}.txt'
 
         response = HttpResponse(config, content_type='text/plain')
-        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        # Use RFC 5987 encoding for non-ASCII filenames and prevent CRLF injection
+        response['Content-Disposition'] = f"attachment; filename*=UTF-8''{quote(filename)}"
 
         return response
 
@@ -246,19 +252,26 @@ class BackupViewSet(viewsets.ModelViewSet):
 
         def zip_generator():
             """Generator that yields ZIP file chunks (streaming to avoid loading all in memory)"""
+            import re
             # Use a temp buffer to accumulate small chunks
             temp_buffer = io.BytesIO()
+
+            def sanitize_path(name):
+                """Sanitize filename for ZIP path - remove path traversal and control chars"""
+                return re.sub(r'[/\\:\r\n\t<>"|?*]', '_', name)
 
             with zipfile.ZipFile(temp_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
                 for backup in backups:
                     config = backup.get_configuration()
-                    filename = f'{backup.device.name}_{backup.created_at.strftime("%Y%m%d_%H%M%S")}.txt'
+                    safe_device_name = sanitize_path(backup.device.name)
+                    filename = f'{safe_device_name}_{backup.created_at.strftime("%Y%m%d_%H%M%S")}.txt'
 
                     # Add to zip with folder structure: vendor/device_name/filename
                     if backup.device.vendor:
-                        folder_path = f'{backup.device.vendor.name}/{backup.device.name}/{filename}'
+                        safe_vendor_name = sanitize_path(backup.device.vendor.name)
+                        folder_path = f'{safe_vendor_name}/{safe_device_name}/{filename}'
                     else:
-                        folder_path = f'Unknown/{backup.device.name}/{filename}'
+                        folder_path = f'Unknown/{safe_device_name}/{filename}'
 
                     zip_file.writestr(folder_path, config)
 
@@ -267,6 +280,7 @@ class BackupViewSet(viewsets.ModelViewSet):
             yield temp_buffer.read()
 
         response = StreamingHttpResponse(zip_generator(), content_type='application/zip')
+        # ZIP filename is safe (only timestamp, no user input)
         response['Content-Disposition'] = f'attachment; filename="backups_{timezone.now().strftime("%Y%m%d_%H%M%S")}.zip"'
 
         return response
@@ -411,9 +425,13 @@ class BackupScheduleViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def toggle_active(self, request, pk=None):
         """Toggle schedule active status"""
+        from django.db import transaction
+
         schedule = self.get_object()
-        schedule.is_active = not schedule.is_active
-        schedule.save()
+
+        with transaction.atomic():
+            schedule.is_active = not schedule.is_active
+            schedule.save(update_fields=['is_active'])
 
         return Response({
             'id': schedule.id,
