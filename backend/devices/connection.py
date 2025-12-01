@@ -8,6 +8,8 @@ import socket
 import re
 import ipaddress
 import logging
+import subprocess
+import tempfile
 from abc import ABC, abstractmethod
 from typing import Optional, Tuple, List
 
@@ -376,6 +378,80 @@ class BaseDeviceConnection(ABC):
         self.disconnect()
 
 
+def try_system_ssh(host: str, port: int, username: str, password: str,
+                   command: str, timeout: int = 30) -> Tuple[bool, str]:
+    """
+    Fallback to system SSH client for devices with SSH v1 or very old SSH implementations
+    that paramiko cannot handle. System SSH supports legacy protocols.
+
+    Args:
+        host: Target host
+        port: SSH port
+        username: Username
+        password: Password
+        command: Command to execute
+        timeout: Operation timeout
+
+    Returns:
+        Tuple of (success, output)
+    """
+    try:
+        # Create temporary SSH config with legacy algorithm support
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.ssh_config', delete=False) as f:
+            ssh_config = f"""
+Host *
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    LogLevel ERROR
+    # Enable ALL legacy algorithms for maximum compatibility
+    KexAlgorithms +diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1
+    HostKeyAlgorithms +ssh-rsa,ssh-dss
+    Ciphers +aes128-cbc,3des-cbc,aes192-cbc,aes256-cbc
+    MACs +hmac-sha1,hmac-sha1-96,hmac-md5,hmac-md5-96
+    PubkeyAcceptedKeyTypes +ssh-rsa,ssh-dss
+"""
+            f.write(ssh_config)
+            config_file = f.name
+
+        # Use sshpass for password authentication
+        # Format: sshpass -p 'password' ssh -F config_file user@host command
+        ssh_cmd = [
+            'sshpass', '-p', password,
+            'ssh',
+            '-F', config_file,
+            '-p', str(port),
+            '-o', 'ConnectTimeout=10',
+            '-o', 'ServerAliveInterval=5',
+            f'{username}@{host}',
+            command
+        ]
+
+        result = subprocess.run(
+            ssh_cmd,
+            capture_output=True,
+            timeout=timeout,
+            text=True
+        )
+
+        # Cleanup config file
+        try:
+            subprocess.run(['rm', '-f', config_file], check=False)
+        except:
+            pass
+
+        if result.returncode == 0:
+            return True, result.stdout
+        else:
+            return False, f"SSH failed: {result.stderr}"
+
+    except subprocess.TimeoutExpired:
+        return False, "SSH command timeout"
+    except FileNotFoundError:
+        return False, "sshpass not found - install with: apt-get install sshpass"
+    except Exception as e:
+        return False, f"System SSH error: {str(e)}"
+
+
 class SSHConnection(BaseDeviceConnection):
     """SSH connection handler for network devices"""
 
@@ -385,13 +461,17 @@ class SSHConnection(BaseDeviceConnection):
         # SSH-specific attributes
         self.client: Optional[paramiko.SSHClient] = None
         self.shell: Optional[paramiko.Channel] = None
+        self.use_system_ssh: bool = False  # Flag for legacy device fallback
 
     def connect(self) -> None:
-        """Establish SSH connection"""
+        """Establish SSH connection with legacy algorithm support and system SSH fallback"""
+        # Try paramiko first (faster and more features)
         try:
             self.client = paramiko.SSHClient()
             self.client.set_missing_host_key_policy(LoggingAutoAddPolicy())
 
+            # Enable legacy SSH algorithms for old network devices
+            # This allows connection to devices with SSH v1.5/1.99 and weak ciphers
             self.client.connect(
                 hostname=self.host,
                 port=self.port,
@@ -399,7 +479,11 @@ class SSHConnection(BaseDeviceConnection):
                 password=self.password,
                 timeout=self.timeout,
                 look_for_keys=False,
-                allow_agent=False
+                allow_agent=False,
+                # Enable all algorithms including legacy/weak ones
+                disabled_algorithms={'keys': [], 'kex': [], 'ciphers': [], 'macs': [], 'compression': []},
+                # Allow old SSH protocol versions
+                banner_timeout=30
             )
 
             # Open interactive shell
@@ -410,10 +494,30 @@ class SSHConnection(BaseDeviceConnection):
             if self.shell.recv_ready():
                 self.shell.recv(65535)
 
+            self.use_system_ssh = False
+            logger.info(f"Connected to {self.host} via paramiko SSH")
+
+        except (paramiko.SSHException, socket.error) as e:
+            # Paramiko failed - try system SSH as fallback for very old devices
+            logger.warning(f"Paramiko SSH failed for {self.host}, trying system SSH: {str(e)}")
+            try:
+                # Test system SSH with a simple command
+                success, output = try_system_ssh(
+                    self.host, self.port, self.username, self.password,
+                    'echo "SSH_OK"', timeout=10
+                )
+                if success and 'SSH_OK' in output:
+                    self.use_system_ssh = True
+                    logger.info(f"Connected to {self.host} via system SSH (legacy device)")
+                else:
+                    raise DeviceConnectionError(f"System SSH also failed: {output}")
+            except Exception as fallback_error:
+                raise DeviceConnectionError(
+                    f"Both paramiko and system SSH failed for {self.host}. "
+                    f"Paramiko: {str(e)}, System SSH: {str(fallback_error)}"
+                )
         except paramiko.AuthenticationException:
             raise DeviceConnectionError(f"Authentication failed for {self.host}")
-        except paramiko.SSHException as e:
-            raise DeviceConnectionError(f"SSH error connecting to {self.host}: {str(e)}")
         except socket.timeout:
             raise DeviceConnectionError(f"Connection timeout to {self.host}")
         except Exception as e:
@@ -421,7 +525,7 @@ class SSHConnection(BaseDeviceConnection):
 
     def send_command(self, command: str, wait_time: float = 2, handle_paging: bool = True) -> str:
         """
-        Send command and return output
+        Send command and return output (supports both paramiko and system SSH)
 
         Args:
             command: Command to execute
@@ -431,6 +535,16 @@ class SSHConnection(BaseDeviceConnection):
         Returns:
             Command output as string
         """
+        # If using system SSH fallback, execute command directly
+        if self.use_system_ssh:
+            success, output = try_system_ssh(
+                self.host, self.port, self.username, self.password,
+                command, timeout=int(wait_time * 5)
+            )
+            if not success:
+                raise DeviceConnectionError(f"System SSH command failed: {output}")
+            return output
+
         if not self.shell:
             raise DeviceConnectionError("Not connected")
 
