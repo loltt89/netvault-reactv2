@@ -72,6 +72,12 @@ class DeviceModelTestCase(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='device@example.com',
+            username='deviceuser',
+            password='pass123'
+        )
         self.vendor = Vendor.objects.create(
             name='Cisco',
             slug='cisco',
@@ -94,7 +100,8 @@ class DeviceModelTestCase(TestCase):
             username='admin',
             password_encrypted=encrypt_data('secret123'),
             location='Data Center 1',
-            criticality='high'
+            criticality='high',
+            created_by=self.user
         )
 
         self.assertEqual(device.name, 'Core-Router-1')
@@ -110,7 +117,8 @@ class DeviceModelTestCase(TestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=encrypt_data('pass')
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.user
         )
         self.assertEqual(str(device), 'Test-Device (10.0.0.1)')
 
@@ -122,7 +130,8 @@ class DeviceModelTestCase(TestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=''
+            password_encrypted=encrypt_data('temp'),
+            created_by=self.user
         )
         device.set_password('MySecretPassword123!')
         device.save()
@@ -141,7 +150,8 @@ class DeviceModelTestCase(TestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=encrypt_data('pass')
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.user
         )
         device.set_enable_password('EnableSecret!')
         device.save()
@@ -157,7 +167,8 @@ class DeviceModelTestCase(TestCase):
             device_type=self.device_type,
             username='admin',
             password_encrypted=encrypt_data('pass'),
-            custom_commands=['custom command 1', 'custom command 2']
+            custom_commands=['custom command 1', 'custom command 2'],
+            created_by=self.user
         )
 
         commands = device.get_backup_commands()
@@ -172,7 +183,8 @@ class DeviceModelTestCase(TestCase):
             device_type=self.device_type,
             username='admin',
             password_encrypted=encrypt_data('pass'),
-            custom_commands=[]
+            custom_commands=[],
+            created_by=self.user
         )
 
         commands = device.get_backup_commands()
@@ -186,7 +198,8 @@ class DeviceModelTestCase(TestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=encrypt_data('pass')
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.user
         )
         device.clean()
 
@@ -201,7 +214,8 @@ class DeviceModelTestCase(TestCase):
             device_type=self.device_type,
             username='admin',
             password_encrypted=encrypt_data('pass'),
-            location='+1-555-1234'
+            location='+1-555-1234',
+            created_by=self.user
         )
         device.clean()
 
@@ -215,7 +229,8 @@ class DeviceModelTestCase(TestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=encrypt_data('pass')
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.user
         )
 
         self.assertEqual(device.protocol, 'ssh')
@@ -230,6 +245,12 @@ class DeviceCredentialTestCase(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='cred@example.com',
+            username='creduser',
+            password='pass123'
+        )
         self.vendor = Vendor.objects.create(name='Cisco', slug='cisco')
         self.device_type = DeviceType.objects.create(name='Router', slug='router')
         self.device = Device.objects.create(
@@ -238,7 +259,8 @@ class DeviceCredentialTestCase(TestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=encrypt_data('pass')
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.user
         )
 
     def test_create_credential(self):
@@ -259,7 +281,7 @@ class DeviceCredentialTestCase(TestCase):
         cred = DeviceCredential.objects.create(
             device=self.device,
             credential_type='tacacs',
-            password_encrypted=''
+            password_encrypted=encrypt_data('temp')
         )
         cred.set_password('TacacsSecret!')
         cred.save()
@@ -293,7 +315,7 @@ class DeviceAPITestCase(APITestCase):
 
     def test_list_devices_authenticated(self):
         """Test listing devices requires authentication"""
-        response = self.client.get('/api/v1/devices/')
+        response = self.client.get('/api/v1/devices/devices/')
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_list_devices_success(self):
@@ -306,17 +328,18 @@ class DeviceAPITestCase(APITestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=encrypt_data('pass')
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.admin
         )
 
-        response = self.client.get('/api/v1/devices/')
+        response = self.client.get('/api/v1/devices/devices/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_create_device_admin(self):
         """Test creating device as admin"""
         self.client.force_authenticate(user=self.admin)
 
-        response = self.client.post('/api/v1/devices/', {
+        response = self.client.post('/api/v1/devices/devices/', {
             'name': 'New-Device',
             'ip_address': '10.0.0.21',
             'vendor': self.vendor.id,
@@ -334,7 +357,7 @@ class DeviceAPITestCase(APITestCase):
         """Test creating device as viewer is forbidden"""
         self.client.force_authenticate(user=self.viewer)
 
-        response = self.client.post('/api/v1/devices/', {
+        response = self.client.post('/api/v1/devices/devices/', {
             'name': 'Forbidden-Device',
             'ip_address': '10.0.0.22',
             'vendor': self.vendor.id,
@@ -355,10 +378,11 @@ class DeviceAPITestCase(APITestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=encrypt_data('supersecret')
+            password_encrypted=encrypt_data('supersecret'),
+            created_by=self.admin
         )
 
-        response = self.client.get(f'/api/v1/devices/{device.id}/')
+        response = self.client.get(f'/api/v1/devices/devices/{device.id}/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertNotIn('password_encrypted', response.data)
@@ -370,6 +394,12 @@ class DeviceValidationTestCase(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='valid@example.com',
+            username='validuser',
+            password='pass123'
+        )
         self.vendor = Vendor.objects.create(name='Cisco', slug='cisco')
         self.device_type = DeviceType.objects.create(name='Router', slug='router')
 
@@ -381,7 +411,8 @@ class DeviceValidationTestCase(TestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=encrypt_data('pass')
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.user
         )
 
         from django.db import IntegrityError
@@ -392,7 +423,8 @@ class DeviceValidationTestCase(TestCase):
                 vendor=self.vendor,
                 device_type=self.device_type,
                 username='admin',
-                password_encrypted=encrypt_data('pass')
+                password_encrypted=encrypt_data('pass'),
+                created_by=self.user
             )
 
     def test_valid_ip_address(self):
@@ -403,7 +435,8 @@ class DeviceValidationTestCase(TestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=encrypt_data('pass')
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.user
         )
 
         self.assertEqual(device.ip_address, '192.168.1.1')
@@ -418,7 +451,8 @@ class DeviceValidationTestCase(TestCase):
                 device_type=self.device_type,
                 protocol=protocol,
                 username='admin',
-                password_encrypted=encrypt_data('pass')
+                password_encrypted=encrypt_data('pass'),
+                created_by=self.user
             )
             self.assertEqual(device.protocol, protocol)
 
@@ -434,6 +468,7 @@ class DeviceValidationTestCase(TestCase):
                 device_type=self.device_type,
                 criticality=crit,
                 username='admin',
-                password_encrypted=encrypt_data('pass')
+                password_encrypted=encrypt_data('pass'),
+                created_by=self.user
             )
             self.assertEqual(device.criticality, crit)

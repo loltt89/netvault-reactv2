@@ -19,6 +19,14 @@ class BackupModelTestCase(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        # Create user for device ownership
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='backup_model@example.com',
+            username='backupmodeluser',
+            password='pass123'
+        )
+
         # Create vendor and device type
         self.vendor = Vendor.objects.create(
             name='Cisco',
@@ -37,7 +45,8 @@ class BackupModelTestCase(TestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=encrypt_data('password123')
+            password_encrypted=encrypt_data('password123'),
+            created_by=self.user
         )
 
     def test_set_configuration(self):
@@ -166,6 +175,13 @@ class BackupScheduleTestCase(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='schedule@example.com',
+            username='scheduleuser',
+            password='pass123'
+        )
+
         self.vendor = Vendor.objects.create(name='Cisco', slug='cisco')
         self.device_type = DeviceType.objects.create(name='Router', slug='router')
         self.device = Device.objects.create(
@@ -174,7 +190,8 @@ class BackupScheduleTestCase(TestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=encrypt_data('pass')
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.user
         )
 
     def test_create_schedule(self):
@@ -241,6 +258,13 @@ class BackupDiffTestCase(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='diff@example.com',
+            username='diffuser',
+            password='pass123'
+        )
+
         self.vendor = Vendor.objects.create(name='Cisco', slug='cisco')
         self.device_type = DeviceType.objects.create(name='Router', slug='router')
         self.device = Device.objects.create(
@@ -249,7 +273,8 @@ class BackupDiffTestCase(TestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=encrypt_data('pass')
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.user
         )
 
     def test_create_diff(self):
@@ -338,7 +363,8 @@ class BackupAPITestCase(APITestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=encrypt_data('pass')
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.user
         )
 
     def test_list_backups(self):
@@ -377,6 +403,13 @@ class BackupSecurityTestCase(TestCase):
 
     def setUp(self):
         """Set up test fixtures"""
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='security@example.com',
+            username='securityuser',
+            password='pass123'
+        )
+
         self.vendor = Vendor.objects.create(name='Cisco', slug='cisco')
         self.device_type = DeviceType.objects.create(name='Router', slug='router')
         self.device = Device.objects.create(
@@ -385,7 +418,8 @@ class BackupSecurityTestCase(TestCase):
             vendor=self.vendor,
             device_type=self.device_type,
             username='admin',
-            password_encrypted=encrypt_data('pass')
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.user
         )
 
     def test_configuration_encrypted_at_rest(self):

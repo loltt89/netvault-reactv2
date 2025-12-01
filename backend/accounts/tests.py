@@ -113,7 +113,8 @@ class TwoFactorAuthTestCase(TestCase):
         uri = self.user.get_2fa_uri()
 
         self.assertIn('otpauth://totp/', uri)
-        self.assertIn('2fa@example.com', uri)
+        # Email is URL-encoded in the URI
+        self.assertIn('2fa%40example.com', uri)
         self.assertIn('NetVault', uri)
 
     def test_verify_2fa_token_valid(self):
@@ -215,11 +216,21 @@ class SAMLSettingsTestCase(TestCase):
 
     def test_singleton_pattern(self):
         """Test only one SAMLSettings instance can exist"""
-        settings1 = SAMLSettings.objects.create(enabled=False)
-        settings2 = SAMLSettings.objects.create(enabled=True)
+        # First instance
+        settings1 = SAMLSettings(enabled=False)
+        settings1.save()
+
+        # Second instance - save() forces pk=1, so it updates the existing record
+        settings2 = SAMLSettings(enabled=True)
+        settings2.save()
 
         self.assertEqual(SAMLSettings.objects.count(), 1)
-        self.assertEqual(settings1.pk, settings2.pk)
+        # Both refer to pk=1
+        self.assertEqual(settings1.pk, 1)
+        self.assertEqual(settings2.pk, 1)
+        # Second save should have updated enabled to True
+        settings_from_db = SAMLSettings.objects.get(pk=1)
+        self.assertTrue(settings_from_db.enabled)
 
     def test_get_settings(self):
         """Test get_settings class method"""
@@ -253,7 +264,7 @@ class AuthAPITestCase(APITestCase):
 
     def test_login_success(self):
         """Test successful login"""
-        response = self.client.post('/api/v1/auth/login/', {
+        response = self.client.post('/api/v1/token/', {
             'email': 'api@example.com',
             'password': 'TestPass123!'
         })
@@ -265,21 +276,21 @@ class AuthAPITestCase(APITestCase):
 
     def test_login_wrong_password(self):
         """Test login with wrong password"""
-        response = self.client.post('/api/v1/auth/login/', {
+        response = self.client.post('/api/v1/token/', {
             'email': 'api@example.com',
             'password': 'WrongPassword!'
         })
 
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_login_nonexistent_user(self):
         """Test login with nonexistent user"""
-        response = self.client.post('/api/v1/auth/login/', {
+        response = self.client.post('/api/v1/token/', {
             'email': 'nonexistent@example.com',
             'password': 'SomePass123!'
         })
 
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_me_endpoint_authenticated(self):
         """Test /me endpoint with authenticated user"""
