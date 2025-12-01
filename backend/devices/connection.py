@@ -409,9 +409,12 @@ def try_ssh_v1_pexpect(host: str, port: int, username: str, password: str,
         return False, "pexpect not installed - run: pip install pexpect"
 
     try:
-        # Use pexpect to automate SSH connection
-        # This bypasses modern OpenSSH restrictions
-        ssh_cmd = f'/usr/bin/ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {port} {username}@{host}'
+        # Use legacy OpenSSH 7.5 with SSH v1 support (installed at /opt/openssh-legacy)
+        # Falls back to system SSH if legacy version not installed
+        import os
+        ssh_binary = '/opt/openssh-legacy/bin/ssh' if os.path.exists('/opt/openssh-legacy/bin/ssh') else '/usr/bin/ssh'
+
+        ssh_cmd = f'{ssh_binary} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {port} {username}@{host}'
 
         child = pexpect.spawn(ssh_cmd, timeout=timeout)
         child.logfile = None  # Don't log passwords
