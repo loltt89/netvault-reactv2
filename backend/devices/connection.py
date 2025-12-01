@@ -415,9 +415,10 @@ Host *
 
         # Use sshpass for password authentication
         # Format: sshpass -p 'password' ssh -F config_file user@host command
+        # Use full paths to avoid PATH issues in systemd services
         ssh_cmd = [
-            'sshpass', '-p', password,
-            'ssh',
+            '/usr/bin/sshpass', '-p', password,
+            '/usr/bin/ssh',
             '-F', config_file,
             '-p', str(port),
             '-o', 'ConnectTimeout=10',
