@@ -110,7 +110,7 @@ const AuditLogsPage: React.FC = () => {
     <div className="devices-page">
       <div className="page-header">
         <h1>📋 {t('auditLogs.title')}</h1>
-        <button onClick={loadLogs} className="btn-primary">
+        <button onClick={() => loadLogs()} className="btn-primary">
           🔄 {t('common.refresh')}
         </button>
       </div>

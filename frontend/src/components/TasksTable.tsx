@@ -173,7 +173,7 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
 
   const handleRowClick = async (task: Task) => {
     try {
-      const response = await apiService.backups.getDetails(task.id);
+      const response = await apiService.backups.get(task.id);
       setSelectedTask(response);
     } catch (error) {
       logger.error('Failed to fetch task details:', error);
