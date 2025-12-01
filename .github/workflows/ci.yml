@@ -54,7 +54,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libmariadb-dev pkg-config
+          sudo apt-get install -y libmariadb-dev pkg-config libldap2-dev libsasl2-dev
 
       - name: Install Python dependencies
         working-directory: ./backend
