@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import ConfigViewer from '../components/ConfigViewer';
 import { getConfigLanguage } from '../utils/configLanguage';
+import logger from '../utils/logger';
 import '../styles/Devices.css';
 
 interface DeviceDetail {
@@ -84,7 +85,7 @@ const DeviceDetailPage: React.FC = () => {
           }
         } catch (error) {
           if (isMounted) {
-            console.error('Error loading device:', error);
+            logger.error('Error loading device:', error);
             alert(t('common.error') + ': Failed to load device');
           }
         } finally {
@@ -109,7 +110,7 @@ const DeviceDetailPage: React.FC = () => {
       const backupsList = Array.isArray(response) ? response : response.results || [];
       setBackups(backupsList);
     } catch (error) {
-      console.error('Error loading backups:', error);
+      logger.error('Error loading backups:', error);
     }
   };
 
@@ -137,7 +138,7 @@ const DeviceDetailPage: React.FC = () => {
         }
       }, 2000);
     } catch (error: any) {
-      console.error('Error initiating backup:', error);
+      logger.error('Error initiating backup:', error);
       alert(t('common.error') + ': ' + (error.response?.data?.error || 'Failed to queue backup task'));
     }
   };
@@ -153,7 +154,7 @@ const DeviceDetailPage: React.FC = () => {
         alert(`${t('common.error')}: ${result.message}`);
       }
     } catch (error: any) {
-      console.error('Error testing connection:', error);
+      logger.error('Error testing connection:', error);
       alert(t('common.error') + ': Connection test failed');
     }
   };
@@ -165,7 +166,7 @@ const DeviceDetailPage: React.FC = () => {
       setSelectedBackup(backup);
       setShowViewer(true);
     } catch (error) {
-      console.error('Error loading configuration:', error);
+      logger.error('Error loading configuration:', error);
       alert(t('backups.failed_load_config'));
     }
   };
@@ -182,7 +183,7 @@ const DeviceDetailPage: React.FC = () => {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Error downloading configuration:', error);
+      logger.error('Error downloading configuration:', error);
       alert(t('backups.failed_download'));
     }
   };
@@ -197,7 +198,7 @@ const DeviceDetailPage: React.FC = () => {
       alert(t('backups.delete_success'));
       loadDeviceBackups();
     } catch (error) {
-      console.error('Error deleting backup:', error);
+      logger.error('Error deleting backup:', error);
       alert(t('backups.failed_delete'));
     }
   };
@@ -225,7 +226,7 @@ const DeviceDetailPage: React.FC = () => {
       setDiffContent(result.diff);
       setShowViewer(true);
     } catch (error) {
-      console.error('Error comparing backups:', error);
+      logger.error('Error comparing backups:', error);
       alert('Failed to compare backups');
     }
   };

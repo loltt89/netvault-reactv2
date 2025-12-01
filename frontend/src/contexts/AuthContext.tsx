@@ -8,6 +8,7 @@ import React, { createContext, useState, useContext, useEffect, useCallback } fr
 import APIService, { setTokens, clearTokens, isAuthenticated as checkAuth } from '../services/api.service';
 import { User, AuthContextType, RegisterData } from '../types';
 import i18n from '../i18n/config';
+import logger from '../utils/logger';
 
 // Create context
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -57,7 +58,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setIsAuthenticated(true);
       } catch (error) {
         // If 401/403, user is not authenticated (cookie expired or invalid)
-        console.error('Failed to load user:', error);
+        logger.debug('User not authenticated');
         clearTokens();
         setIsAuthenticated(false);
       } finally {
@@ -84,7 +85,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       return response;
     } catch (error: any) {
-      console.error('Login failed:', error);
+      logger.error('Login failed:', error);
 
       // Check if 2FA is required
       if (error.response?.data?.two_factor_required) {
@@ -105,7 +106,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       await APIService.auth.logout();
     } catch (error) {
-      console.error('Logout error:', error);
+      logger.debug('Logout error:', error);
     } finally {
       clearTokens();
       setUser(null);
@@ -129,7 +130,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       return response;
     } catch (error) {
-      console.error('Registration failed:', error);
+      logger.error('Registration failed:', error);
       throw error;
     }
   }, []);
@@ -143,7 +144,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(updatedUser);
       return updatedUser;
     } catch (error) {
-      console.error('Profile update failed:', error);
+      logger.error('Profile update failed:', error);
       throw error;
     }
   }, []);
@@ -156,7 +157,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const userData = await APIService.users.getMe();
       setUser(userData);
     } catch (error) {
-      console.error('Failed to refresh user:', error);
+      logger.error('Failed to refresh user:', error);
       throw error;
     }
   }, []);

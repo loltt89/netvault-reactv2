@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/api.service';
+import logger from '../utils/logger';
 import '../styles/Devices.css';
 
 interface AuditLog {
@@ -41,7 +42,7 @@ const AuditLogsPage: React.FC = () => {
       // Handle both paginated and non-paginated responses
       setLogs(Array.isArray(data) ? data : data.results || []);
     } catch (error) {
-      console.error('Error loading audit logs:', error);
+      logger.error('Error loading audit logs:', error);
       alert(t('common.error') + ': ' + t('auditLogs.failed_load'));
     } finally {
       setLoading(false);

@@ -7,6 +7,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/api.service';
+import logger from '../utils/logger';
 import './LoginPage.css';
 
 const LoginPage: React.FC = () => {
@@ -40,7 +41,7 @@ const LoginPage: React.FC = () => {
       const response = await apiService.request('GET', '/saml/status/');
       setSsoEnabled(response.enabled);
     } catch (err) {
-      console.log('SSO status check failed (may not be configured)');
+      logger.debug('SSO status check failed (may not be configured)');
     }
   };
 
@@ -69,7 +70,7 @@ const LoginPage: React.FC = () => {
       );
       navigate('/dashboard');
     } catch (err: any) {
-      console.error('Login error:', err);
+      logger.error('Login error:', err);
 
       if (err.twoFactorRequired) {
         setRequire2FA(true);

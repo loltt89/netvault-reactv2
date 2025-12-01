@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import ConfigViewer from '../components/ConfigViewer';
 import { getConfigLanguage } from '../utils/configLanguage';
+import logger from '../utils/logger';
 import '../styles/Backups.css';
 
 interface Backup {
@@ -68,7 +69,7 @@ const BackupsPage: React.FC = () => {
       setVendors(vendorsData);
       setDeviceTypes(typesData);
     } catch (error) {
-      console.error('Error loading vendors and types:', error);
+      logger.error('Error loading vendors and types:', error);
     }
   };
 
@@ -128,7 +129,7 @@ const BackupsPage: React.FC = () => {
         setExpandedGroups(new Set([response.groups[0].group]));
       }
     } catch (error) {
-      console.error('Error loading backups:', error);
+      logger.error('Error loading backups:', error);
       setGroups([]);
     } finally {
       setLoading(false);
@@ -154,7 +155,7 @@ const BackupsPage: React.FC = () => {
       setSelectedBackup(backup);
       setShowViewer(true);
     } catch (error) {
-      console.error('Error loading configuration:', error);
+      logger.error('Error loading configuration:', error);
       alert(t('backups.failed_load_config'));
     }
   };
@@ -171,7 +172,7 @@ const BackupsPage: React.FC = () => {
       document.body.removeChild(a);
       window.URL.revokeObjectURL(url);
     } catch (error) {
-      console.error('Error downloading configuration:', error);
+      logger.error('Error downloading configuration:', error);
       alert(t('backups.failed_download'));
     }
   };
@@ -191,7 +192,7 @@ const BackupsPage: React.FC = () => {
       window.URL.revokeObjectURL(url);
       // No alert - browser will show download progress
     } catch (error) {
-      console.error('Error downloading multiple backups:', error);
+      logger.error('Error downloading multiple backups:', error);
       alert(t('backups.failed_download_multiple'));
     } finally {
       setDownloading(false);
@@ -212,7 +213,7 @@ const BackupsPage: React.FC = () => {
           await apiService.backups.delete(backupId);
           deleted++;
         } catch (error) {
-          console.error(`Error deleting backup ${backupId}:`, error);
+          logger.error(`Error deleting backup ${backupId}:`, error);
           failed++;
         }
       }
@@ -226,7 +227,7 @@ const BackupsPage: React.FC = () => {
         alert(t('backups.delete_multiple_partial', { deleted, failed }));
       }
     } catch (error) {
-      console.error('Error deleting backups:', error);
+      logger.error('Error deleting backups:', error);
       alert(t('backups.failed_delete_multiple'));
     } finally {
       setDeleting(false);
@@ -243,7 +244,7 @@ const BackupsPage: React.FC = () => {
       alert(t('backups.delete_success'));
       loadBackups();
     } catch (error) {
-      console.error('Error deleting backup:', error);
+      logger.error('Error deleting backup:', error);
       alert(t('backups.failed_delete'));
     }
   };

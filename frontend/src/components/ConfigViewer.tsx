@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Editor from '@monaco-editor/react';
 import { useTheme } from '../contexts/ThemeContext';
+import logger from '../utils/logger';
 import '../styles/ConfigViewer.css';
 
 interface ConfigViewerProps {
@@ -64,7 +65,7 @@ const ConfigViewer: React.FC<ConfigViewerProps> = ({
       await navigator.clipboard.writeText(localConfig);
       alert('Configuration copied to clipboard!');
     } catch (err) {
-      console.error('Failed to copy:', err);
+      logger.error('Failed to copy:', err);
     }
   };
 

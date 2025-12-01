@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
+import logger from '../utils/logger';
 import '../styles/Devices.css';
 
 interface BackupSchedule {
@@ -43,7 +44,7 @@ const BackupSchedulesComponent: React.FC = () => {
       const data = await apiService.backupSchedules.list();
       setSchedules(Array.isArray(data) ? data : data.results || []);
     } catch (error) {
-      console.error('Error loading schedules:', error);
+      logger.error('Error loading schedules:', error);
       alert(t('common.error') + ': ' + t('schedules.failed_load'));
     } finally {
       setLoading(false);
@@ -111,7 +112,7 @@ const BackupSchedulesComponent: React.FC = () => {
       setShowModal(false);
       loadSchedules();
     } catch (error: any) {
-      console.error('Error saving schedule:', error);
+      logger.error('Error saving schedule:', error);
       alert(t('common.error') + ': ' + (error.response?.data?.detail || t('schedules.failed_save')));
     }
   };
@@ -126,7 +127,7 @@ const BackupSchedulesComponent: React.FC = () => {
       alert(t('common.success') + ': ' + t('schedules.schedule_deleted'));
       loadSchedules();
     } catch (error) {
-      console.error('Error deleting schedule:', error);
+      logger.error('Error deleting schedule:', error);
       alert(t('common.error') + ': ' + t('schedules.failed_delete'));
     }
   };
@@ -137,7 +138,7 @@ const BackupSchedulesComponent: React.FC = () => {
       alert(t('common.success') + ': ' + t('schedules.schedule_toggled'));
       loadSchedules();
     } catch (error) {
-      console.error('Error toggling schedule:', error);
+      logger.error('Error toggling schedule:', error);
       alert(t('common.error') + ': ' + t('schedules.failed_toggle'));
     }
   };
@@ -147,7 +148,7 @@ const BackupSchedulesComponent: React.FC = () => {
       await apiService.backupSchedules.runNow(schedule.id);
       alert(t('common.success') + ': ' + t('schedules.schedule_running'));
     } catch (error) {
-      console.error('Error running schedule:', error);
+      logger.error('Error running schedule:', error);
       alert(t('common.error') + ': ' + t('schedules.failed_run'));
     }
   };

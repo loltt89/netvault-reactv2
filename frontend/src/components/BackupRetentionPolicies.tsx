@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
+import logger from '../utils/logger';
 import '../styles/Devices.css';
 
 interface RetentionPolicy {
@@ -53,7 +54,7 @@ const BackupRetentionPoliciesComponent: React.FC = () => {
       const data = await apiService.retentionPolicies.list();
       setPolicies(Array.isArray(data) ? data : data.results || []);
     } catch (error) {
-      console.error('Error loading retention policies:', error);
+      logger.error('Error loading retention policies:', error);
       alert(t('common.error') + ': ' + t('retention.failed_load'));
     } finally {
       setLoading(false);
@@ -66,7 +67,7 @@ const BackupRetentionPoliciesComponent: React.FC = () => {
       const devicesList = Array.isArray(data) ? data : data.results || [];
       setDevices(devicesList);
     } catch (error) {
-      console.error('Error loading devices:', error);
+      logger.error('Error loading devices:', error);
     }
   };
 
@@ -129,7 +130,7 @@ const BackupRetentionPoliciesComponent: React.FC = () => {
       setShowModal(false);
       loadPolicies();
     } catch (error: any) {
-      console.error('Error saving retention policy:', error);
+      logger.error('Error saving retention policy:', error);
       alert(t('common.error') + ': ' + (error.response?.data?.detail || t('retention.failed_save')));
     }
   };
@@ -144,7 +145,7 @@ const BackupRetentionPoliciesComponent: React.FC = () => {
       alert(t('common.success') + ': ' + t('retention.policy_deleted'));
       loadPolicies();
     } catch (error) {
-      console.error('Error deleting retention policy:', error);
+      logger.error('Error deleting retention policy:', error);
       alert(t('common.error') + ': ' + t('retention.failed_delete'));
     }
   };
@@ -154,7 +155,7 @@ const BackupRetentionPoliciesComponent: React.FC = () => {
       await apiService.retentionPolicies.applyNow(policy.id);
       alert(t('common.success') + ': ' + t('retention.policy_applied'));
     } catch (error) {
-      console.error('Error applying retention policy:', error);
+      logger.error('Error applying retention policy:', error);
       alert(t('common.error') + ': ' + t('retention.failed_apply'));
     }
   };

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
+import logger from '../utils/logger';
 import '../styles/Devices.css';
 
 interface ImportPreviewRow {
@@ -135,7 +136,7 @@ const DevicesListPage: React.FC = () => {
       const devicesList = Array.isArray(response) ? response : response.results || [];
       setDevices(devicesList);
     } catch (error) {
-      console.error('Error loading devices:', error);
+      logger.error('Error loading devices:', error);
       // Don't show alert for empty device list - this is normal on fresh install
       setDevices([]);
     } finally {
@@ -149,7 +150,7 @@ const DevicesListPage: React.FC = () => {
       const vendorsList = Array.isArray(response) ? response : response.results || [];
       setVendors(vendorsList);
     } catch (error) {
-      console.error('Error loading vendors:', error);
+      logger.error('Error loading vendors:', error);
     }
   };
 
@@ -159,7 +160,7 @@ const DevicesListPage: React.FC = () => {
       const typesList = Array.isArray(response) ? response : response.results || [];
       setDeviceTypes(typesList);
     } catch (error) {
-      console.error('Error loading device types:', error);
+      logger.error('Error loading device types:', error);
     }
   };
 
@@ -355,7 +356,7 @@ const DevicesListPage: React.FC = () => {
         document.body.removeChild(link);
       }, 100);
     } catch (error) {
-      console.error('Failed to download template:', error);
+      logger.error('Failed to download template:', error);
       alert(t('common.error') + ': ' + t('devices.import.template_download_error'));
     }
   };
@@ -401,7 +402,7 @@ const DevicesListPage: React.FC = () => {
       setShowModal(false);
       loadDevices();
     } catch (error: any) {
-      console.error('Error saving device:', error);
+      logger.error('Error saving device:', error);
       alert(t('common.error') + ': ' + (error.response?.data?.message || t('devices.failed_save')));
     }
   };
@@ -417,7 +418,7 @@ const DevicesListPage: React.FC = () => {
       alert(t('devices.device_deleted'));
       loadDevices();
     } catch (error) {
-      console.error('Error deleting device:', error);
+      logger.error('Error deleting device:', error);
       alert(t('devices.failed_delete'));
     }
   };
@@ -429,7 +430,7 @@ const DevicesListPage: React.FC = () => {
       await apiService.devices.backupNow(device.id);
       // No alert - logs will appear in TaskTerminal
     } catch (error: any) {
-      console.error('Error initiating backup:', error);
+      logger.error('Error initiating backup:', error);
       alert(t('common.error') + ': ' + (error.response?.data?.error || 'Failed to queue backup task'));
     }
   };
@@ -446,7 +447,7 @@ const DevicesListPage: React.FC = () => {
       // Reload devices to update status
       loadDevices();
     } catch (error: any) {
-      console.error('Error testing connection:', error);
+      logger.error('Error testing connection:', error);
       alert(t('common.error') + ': Connection test failed');
     }
   };

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
+import logger from '../utils/logger';
 
 interface SystemSettings {
   email: {
@@ -167,7 +168,7 @@ const SystemSettings: React.FC = () => {
         url: data.redis.url,
       });
     } catch (error: any) {
-      console.error('Error loading system settings:', error);
+      logger.error('Error loading system settings:', error);
       if (error.response?.status === 403) {
         alert(t('systemSettings.access_denied'));
       } else {
@@ -185,7 +186,7 @@ const SystemSettings: React.FC = () => {
       alert(t('systemSettings.email.saved'));
       await loadSettings();
     } catch (error) {
-      console.error('Error saving email settings:', error);
+      logger.error('Error saving email settings:', error);
       alert(t('systemSettings.email.failed_save'));
     } finally {
       setSaving(false);
@@ -211,7 +212,7 @@ const SystemSettings: React.FC = () => {
       alert(t('systemSettings.telegram.saved'));
       await loadSettings();
     } catch (error) {
-      console.error('Error saving telegram settings:', error);
+      logger.error('Error saving telegram settings:', error);
       alert(t('systemSettings.telegram.failed_save'));
     } finally {
       setSaving(false);
@@ -237,7 +238,7 @@ const SystemSettings: React.FC = () => {
       alert(t('systemSettings.notifications.saved'));
       await loadSettings();
     } catch (error) {
-      console.error('Error saving notification settings:', error);
+      logger.error('Error saving notification settings:', error);
       alert(t('systemSettings.notifications.failed_save'));
     } finally {
       setSaving(false);
@@ -251,7 +252,7 @@ const SystemSettings: React.FC = () => {
       alert(t('systemSettings.ldap.saved'));
       await loadSettings();
     } catch (error) {
-      console.error('Error saving LDAP settings:', error);
+      logger.error('Error saving LDAP settings:', error);
       alert(t('systemSettings.ldap.failed_save'));
     } finally {
       setSaving(false);
@@ -265,7 +266,7 @@ const SystemSettings: React.FC = () => {
       alert(t('systemSettings.jwt.saved'));
       await loadSettings();
     } catch (error) {
-      console.error('Error saving JWT settings:', error);
+      logger.error('Error saving JWT settings:', error);
       alert(t('systemSettings.jwt.failed_save'));
     } finally {
       setSaving(false);
@@ -279,7 +280,7 @@ const SystemSettings: React.FC = () => {
       alert(t('systemSettings.redis.saved'));
       await loadSettings();
     } catch (error) {
-      console.error('Error saving Redis settings:', error);
+      logger.error('Error saving Redis settings:', error);
       alert(t('systemSettings.redis.failed_save'));
     } finally {
       setSaving(false);
@@ -292,7 +293,7 @@ const SystemSettings: React.FC = () => {
       const vendorsList = Array.isArray(response) ? response : response.results || [];
       setVendors(vendorsList);
     } catch (error) {
-      console.error('Error loading vendors:', error);
+      logger.error('Error loading vendors:', error);
     }
   };
 
@@ -327,7 +328,7 @@ const SystemSettings: React.FC = () => {
       setVendorCommands('');
       await loadVendors();
     } catch (error) {
-      console.error('Error saving vendor commands:', error);
+      logger.error('Error saving vendor commands:', error);
       alert(t('systemSettings.vendors.failed_save'));
     } finally {
       setSaving(false);
@@ -366,7 +367,7 @@ const SystemSettings: React.FC = () => {
       setShowVendorModal(false);
       await loadVendors();
     } catch (error: any) {
-      console.error('Error creating vendor:', error);
+      logger.error('Error creating vendor:', error);
       alert(error.response?.data?.slug?.[0] || error.response?.data?.name?.[0] || t('systemSettings.vendors.failed_create'));
     } finally {
       setSaving(false);
@@ -383,7 +384,7 @@ const SystemSettings: React.FC = () => {
       alert(t('systemSettings.vendors.deleted'));
       await loadVendors();
     } catch (error) {
-      console.error('Error deleting vendor:', error);
+      logger.error('Error deleting vendor:', error);
       alert(t('systemSettings.vendors.failed_delete'));
     }
   };
@@ -394,7 +395,7 @@ const SystemSettings: React.FC = () => {
       const typesList = Array.isArray(response) ? response : response.results || [];
       setDeviceTypes(typesList);
     } catch (error) {
-      console.error('Error loading device types:', error);
+      logger.error('Error loading device types:', error);
     }
   };
 
@@ -403,7 +404,7 @@ const SystemSettings: React.FC = () => {
       const response = await apiService.request('GET', '/saml/settings/');
       setSamlSettings(response);
     } catch (error) {
-      console.error('Error loading SAML settings:', error);
+      logger.error('Error loading SAML settings:', error);
     }
   };
 
@@ -413,7 +414,7 @@ const SystemSettings: React.FC = () => {
       await apiService.request('POST', '/saml/settings/', samlSettings);
       alert(t('systemSettings.saml.saved'));
     } catch (error: any) {
-      console.error('Error saving SAML settings:', error);
+      logger.error('Error saving SAML settings:', error);
       alert(error.response?.data?.error || t('systemSettings.saml.failed'));
     } finally {
       setSaving(false);
@@ -441,7 +442,7 @@ const SystemSettings: React.FC = () => {
       setShowDeviceTypeModal(false);
       await loadDeviceTypes();
     } catch (error: any) {
-      console.error('Error creating device type:', error);
+      logger.error('Error creating device type:', error);
       alert(error.response?.data?.slug?.[0] || error.response?.data?.name?.[0] || t('systemSettings.device_types.failed_create'));
     } finally {
       setSaving(false);
@@ -458,7 +459,7 @@ const SystemSettings: React.FC = () => {
       alert(t('systemSettings.device_types.deleted'));
       await loadDeviceTypes();
     } catch (error) {
-      console.error('Error deleting device type:', error);
+      logger.error('Error deleting device type:', error);
       alert(t('systemSettings.device_types.failed_delete'));
     }
   };

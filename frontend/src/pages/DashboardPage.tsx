@@ -5,6 +5,7 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
 import apiService from '../services/api.service';
+import logger from '../utils/logger';
 import '../styles/Dashboard.css';
 
 interface DashboardStats {
@@ -74,7 +75,7 @@ const DashboardPage: React.FC = () => {
         ]);
       }
     } catch (error) {
-      console.error('Error loading dashboard data:', error);
+      logger.error('Error loading dashboard data:', error);
     } finally {
       setLoading(false);
     }

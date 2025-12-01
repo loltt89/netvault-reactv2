@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
+import logger from '../utils/logger';
 import './TasksTable.css';
 
 interface Device {
@@ -88,7 +89,7 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
         setTotalPages(Math.ceil(response.count / 50));
       }
     } catch (error) {
-      console.error('Failed to fetch tasks:', error);
+      logger.error('Failed to fetch tasks:', error);
     } finally {
       setLoading(false);
     }
@@ -175,7 +176,7 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
       const response = await apiService.backups.getDetails(task.id);
       setSelectedTask(response);
     } catch (error) {
-      console.error('Failed to fetch task details:', error);
+      logger.error('Failed to fetch task details:', error);
     }
   };
 

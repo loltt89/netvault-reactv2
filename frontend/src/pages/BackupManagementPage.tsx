@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import BackupSchedules from '../components/BackupSchedules';
 import BackupRetentionPolicies from '../components/BackupRetentionPolicies';
 import apiService from '../services/api.service';
+import logger from '../utils/logger';
 import '../styles/Settings.css';
 
 const BackupManagementPage: React.FC = () => {
@@ -27,7 +28,7 @@ const BackupManagementPage: React.FC = () => {
         setParallelWorkers(data.backup.parallel_workers || 5);
       }
     } catch (error) {
-      console.error('Error loading backup settings:', error);
+      logger.error('Error loading backup settings:', error);
     } finally {
       setLoading(false);
     }
@@ -44,7 +45,7 @@ const BackupManagementPage: React.FC = () => {
       });
       alert(t('systemSettings.backup.saved'));
     } catch (error) {
-      console.error('Error saving backup settings:', error);
+      logger.error('Error saving backup settings:', error);
       alert(t('systemSettings.backup.failed_save'));
     } finally {
       setSaving(false);

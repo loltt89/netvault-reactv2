@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/api.service';
+import logger from '../utils/logger';
 import '../styles/Devices.css';
 
 interface User {
@@ -51,7 +52,7 @@ const UsersPage: React.FC = () => {
       // Handle both paginated and non-paginated responses
       setUsers(Array.isArray(data) ? data : data.results || []);
     } catch (error) {
-      console.error('Error loading users:', error);
+      logger.error('Error loading users:', error);
       alert(t('common.error') + ': ' + t('users.failed_load'));
     } finally {
       setLoading(false);
@@ -116,7 +117,7 @@ const UsersPage: React.FC = () => {
       setShowModal(false);
       loadUsers();
     } catch (error: any) {
-      console.error('Error saving user:', error);
+      logger.error('Error saving user:', error);
       alert(t('common.error') + ': ' + (error.response?.data?.detail || t('users.failed_save')));
     }
   };
@@ -136,7 +137,7 @@ const UsersPage: React.FC = () => {
       alert(t('common.success') + ': ' + t('users.user_deleted'));
       loadUsers();
     } catch (error) {
-      console.error('Error deleting user:', error);
+      logger.error('Error deleting user:', error);
       alert(t('common.error') + ': ' + t('users.failed_delete'));
     }
   };
