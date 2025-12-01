@@ -624,3 +624,271 @@ class BackupRetentionPolicyAPITestCase(APITestCase):
             'is_active': True
         })
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_200_OK])
+
+
+class BackupTasksTestCase(TestCase):
+    """Tests for Celery backup tasks"""
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='task_user@example.com',
+            username='taskuser',
+            password='pass123'
+        )
+        self.vendor = Vendor.objects.create(
+            name='Cisco',
+            slug='cisco-task',
+            backup_commands=['show running-config']
+        )
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-task')
+        self.device = Device.objects.create(
+            name='Task-Device',
+            ip_address='192.168.1.100',
+            vendor=self.vendor,
+            device_type=self.device_type,
+            username='admin',
+            password_encrypted=encrypt_data('password'),
+            created_by=self.user
+        )
+
+    def test_update_schedule_stats_success(self):
+        """Test updating schedule stats on success"""
+        from backups.tasks import update_schedule_stats
+
+        schedule = BackupSchedule.objects.create(
+            name='Test Schedule',
+            frequency='daily',
+            run_time='02:00:00',
+            is_active=True
+        )
+        initial_successful = schedule.successful_runs
+
+        update_schedule_stats(schedule.id, success=True)
+
+        schedule.refresh_from_db()
+        self.assertEqual(schedule.successful_runs, initial_successful + 1)
+
+    def test_update_schedule_stats_failure(self):
+        """Test updating schedule stats on failure"""
+        from backups.tasks import update_schedule_stats
+
+        schedule = BackupSchedule.objects.create(
+            name='Test Schedule 2',
+            frequency='daily',
+            run_time='02:00:00',
+            is_active=True
+        )
+        initial_failed = schedule.failed_runs
+
+        update_schedule_stats(schedule.id, success=False)
+
+        schedule.refresh_from_db()
+        self.assertEqual(schedule.failed_runs, initial_failed + 1)
+
+    def test_update_schedule_stats_no_id(self):
+        """Test update_schedule_stats with None id does nothing"""
+        from backups.tasks import update_schedule_stats
+        # Should not raise any exception
+        update_schedule_stats(None, success=True)
+
+    @patch('backups.tasks.backup_device_config')
+    @patch('backups.tasks.DeviceLock')
+    @patch('backups.tasks.get_channel_layer')
+    @patch('backups.tasks.notify_backup_success')
+    def test_backup_device_success(self, mock_notify, mock_channel, mock_lock_class, mock_backup_config):
+        """Test successful device backup"""
+        from backups.tasks import backup_device
+
+        # Mock lock
+        mock_lock = MagicMock()
+        mock_lock.acquire.return_value = True
+        mock_lock_class.return_value = mock_lock
+
+        # Mock channel layer
+        mock_channel.return_value = None
+
+        # Mock backup config - return success
+        mock_backup_config.return_value = (True, 'hostname Router\ninterface GigabitEthernet0/0', None)
+
+        # Call task synchronously
+        result = backup_device(
+            device_id=self.device.id,
+            triggered_by_id=self.user.id,
+            backup_type='manual'
+        )
+
+        self.assertTrue(result['success'])
+        self.assertIn('backup_id', result)
+        mock_notify.assert_called_once()
+
+    @patch('backups.tasks.DeviceLock')
+    @patch('backups.tasks.get_channel_layer')
+    def test_backup_device_locked(self, mock_channel, mock_lock_class):
+        """Test backup fails when device is locked"""
+        from backups.tasks import backup_device
+
+        # Mock lock - fail to acquire
+        mock_lock = MagicMock()
+        mock_lock.acquire.return_value = False
+        mock_lock_class.return_value = mock_lock
+
+        mock_channel.return_value = None
+
+        result = backup_device(
+            device_id=self.device.id,
+            triggered_by_id=self.user.id,
+            backup_type='manual'
+        )
+
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error'], 'Device busy')
+        self.assertTrue(result['locked'])
+
+    @patch('backups.tasks.get_channel_layer')
+    def test_backup_device_not_found(self, mock_channel):
+        """Test backup fails for non-existent device"""
+        from backups.tasks import backup_device
+
+        mock_channel.return_value = None
+
+        result = backup_device(
+            device_id=99999,  # Non-existent device
+            triggered_by_id=self.user.id,
+            backup_type='manual'
+        )
+
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error'], 'Device not found')
+
+    @patch('backups.tasks.backup_device_config')
+    @patch('backups.tasks.DeviceLock')
+    @patch('backups.tasks.get_channel_layer')
+    @patch('backups.tasks.notify_backup_failed')
+    def test_backup_device_connection_failed(self, mock_notify, mock_channel, mock_lock_class, mock_backup_config):
+        """Test backup handles connection failure"""
+        from backups.tasks import backup_device
+
+        # Mock lock
+        mock_lock = MagicMock()
+        mock_lock.acquire.return_value = True
+        mock_lock_class.return_value = mock_lock
+
+        mock_channel.return_value = None
+
+        # Mock backup config - return failure
+        mock_backup_config.return_value = (False, None, 'Connection timed out')
+
+        result = backup_device(
+            device_id=self.device.id,
+            triggered_by_id=self.user.id,
+            backup_type='manual'
+        )
+
+        self.assertFalse(result['success'])
+        mock_notify.assert_called_once()
+
+
+class ConfigNormalizerTestCase(TestCase):
+    """Tests for config normalizers"""
+
+    def test_generic_normalizer(self):
+        """Test generic normalizer doesn't change config"""
+        from backups.config_normalizer import GenericNormalizer
+
+        normalizer = GenericNormalizer()
+        config = "hostname Router\ninterface GigabitEthernet0/0"
+
+        result = normalizer.normalize(config)
+        self.assertEqual(result, config)
+
+    def test_mikrotik_normalizer(self):
+        """Test MikroTik normalizer removes timestamps"""
+        from backups.config_normalizer import MikrotikNormalizer
+
+        normalizer = MikrotikNormalizer()
+        config = """# 2025-11-23 10:17:44 by RouterOS 7.16
+/interface ethernet
+set [ find default-name=ether1 ] name=WAN"""
+
+        result = normalizer.normalize(config)
+        self.assertNotIn('2025-11-23', result)
+        self.assertIn('/interface ethernet', result)
+
+    def test_fortinet_normalizer_enc_passwords(self):
+        """Test Fortinet normalizer redacts ENC passwords"""
+        from backups.config_normalizer import FortinetNormalizer
+
+        normalizer = FortinetNormalizer()
+        config = """config system admin
+    edit "admin"
+        set password ENC SH2j2xXqP+8Fh7Eh
+    next
+end"""
+
+        result = normalizer.normalize(config)
+        self.assertNotIn('SH2j2xXqP+8Fh7Eh', result)
+        self.assertIn('[REDACTED]', result)
+
+    def test_fortinet_normalizer_crypto_blocks(self):
+        """Test Fortinet normalizer removes crypto blocks"""
+        from backups.config_normalizer import FortinetNormalizer
+
+        normalizer = FortinetNormalizer()
+        config = """config vpn certificate local
+    edit "cert1"
+        set certificate "-----BEGIN CERTIFICATE-----
+MIICpDCCAYwCCQC8lLlX
+-----END CERTIFICATE-----"
+    next
+end"""
+
+        result = normalizer.normalize(config)
+        self.assertIn('[CRYPTO_BLOCK_START]', result)
+        self.assertIn('[CRYPTO_BLOCK_END]', result)
+        self.assertNotIn('MIICpDCCAYwCCQC8lLlX', result)
+
+    def test_cisco_normalizer_passwords(self):
+        """Test Cisco normalizer redacts passwords"""
+        from backups.config_normalizer import CiscoNormalizer
+
+        normalizer = CiscoNormalizer()
+        config = """hostname Router
+username admin password 7 0822455D0A16
+enable secret 5 $1$mERr$abc123xyz
+interface GigabitEthernet0/0"""
+
+        result = normalizer.normalize(config)
+        self.assertNotIn('0822455D0A16', result)
+        self.assertNotIn('$1$mERr$abc123xyz', result)
+        self.assertIn('[REDACTED]', result)
+        self.assertIn('hostname Router', result)
+
+    def test_normalizer_factory_known_vendor(self):
+        """Test factory returns correct normalizer for known vendor"""
+        from backups.config_normalizer import NormalizerFactory, MikrotikNormalizer
+
+        normalizer = NormalizerFactory.get_normalizer('mikrotik')
+        self.assertIsInstance(normalizer, MikrotikNormalizer)
+
+    def test_normalizer_factory_unknown_vendor(self):
+        """Test factory returns generic normalizer for unknown vendor"""
+        from backups.config_normalizer import NormalizerFactory, GenericNormalizer
+
+        normalizer = NormalizerFactory.get_normalizer('unknown_vendor')
+        self.assertIsInstance(normalizer, GenericNormalizer)
+
+    def test_normalizer_factory_none_vendor(self):
+        """Test factory handles None vendor"""
+        from backups.config_normalizer import NormalizerFactory, GenericNormalizer
+
+        normalizer = NormalizerFactory.get_normalizer(None)
+        self.assertIsInstance(normalizer, GenericNormalizer)
+
+    def test_normalize_config_function(self):
+        """Test convenience function"""
+        from backups.config_normalizer import normalize_config
+
+        config = "# 2025-11-23 10:17:44 by RouterOS 7.16\ntest"
+        result = normalize_config(config, 'mikrotik')
+        self.assertNotIn('2025-11-23', result)
