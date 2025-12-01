@@ -90,7 +90,9 @@ install_dependencies() {
             software-properties-common \
             libldap2-dev \
             libsasl2-dev \
-            libssl-dev
+            libssl-dev \
+            sshpass \
+            openssh-client
 
         # Enable and start services
         systemctl enable redis-server
