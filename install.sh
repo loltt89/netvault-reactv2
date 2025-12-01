@@ -982,10 +982,6 @@ main() {
 
     install_dependencies
 
-    # Install OpenSSH 7.5 with SSH v1 support for legacy devices
-    print_header "Installing OpenSSH Legacy (SSH v1 Support)"
-    bash ${CURRENT_DIR}/install_openssh_legacy.sh
-
     setup_redis_password
     setup_database
     install_application
