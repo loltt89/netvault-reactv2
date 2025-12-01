@@ -91,8 +91,7 @@ install_dependencies() {
             libldap2-dev \
             libsasl2-dev \
             libssl-dev \
-            sshpass \
-            openssh-client
+            putty-tools
 
         # Enable and start services
         systemctl enable redis-server

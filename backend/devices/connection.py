@@ -15,14 +15,6 @@ from typing import Optional, Tuple, List
 
 logger = logging.getLogger(__name__)
 
-# Try to import pexpect for SSH v1 support
-try:
-    import pexpect
-    PEXPECT_AVAILABLE = True
-except ImportError:
-    PEXPECT_AVAILABLE = False
-    logger.warning("pexpect not available - SSH v1 support will be limited")
-
 # ===== Compiled Regex Patterns (for performance) =====
 # These are compiled once at module load instead of on every line of config
 ANSI_ESCAPE_PATTERN = re.compile(r'\x1b\[[0-9;]*m')
@@ -386,13 +378,13 @@ class BaseDeviceConnection(ABC):
         self.disconnect()
 
 
-def try_ssh_v1_pexpect(host: str, port: int, username: str, password: str,
-                        command: str, timeout: int = 30) -> Tuple[bool, str]:
+def try_plink(host: str, port: int, username: str, password: str,
+              command: str, timeout: int = 30, ssh_version: int = 2) -> Tuple[bool, str]:
     """
-    SSH v1 support using pexpect for automation
+    Use PuTTY's plink for SSH connections (supports SSH v1 and v2)
 
-    Modern OpenSSH removed SSH v1 support, so we use pexpect to automate
-    interaction with devices that only support SSH protocol version 1.
+    plink is more reliable for legacy devices than paramiko or OpenSSH
+    because it has native SSH v1 support and handles all legacy algorithms.
 
     Args:
         host: Target host
@@ -401,134 +393,52 @@ def try_ssh_v1_pexpect(host: str, port: int, username: str, password: str,
         password: Password
         command: Command to execute
         timeout: Operation timeout
-
-    Returns:
-        Tuple of (success, output)
-    """
-    if not PEXPECT_AVAILABLE:
-        return False, "pexpect not installed - run: pip install pexpect"
-
-    try:
-        # Use legacy OpenSSH 7.5 with SSH v1 support (installed at /opt/openssh-legacy)
-        # Falls back to system SSH if legacy version not installed
-        import os
-        ssh_binary = '/opt/openssh-legacy/bin/ssh' if os.path.exists('/opt/openssh-legacy/bin/ssh') else '/usr/bin/ssh'
-
-        ssh_cmd = f'{ssh_binary} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {port} {username}@{host}'
-
-        child = pexpect.spawn(ssh_cmd, timeout=timeout)
-        child.logfile = None  # Don't log passwords
-
-        # Wait for password prompt
-        i = child.expect(['password:', 'Password:', pexpect.TIMEOUT, pexpect.EOF], timeout=10)
-
-        if i >= 2:  # TIMEOUT or EOF
-            return False, f"No password prompt: {child.before.decode('utf-8', errors='ignore')}"
-
-        # Send password
-        child.sendline(password)
-        time.sleep(1)
-
-        # Wait for shell prompt (various formats)
-        child.expect(['#', '>', r'\$'], timeout=10)
-
-        # Send command
-        child.sendline(command)
-        time.sleep(2)
-
-        # Wait for command to complete
-        child.expect(['#', '>', r'\$'], timeout=timeout)
-
-        # Get output
-        output = child.before.decode('utf-8', errors='ignore')
-
-        # Cleanup
-        child.sendline('exit')
-        child.close()
-
-        return True, output
-
-    except pexpect.TIMEOUT:
-        return False, "SSH v1 connection timeout"
-    except pexpect.EOF:
-        return False, "SSH v1 connection closed unexpectedly"
-    except Exception as e:
-        return False, f"SSH v1 pexpect error: {str(e)}"
-
-
-def try_system_ssh(host: str, port: int, username: str, password: str,
-                   command: str, timeout: int = 30) -> Tuple[bool, str]:
-    """
-    Fallback to system SSH client for devices with SSH v1 or very old SSH implementations
-    that paramiko cannot handle. System SSH supports legacy protocols.
-
-    Args:
-        host: Target host
-        port: SSH port
-        username: Username
-        password: Password
-        command: Command to execute
-        timeout: Operation timeout
+        ssh_version: SSH protocol version (1 or 2)
 
     Returns:
         Tuple of (success, output)
     """
     try:
-        # Create temporary SSH config with legacy algorithm support
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.ssh_config', delete=False) as f:
-            ssh_config = f"""
-Host *
-    StrictHostKeyChecking no
-    UserKnownHostsFile /dev/null
-    LogLevel ERROR
-    # Enable ALL legacy algorithms for maximum compatibility
-    KexAlgorithms +diffie-hellman-group1-sha1,diffie-hellman-group-exchange-sha1,diffie-hellman-group14-sha1
-    HostKeyAlgorithms +ssh-rsa,ssh-dss
-    Ciphers +aes128-cbc,3des-cbc,aes192-cbc,aes256-cbc
-    MACs +hmac-sha1,hmac-sha1-96,hmac-md5,hmac-md5-96
-    PubkeyAcceptedKeyTypes +ssh-rsa,ssh-dss
-"""
-            f.write(ssh_config)
-            config_file = f.name
-
-        # Use sshpass for password authentication
-        # Format: sshpass -p 'password' ssh -F config_file user@host command
-        # Use full paths to avoid PATH issues in systemd services
-        ssh_cmd = [
-            '/usr/bin/sshpass', '-p', password,
-            '/usr/bin/ssh',
-            '-F', config_file,
-            '-p', str(port),
-            '-o', 'ConnectTimeout=10',
-            '-o', 'ServerAliveInterval=5',
-            f'{username}@{host}',
+        # Build plink command
+        # -ssh: force SSH protocol
+        # -1 or -2: SSH protocol version
+        # -batch: disable interactive prompts
+        # -pw: password authentication
+        plink_cmd = [
+            '/usr/bin/plink',
+            '-ssh',
+            f'-{ssh_version}',  # -1 for SSH v1, -2 for SSH v2
+            '-batch',  # Non-interactive mode
+            '-P', str(port),
+            '-l', username,
+            '-pw', password,
+            host,
             command
         ]
 
         result = subprocess.run(
-            ssh_cmd,
+            plink_cmd,
             capture_output=True,
             timeout=timeout,
-            text=True
+            text=True,
+            env={'TERM': 'dumb'}  # Prevent terminal escape sequences
         )
-
-        # Cleanup config file
-        try:
-            subprocess.run(['rm', '-f', config_file], check=False)
-        except:
-            pass
 
         if result.returncode == 0:
             return True, result.stdout
         else:
-            return False, f"SSH failed: {result.stderr}"
+            error_msg = result.stderr.strip()
+            # If SSH v2 failed with version mismatch, suggest trying SSH v1
+            if 'version' in error_msg.lower() or 'protocol' in error_msg.lower():
+                return False, f"SSH v{ssh_version} failed (try other version): {error_msg}"
+            return False, f"plink failed: {error_msg}"
 
     except subprocess.TimeoutExpired:
-        return False, "SSH command timeout"
+        return False, f"SSH connection timeout ({timeout}s)"
     except FileNotFoundError:
-        return False, "sshpass not found - install with: apt-get install sshpass"
+        return False, "plink not found - install with: apt-get install putty-tools"
     except Exception as e:
-        return False, f"System SSH error: {str(e)}"
+        return False, f"plink error: {str(e)}"
 
 
 class SSHConnection(BaseDeviceConnection):
@@ -540,18 +450,17 @@ class SSHConnection(BaseDeviceConnection):
         # SSH-specific attributes
         self.client: Optional[paramiko.SSHClient] = None
         self.shell: Optional[paramiko.Channel] = None
-        self.use_system_ssh: bool = False  # Flag for legacy device fallback
-        self.use_pexpect: bool = False  # Flag for SSH v1 devices
+        self.use_plink: bool = False  # Flag for plink fallback
+        self.plink_ssh_version: int = 2  # SSH protocol version for plink (1 or 2)
 
     def connect(self) -> None:
-        """Establish SSH connection with smart fallback chain"""
-        # Try paramiko first (faster and more features)
+        """Establish SSH connection with smart fallback: paramiko → plink (SSH v2/v1)"""
+        # Try paramiko first (faster and supports interactive shell)
         try:
             self.client = paramiko.SSHClient()
             self.client.set_missing_host_key_policy(LoggingAutoAddPolicy())
 
             # Enable legacy SSH algorithms for old network devices
-            # This allows connection to devices with SSH v1.5/1.99 and weak ciphers
             self.client.connect(
                 hostname=self.host,
                 port=self.port,
@@ -562,7 +471,6 @@ class SSHConnection(BaseDeviceConnection):
                 allow_agent=False,
                 # Enable all algorithms including legacy/weak ones
                 disabled_algorithms={'keys': [], 'kex': [], 'ciphers': [], 'macs': [], 'compression': []},
-                # Allow old SSH protocol versions
                 banner_timeout=30
             )
 
@@ -574,65 +482,43 @@ class SSHConnection(BaseDeviceConnection):
             if self.shell.recv_ready():
                 self.shell.recv(65535)
 
-            self.use_system_ssh = False
-            logger.info(f"Connected to {self.host} via paramiko SSH")
+            self.use_plink = False
+            logger.info(f"Connected to {self.host} via paramiko")
 
         except (paramiko.SSHException, socket.error) as e:
-            error_msg = str(e).lower()
+            # Paramiko failed - try plink with SSH v2
+            logger.warning(f"Paramiko failed for {self.host}: {str(e)}")
+            logger.info(f"Trying plink SSH v2 for {self.host}")
 
-            # Check if it's SSH v1 incompatibility - skip System SSH and go straight to pexpect
-            if any(keyword in error_msg for keyword in ['incompatible version', 'version 1', 'ssh-1', 'protocol version 1']):
-                logger.warning(f"SSH v1 detected for {self.host} (paramiko error), trying pexpect")
-                success, output = try_ssh_v1_pexpect(
-                    self.host, self.port, self.username, self.password,
-                    'echo "SSH_OK"', timeout=10
-                )
-                if success and 'SSH_OK' in output:
-                    self.use_pexpect = True
-                    self.use_system_ssh = True
-                    logger.info(f"Connected to {self.host} via pexpect (SSH v1)")
-                else:
-                    raise DeviceConnectionError(f"Paramiko and pexpect failed. Paramiko: {str(e)}, Pexpect: {output}")
+            success, output = try_plink(
+                self.host, self.port, self.username, self.password,
+                'echo "SSH_OK"', timeout=10, ssh_version=2
+            )
+
+            if success and 'SSH_OK' in output:
+                self.use_plink = True
+                self.plink_ssh_version = 2
+                logger.info(f"Connected to {self.host} via plink (SSH v2)")
             else:
-                # Not SSH v1 issue - try System SSH for legacy algorithms
-                logger.warning(f"Paramiko failed for {self.host}, trying system SSH: {str(e)}")
-                try:
-                    success, output = try_system_ssh(
-                        self.host, self.port, self.username, self.password,
-                        'echo "SSH_OK"', timeout=10
-                    )
-                    if success and 'SSH_OK' in output:
-                        self.use_system_ssh = True
-                        logger.info(f"Connected to {self.host} via system SSH (legacy algorithms)")
-                    else:
-                        # System SSH failed - check if it's SSH v1
-                        if 'Protocol major versions differ' in output or 'SSH protocol v.1' in output:
-                            logger.warning(f"SSH v1 detected for {self.host} (system SSH error), trying pexpect")
-                            success_v1, output_v1 = try_ssh_v1_pexpect(
-                                self.host, self.port, self.username, self.password,
-                                'echo "SSH_OK"', timeout=10
-                            )
-                            if success_v1 and 'SSH_OK' in output_v1:
-                                self.use_pexpect = True
-                                self.use_system_ssh = True
-                                logger.info(f"Connected to {self.host} via pexpect (SSH v1)")
-                            else:
-                                raise DeviceConnectionError(
-                                    f"All SSH methods failed for {self.host}. "
-                                    f"Paramiko: {str(e)}, System SSH: {output}, Pexpect: {output_v1}"
-                                )
-                        else:
-                            raise DeviceConnectionError(
-                                f"Paramiko and system SSH failed for {self.host}. "
-                                f"Paramiko: {str(e)}, System SSH: {output}"
-                            )
-                except DeviceConnectionError:
-                    raise
-                except Exception as fallback_error:
+                # SSH v2 failed - try SSH v1
+                logger.warning(f"plink SSH v2 failed for {self.host}: {output}")
+                logger.info(f"Trying plink SSH v1 for {self.host}")
+
+                success_v1, output_v1 = try_plink(
+                    self.host, self.port, self.username, self.password,
+                    'echo "SSH_OK"', timeout=10, ssh_version=1
+                )
+
+                if success_v1 and 'SSH_OK' in output_v1:
+                    self.use_plink = True
+                    self.plink_ssh_version = 1
+                    logger.info(f"Connected to {self.host} via plink (SSH v1)")
+                else:
                     raise DeviceConnectionError(
-                        f"Paramiko and system SSH failed for {self.host}. "
-                        f"Paramiko: {str(e)}, System SSH: {str(fallback_error)}"
+                        f"All SSH methods failed for {self.host}. "
+                        f"Paramiko: {str(e)}, plink v2: {output}, plink v1: {output_v1}"
                     )
+
         except paramiko.AuthenticationException:
             raise DeviceConnectionError(f"Authentication failed for {self.host}")
         except socket.timeout:
@@ -642,7 +528,7 @@ class SSHConnection(BaseDeviceConnection):
 
     def send_command(self, command: str, wait_time: float = 2, handle_paging: bool = True) -> str:
         """
-        Send command and return output (supports paramiko, system SSH, and pexpect)
+        Send command and return output (supports paramiko shell and plink)
 
         Args:
             command: Command to execute
@@ -652,26 +538,17 @@ class SSHConnection(BaseDeviceConnection):
         Returns:
             Command output as string
         """
-        # If using pexpect for SSH v1, use pexpect function
-        if self.use_pexpect:
-            success, output = try_ssh_v1_pexpect(
+        # If using plink fallback, execute command directly
+        if self.use_plink:
+            success, output = try_plink(
                 self.host, self.port, self.username, self.password,
-                command, timeout=int(wait_time * 5)
+                command, timeout=int(wait_time * 5), ssh_version=self.plink_ssh_version
             )
             if not success:
-                raise DeviceConnectionError(f"SSH v1 pexpect command failed: {output}")
+                raise DeviceConnectionError(f"plink command failed: {output}")
             return output
 
-        # If using system SSH fallback, execute command directly
-        if self.use_system_ssh:
-            success, output = try_system_ssh(
-                self.host, self.port, self.username, self.password,
-                command, timeout=int(wait_time * 5)
-            )
-            if not success:
-                raise DeviceConnectionError(f"System SSH command failed: {output}")
-            return output
-
+        # Using paramiko interactive shell
         if not self.shell:
             raise DeviceConnectionError("Not connected")
 
