@@ -1,7 +1,6 @@
 from django.db import models
 from django.conf import settings
 from core.crypto import encrypt_data, decrypt_data
-import json
 
 
 class Vendor(models.Model):

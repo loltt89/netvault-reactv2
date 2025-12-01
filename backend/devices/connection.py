@@ -171,7 +171,7 @@ def tcp_ping(host: str, port: int, timeout: int = 2) -> bool:
         if sock:
             try:
                 sock.close()
-            except:
+            except Exception:
                 pass
 
 
@@ -675,7 +675,7 @@ class SSHConnection(BaseDeviceConnection):
                         self.shell.send(f'{cmd}\n')
                         time.sleep(0.3)  # Brief pause between commands
                     time.sleep(0.5)  # Give device time to process logout
-                except:
+                except Exception:
                     pass  # If sending logout commands fails, continue with forced close
 
             if self.shell:
@@ -687,12 +687,12 @@ class SSHConnection(BaseDeviceConnection):
             try:
                 if self.shell:
                     self.shell.close()
-            except:
+            except Exception:
                 pass
             try:
                 if self.client:
                     self.client.close()
-            except:
+            except Exception:
                 pass
 
 
@@ -783,7 +783,7 @@ class TelnetConnection(BaseDeviceConnection):
                         self.connection.write(f'{cmd}\n'.encode('ascii'))
                         time.sleep(0.3)  # Brief pause between commands
                     time.sleep(0.5)  # Give device time to process logout
-                except:
+                except Exception:
                     pass  # If sending logout commands fails, continue with forced close
 
                 self.connection.close()
@@ -792,7 +792,7 @@ class TelnetConnection(BaseDeviceConnection):
             try:
                 if self.connection:
                     self.connection.close()
-            except:
+            except Exception:
                 pass
 
 

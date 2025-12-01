@@ -1,7 +1,6 @@
 """
 SAML 2.0 SSO Views for NetVault
 """
-import json
 import logging
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.views import View

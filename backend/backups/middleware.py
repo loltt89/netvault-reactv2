@@ -25,9 +25,8 @@ def get_user_from_token(token_string):
         User = get_user_model()
         user = User.objects.get(id=user_id)
         return user
-    except Exception as e:
+    except Exception:
         # Invalid token or user not found
-        print(f"JWT Authentication failed: {e}")
         return AnonymousUser()
 
 

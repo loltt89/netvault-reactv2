@@ -9,7 +9,7 @@ from datetime import timedelta
 from devices.models import Device
 from devices.connection import backup_device_config
 from .models import Backup, BackupSchedule
-from core.redis_lock import DeviceLock, DeviceLockError
+from core.redis_lock import DeviceLock
 import logging
 
 # Real-time WebSocket log streaming

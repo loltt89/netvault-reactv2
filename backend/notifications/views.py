@@ -1,3 +1,2 @@
-from django.shortcuts import render
-
-# Create your views here.
+# Views for notifications app
+# TODO: Implement notification views when needed
