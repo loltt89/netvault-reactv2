@@ -4,6 +4,7 @@ import { useTheme, ThemeName } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { QRCodeSVG } from 'qrcode.react';
 import apiService from '../services/api.service';
+import logger from '../utils/logger';
 import { Language, Theme } from '../types';
 import '../styles/UserProfileModal.css';
 
@@ -80,7 +81,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
         await updateProfile({ preferred_language: langCode as Language });
       }
     } catch (error) {
-      console.error('Error updating language preference:', error);
+      logger.error('Error updating language preference:', error);
     }
   };
 
@@ -93,7 +94,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
         await updateProfile({ theme: themeName as Theme });
       }
     } catch (error) {
-      console.error('Error updating theme preference:', error);
+      logger.error('Error updating theme preference:', error);
     }
   };
 
@@ -104,7 +105,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
       setSecret(response.secret);
       setShow2FASetup(true);
     } catch (error) {
-      console.error('Error enabling 2FA:', error);
+      logger.error('Error enabling 2FA:', error);
       alert(t('profile.failed_enable_2fa'));
     }
   };
@@ -123,7 +124,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
       if (refreshUser) await refreshUser();
       alert(t('profile.2fa_enabled'));
     } catch (error: any) {
-      console.error('Error verifying 2FA:', error);
+      logger.error('Error verifying 2FA:', error);
       alert(t('profile.invalid_verification'));
     }
   };
@@ -138,7 +139,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
       if (refreshUser) await refreshUser();
       alert(t('profile.2fa_disabled'));
     } catch (error: any) {
-      console.error('Error disabling 2FA:', error);
+      logger.error('Error disabling 2FA:', error);
       alert(t('profile.failed_disable_2fa'));
     }
   };
@@ -163,7 +164,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
       setNewPassword('');
       setConfirmPassword('');
     } catch (error: any) {
-      console.error('Error changing password:', error);
+      logger.error('Error changing password:', error);
       alert(error.response?.data?.error || t('profile.failed_change_password'));
     }
   };

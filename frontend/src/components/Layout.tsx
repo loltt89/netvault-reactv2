@@ -5,6 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import UserProfileModal from './UserProfileModal';
 import TasksTable from './TasksTable';
+import logger from '../utils/logger';
 import '../styles/Layout.css';
 
 interface LayoutProps {
@@ -40,7 +41,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       await logout();
       navigate('/login');
     } catch (error) {
-      console.error('Logout error:', error);
+      logger.error('Logout error:', error);
     }
   };
 
@@ -69,7 +70,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         wsRef.current = ws;
 
         ws.onopen = () => {
-          console.log('WebSocket connected');
+          logger.debug('WebSocket connected');
           setIsConnected(true);
           reconnectAttemptsRef.current = 0; // Reset reconnect attempts
         };
@@ -97,12 +98,12 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               }, 30000); // 30 seconds
             }
           } catch (error) {
-            console.error('Error parsing WebSocket message:', error);
+            logger.error('Error parsing WebSocket message:', error);
           }
         };
 
         ws.onclose = (event) => {
-          console.log('WebSocket disconnected', event.code, event.reason);
+          logger.debug('WebSocket disconnected', event.code, event.reason);
           setIsConnected(false);
           wsRef.current = null;
 
@@ -112,22 +113,22 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
           // Attempt to reconnect (with exponential backoff)
           if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
             const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
-            console.log(`Reconnecting in ${delay}ms... (attempt ${reconnectAttemptsRef.current + 1}/${MAX_RECONNECT_ATTEMPTS})`);
+            logger.debug(`Reconnecting in ${delay}ms... (attempt ${reconnectAttemptsRef.current + 1}/${MAX_RECONNECT_ATTEMPTS})`);
 
             reconnectTimeoutRef.current = setTimeout(() => {
               reconnectAttemptsRef.current++;
               connectWebSocket();
             }, delay);
           } else {
-            console.error('Max WebSocket reconnection attempts reached');
+            logger.error('Max WebSocket reconnection attempts reached');
           }
         };
 
         ws.onerror = (error) => {
-          console.error('WebSocket error:', error);
+          logger.error('WebSocket error:', error);
         };
       } catch (error) {
-        console.error('Failed to establish WebSocket connection:', error);
+        logger.error('Failed to establish WebSocket connection:', error);
       }
     };
 
