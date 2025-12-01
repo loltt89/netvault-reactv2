@@ -619,3 +619,136 @@ class DeviceTypeAPITestCase(APITestCase):
             self.assertEqual(len(response.data['results']), 2)
         else:
             self.assertEqual(len(response.data), 2)
+
+    def test_delete_predefined_device_type(self):
+        """Test cannot delete predefined device type"""
+        self.client.force_authenticate(user=self.admin)
+        dt = DeviceType.objects.create(name='Predefined', slug='predefined', is_predefined=True)
+
+        response = self.client.delete(f'/api/v1/devices/device-types/{dt.id}/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('predefined', response.data['detail'].lower())
+
+    def test_delete_device_type_in_use(self):
+        """Test cannot delete device type that is in use"""
+        User = get_user_model()
+        user = User.objects.create_user(email='dtype_use@test.com', username='dtypeuse', password='pass')
+
+        dt = DeviceType.objects.create(name='InUse', slug='in-use')
+        vendor = Vendor.objects.create(name='Test', slug='test-vendor')
+        Device.objects.create(
+            name='Test-Device',
+            ip_address='1.2.3.4',
+            vendor=vendor,
+            device_type=dt,
+            username='admin',
+            password_encrypted=encrypt_data('pass'),
+            created_by=user
+        )
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.delete(f'/api/v1/devices/device-types/{dt.id}/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('device', response.data['detail'].lower())
+
+
+class DeviceViewSetActionsTestCase(APITestCase):
+    """Tests for Device ViewSet actions"""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='device_actions@example.com',
+            username='deviceactions',
+            password='TestPass123!',
+            role='administrator'
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+
+        self.vendor = Vendor.objects.create(
+            name='Cisco',
+            slug='cisco-actions',
+            backup_commands=['show running-config']
+        )
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-actions')
+        self.device = Device.objects.create(
+            name='Actions-Device',
+            ip_address='192.168.100.1',
+            vendor=self.vendor,
+            device_type=self.device_type,
+            username='admin',
+            password_encrypted=encrypt_data('password'),
+            status='online',
+            backup_enabled=True,
+            criticality='high',
+            created_by=self.admin
+        )
+
+    def test_statistics_endpoint(self):
+        """Test device statistics endpoint"""
+        # Create another device
+        Device.objects.create(
+            name='Stats-Device-2',
+            ip_address='192.168.100.2',
+            vendor=self.vendor,
+            device_type=self.device_type,
+            username='admin',
+            password_encrypted=encrypt_data('pass'),
+            status='offline',
+            backup_enabled=False,
+            criticality='low',
+            created_by=self.admin
+        )
+
+        response = self.client.get('/api/v1/devices/devices/statistics/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('total', response.data)
+        self.assertIn('by_status', response.data)
+        self.assertIn('by_criticality', response.data)
+        self.assertEqual(response.data['total'], 2)
+
+    def test_filter_by_status(self):
+        """Test filtering devices by status"""
+        response = self.client.get('/api/v1/devices/devices/?status=online')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_filter_by_criticality(self):
+        """Test filtering devices by criticality"""
+        response = self.client.get('/api/v1/devices/devices/?criticality=high')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_filter_by_backup_enabled(self):
+        """Test filtering devices by backup_enabled"""
+        response = self.client.get('/api/v1/devices/devices/?backup_enabled=true')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_search_devices(self):
+        """Test searching devices"""
+        response = self.client.get('/api/v1/devices/devices/?search=Actions')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    @patch('devices.connection.test_connection')
+    def test_test_connection_success(self, mock_test):
+        """Test connection test endpoint - success"""
+        mock_test.return_value = (True, 'Connection successful')
+
+        response = self.client.post(f'/api/v1/devices/devices/{self.device.id}/test_connection/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+
+    @patch('devices.connection.test_connection')
+    def test_test_connection_failure(self, mock_test):
+        """Test connection test endpoint - failure"""
+        mock_test.return_value = (False, 'Connection timed out')
+
+        response = self.client.post(f'/api/v1/devices/devices/{self.device.id}/test_connection/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['success'])

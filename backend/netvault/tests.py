@@ -7,6 +7,7 @@ from rest_framework.test import APITestCase, APIClient
 from rest_framework import status
 from django.utils import timezone
 from datetime import timedelta
+from unittest.mock import patch, MagicMock
 
 from devices.models import Device, Vendor, DeviceType
 from backups.models import Backup
@@ -218,3 +219,322 @@ class RecentBackupsTestCase(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data), 5)
+
+
+class SystemSettingsAPITestCase(APITestCase):
+    """Tests for System Settings API endpoints"""
+
+    def setUp(self):
+        self.client = APIClient()
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='admin@example.com',
+            username='adminuser',
+            password='TestPass123!',
+            role='administrator'
+        )
+        self.viewer = User.objects.create_user(
+            email='viewer@example.com',
+            username='vieweruser',
+            password='TestPass123!',
+            role='viewer'
+        )
+
+    def test_get_settings_unauthenticated(self):
+        """Test get settings requires authentication"""
+        response = self.client.get('/api/v1/settings/system/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_get_settings_non_admin(self):
+        """Test get settings requires admin role"""
+        self.client.force_authenticate(user=self.viewer)
+        response = self.client.get('/api/v1/settings/system/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_get_settings_admin(self):
+        """Test admin can get settings"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get('/api/v1/settings/system/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('email', response.data)
+        self.assertIn('telegram', response.data)
+        self.assertIn('notifications', response.data)
+        self.assertIn('ldap', response.data)
+        self.assertIn('backup', response.data)
+        self.assertIn('jwt', response.data)
+
+    def test_update_settings_email(self):
+        """Test updating email settings"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'email': {
+                'host': 'smtp.test.com',
+                'port': 465,
+                'use_tls': False,
+                'host_user': 'user@test.com',
+                'from_email': 'noreply@test.com'
+            }
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+
+    def test_update_settings_email_with_password(self):
+        """Test updating email settings with password"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'email': {
+                'host_password': 'secret123'
+            }
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_update_settings_telegram(self):
+        """Test updating telegram settings"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'telegram': {
+                'enabled': True,
+                'bot_token': 'bot123456:ABC',
+                'chat_id': '123456789'
+            }
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_update_settings_telegram_masked_token(self):
+        """Test telegram with masked token (shouldn't update)"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'telegram': {
+                'bot_token': '***'  # Masked - should be ignored
+            }
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_update_settings_notifications(self):
+        """Test updating notification settings"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'notifications': {
+                'notify_on_success': True,
+                'notify_on_failure': True,
+                'notify_schedule_summary': True
+            }
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_update_settings_ldap(self):
+        """Test updating LDAP settings"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'ldap': {
+                'enabled': True,
+                'server_uri': 'ldap://ldap.example.com:389',
+                'bind_dn': 'cn=admin,dc=example,dc=com',
+                'bind_password': 'secret',
+                'user_search_base': 'ou=users,dc=example,dc=com',
+                'user_search_filter': '(uid=%(user)s)'
+            }
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_update_settings_backup_valid(self):
+        """Test updating backup settings with valid values"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'backup': {
+                'retention_days': 30,
+                'parallel_workers': 10
+            }
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_update_settings_backup_invalid_retention(self):
+        """Test backup settings validation - invalid retention days"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'backup': {
+                'retention_days': 0  # Invalid - must be at least 1
+            }
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', response.data)
+
+    def test_update_settings_backup_invalid_workers(self):
+        """Test backup settings validation - invalid workers"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'backup': {
+                'parallel_workers': 100  # Invalid - max 50
+            }
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_update_settings_jwt_valid(self):
+        """Test updating JWT settings with valid values"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'jwt': {
+                'access_token_lifetime': 30,
+                'refresh_token_lifetime': 1440
+            }
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_update_settings_jwt_invalid_access_lifetime(self):
+        """Test JWT settings validation - invalid access token lifetime"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'jwt': {
+                'access_token_lifetime': 2  # Invalid - min 5
+            }
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_update_settings_jwt_invalid_refresh_lifetime(self):
+        """Test JWT settings validation - invalid refresh token lifetime"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'jwt': {
+                'refresh_token_lifetime': 50  # Invalid - min 60
+            }
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch('notifications.services.send_email_notification')
+    def test_test_email_success(self, mock_send):
+        """Test email test endpoint - success"""
+        mock_send.return_value = True
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/test-email/', {
+            'email': 'test@example.com'
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['success'])
+
+    @patch('notifications.services.send_email_notification')
+    def test_test_email_failure(self, mock_send):
+        """Test email test endpoint - failure"""
+        mock_send.return_value = False
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/test-email/', {
+            'email': 'test@example.com'
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    def test_test_telegram_missing_config(self):
+        """Test Telegram test endpoint - missing config"""
+        from netvault.models import SystemSettings
+        settings = SystemSettings.get_settings()
+        settings.telegram_bot_token_encrypted = ''
+        settings.telegram_chat_id = ''
+        settings.save()
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post('/api/v1/settings/test-telegram/', format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class SystemSettingsTestCase(TestCase):
+    """Tests for SystemSettings model"""
+
+    def test_singleton_pattern(self):
+        """Test only one SystemSettings instance exists"""
+        from netvault.models import SystemSettings
+
+        # Use get_settings to create first instance
+        settings1 = SystemSettings.get_settings()
+        settings1.email_host = 'smtp1.example.com'
+        settings1.save()
+
+        # Get again and modify
+        settings2 = SystemSettings.get_settings()
+        settings2.email_host = 'smtp2.example.com'
+        settings2.save()
+
+        self.assertEqual(SystemSettings.objects.count(), 1)
+        # Both instances have pk=1
+        self.assertEqual(settings1.pk, 1)
+        self.assertEqual(settings2.pk, 1)
+
+    def test_get_settings_creates_if_not_exists(self):
+        """Test get_settings creates settings if not exists"""
+        from netvault.models import SystemSettings
+        SystemSettings.objects.all().delete()
+
+        settings = SystemSettings.get_settings()
+
+        self.assertIsNotNone(settings)
+        self.assertEqual(settings.pk, 1)
+
+    def test_email_password_encryption(self):
+        """Test email password encryption/decryption"""
+        from netvault.models import SystemSettings
+
+        settings = SystemSettings.get_settings()
+        settings.set_email_password('secret_password')
+        settings.save()
+
+        # Encrypted password should not be plaintext
+        self.assertNotEqual(settings.email_host_password_encrypted, 'secret_password')
+
+        # Decrypted password should match
+        self.assertEqual(settings.get_email_password(), 'secret_password')
+
+    def test_email_password_empty(self):
+        """Test empty email password handling"""
+        from netvault.models import SystemSettings
+
+        settings = SystemSettings.get_settings()
+        settings.set_email_password('')
+        settings.save()
+
+        self.assertEqual(settings.email_host_password_encrypted, '')
+        self.assertEqual(settings.get_email_password(), '')
+
+    def test_telegram_token_encryption(self):
+        """Test Telegram token encryption/decryption"""
+        from netvault.models import SystemSettings
+
+        settings = SystemSettings.get_settings()
+        settings.set_telegram_bot_token('bot123456:ABC')
+        settings.save()
+
+        # Encrypted token should not be plaintext
+        self.assertNotEqual(settings.telegram_bot_token_encrypted, 'bot123456:ABC')
+
+        # Decrypted token should match
+        self.assertEqual(settings.get_telegram_bot_token(), 'bot123456:ABC')
+
+    def test_ldap_password_encryption(self):
+        """Test LDAP password encryption/decryption"""
+        from netvault.models import SystemSettings
+
+        settings = SystemSettings.get_settings()
+        settings.set_ldap_bind_password('ldap_secret')
+        settings.save()
+
+        self.assertNotEqual(settings.ldap_bind_password_encrypted, 'ldap_secret')
+        self.assertEqual(settings.get_ldap_bind_password(), 'ldap_secret')
+
+    def test_str_representation(self):
+        """Test string representation"""
+        from netvault.models import SystemSettings
+
+        settings = SystemSettings.get_settings()
+        self.assertEqual(str(settings), 'System Settings')

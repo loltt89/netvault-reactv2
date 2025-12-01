@@ -892,3 +892,197 @@ interface GigabitEthernet0/0"""
         config = "# 2025-11-23 10:17:44 by RouterOS 7.16\ntest"
         result = normalize_config(config, 'mikrotik')
         self.assertNotIn('2025-11-23', result)
+
+
+class BackupViewSetActionsTestCase(APITestCase):
+    """Tests for Backup ViewSet actions: statistics, configuration, download, compare"""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='backup_actions@example.com',
+            username='backupactions',
+            password='TestPass123!',
+            role='administrator'
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+
+        self.vendor = Vendor.objects.create(
+            name='Cisco',
+            slug='cisco-actions',
+            backup_commands=['show running-config']
+        )
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-actions')
+        self.device = Device.objects.create(
+            name='Actions-Device',
+            ip_address='192.168.1.50',
+            vendor=self.vendor,
+            device_type=self.device_type,
+            username='admin',
+            password_encrypted=encrypt_data('pass'),
+            created_by=self.admin
+        )
+
+    def test_statistics_endpoint(self):
+        """Test backup statistics endpoint"""
+        # Create some backups
+        Backup.objects.create(
+            device=self.device,
+            status='success',
+            success=True,
+            configuration_encrypted=encrypt_data('config1'),
+            configuration_hash='hash1',
+            size_bytes=1024
+        )
+        Backup.objects.create(
+            device=self.device,
+            status='failed',
+            success=False,
+            configuration_encrypted='',
+            configuration_hash='',
+            size_bytes=0
+        )
+
+        response = self.client.get('/api/v1/backups/backups/statistics/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('total', response.data)
+        self.assertIn('successful', response.data)
+        self.assertIn('failed', response.data)
+        self.assertEqual(response.data['total'], 2)
+        self.assertEqual(response.data['successful'], 1)
+        self.assertEqual(response.data['failed'], 1)
+
+    def test_configuration_endpoint(self):
+        """Test getting backup configuration"""
+        backup = Backup.objects.create(
+            device=self.device,
+            status='success',
+            success=True,
+            configuration_encrypted=encrypt_data('hostname Router\ninterface GigabitEthernet0/0'),
+            configuration_hash='config_hash'
+        )
+
+        response = self.client.get(f'/api/v1/backups/backups/{backup.id}/configuration/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('configuration', response.data)
+        self.assertIn('hostname Router', response.data['configuration'])
+
+    def test_download_endpoint(self):
+        """Test downloading backup as file"""
+        backup = Backup.objects.create(
+            device=self.device,
+            status='success',
+            success=True,
+            configuration_encrypted=encrypt_data('hostname Router'),
+            configuration_hash='download_hash'
+        )
+
+        response = self.client.get(f'/api/v1/backups/backups/{backup.id}/download/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response['Content-Type'], 'text/plain')
+        self.assertIn('attachment', response['Content-Disposition'])
+        self.assertEqual(response.content.decode(), 'hostname Router')
+
+    def test_compare_endpoint(self):
+        """Test comparing two backups"""
+        backup1 = Backup.objects.create(
+            device=self.device,
+            status='success',
+            success=True,
+            configuration_encrypted=encrypt_data('hostname Router1\ninterface eth0'),
+            configuration_hash='compare_hash1'
+        )
+        backup2 = Backup.objects.create(
+            device=self.device,
+            status='success',
+            success=True,
+            configuration_encrypted=encrypt_data('hostname Router2\ninterface eth0'),
+            configuration_hash='compare_hash2'
+        )
+
+        response = self.client.get(f'/api/v1/backups/backups/{backup2.id}/compare/{backup1.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('diff', response.data)
+
+    def test_compare_backup_not_found(self):
+        """Test comparing with non-existent backup"""
+        backup = Backup.objects.create(
+            device=self.device,
+            status='success',
+            success=True,
+            configuration_encrypted=encrypt_data('config'),
+            configuration_hash='compare_notfound'
+        )
+
+        response = self.client.get(f'/api/v1/backups/backups/{backup.id}/compare/99999/')
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_filter_by_vendor(self):
+        """Test filtering backups by vendor"""
+        Backup.objects.create(
+            device=self.device,
+            status='success',
+            success=True,
+            configuration_encrypted=encrypt_data('config'),
+            configuration_hash='filter_vendor'
+        )
+
+        response = self.client.get(f'/api/v1/backups/backups/?vendor={self.vendor.id}')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_filter_by_device_type(self):
+        """Test filtering backups by device type"""
+        Backup.objects.create(
+            device=self.device,
+            status='success',
+            success=True,
+            configuration_encrypted=encrypt_data('config'),
+            configuration_hash='filter_type'
+        )
+
+        response = self.client.get(f'/api/v1/backups/backups/?device_type={self.device_type.id}')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_filter_by_success(self):
+        """Test filtering backups by success status"""
+        Backup.objects.create(
+            device=self.device,
+            status='success',
+            success=True,
+            configuration_encrypted=encrypt_data('config'),
+            configuration_hash='success_filter'
+        )
+        Backup.objects.create(
+            device=self.device,
+            status='failed',
+            success=False,
+            configuration_encrypted='',
+            configuration_hash=''
+        )
+
+        response = self.client.get('/api/v1/backups/backups/?success=true')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_filter_by_date_range(self):
+        """Test filtering backups by date range"""
+        Backup.objects.create(
+            device=self.device,
+            status='success',
+            success=True,
+            configuration_encrypted=encrypt_data('config'),
+            configuration_hash='date_filter'
+        )
+
+        today = timezone.now().date().isoformat()
+        response = self.client.get(f'/api/v1/backups/backups/?date_from={today}&date_to={today}')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
