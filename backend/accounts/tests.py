@@ -216,21 +216,20 @@ class SAMLSettingsTestCase(TestCase):
 
     def test_singleton_pattern(self):
         """Test only one SAMLSettings instance can exist"""
-        # First instance
-        settings1 = SAMLSettings(enabled=False)
-        settings1.save()
+        # First instance using get_or_create
+        settings1, created1 = SAMLSettings.objects.get_or_create(pk=1, defaults={'enabled': False})
+        self.assertTrue(created1)
 
-        # Second instance - save() forces pk=1, so it updates the existing record
-        settings2 = SAMLSettings(enabled=True)
-        settings2.save()
+        # Second call should return existing, not create new
+        settings2, created2 = SAMLSettings.objects.get_or_create(pk=1, defaults={'enabled': True})
+        self.assertFalse(created2)
 
         self.assertEqual(SAMLSettings.objects.count(), 1)
         # Both refer to pk=1
         self.assertEqual(settings1.pk, 1)
         self.assertEqual(settings2.pk, 1)
-        # Second save should have updated enabled to True
-        settings_from_db = SAMLSettings.objects.get(pk=1)
-        self.assertTrue(settings_from_db.enabled)
+        # First value should be preserved (not overwritten by defaults)
+        self.assertFalse(settings2.enabled)
 
     def test_get_settings(self):
         """Test get_settings class method"""

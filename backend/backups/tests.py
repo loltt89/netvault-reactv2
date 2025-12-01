@@ -383,18 +383,18 @@ class BackupAPITestCase(APITestCase):
     def test_trigger_backup_permission(self):
         """Test backup trigger requires authentication"""
         self.client.logout()
-        response = self.client.post(f'/api/v1/devices/{self.device.id}/backup/')
+        response = self.client.post(f'/api/v1/devices/devices/{self.device.id}/backup_now/')
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    @patch('backups.views.run_device_backup')
+    @patch('backups.tasks.backup_device')
     def test_trigger_backup_success(self, mock_backup):
         """Test successful backup trigger"""
         mock_backup.delay.return_value = MagicMock(id='task-123')
 
-        response = self.client.post(f'/api/v1/devices/{self.device.id}/backup/')
+        response = self.client.post(f'/api/v1/devices/devices/{self.device.id}/backup_now/')
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
         mock_backup.delay.assert_called_once()
 
 

@@ -415,8 +415,8 @@ class DeviceValidationTestCase(TestCase):
             created_by=self.user
         )
 
-        from django.db import IntegrityError
-        with self.assertRaises(IntegrityError):
+        # Device.save() calls full_clean() which raises ValidationError
+        with self.assertRaises(ValidationError):
             Device.objects.create(
                 name='Unique-Device',
                 ip_address='10.0.0.31',
