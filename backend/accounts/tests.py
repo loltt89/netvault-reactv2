@@ -495,3 +495,148 @@ class AuditLogViewSetTestCase(APITestCase):
         response = self.client.get('/api/v1/audit-logs/')
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 1)
+
+
+class PermissionClassesTestCase(TestCase):
+    """Tests for permission classes"""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='perm_admin@example.com',
+            username='permadmin',
+            password='pass123',
+            role='administrator'
+        )
+        self.operator = User.objects.create_user(
+            email='perm_op@example.com',
+            username='permop',
+            password='pass123',
+            role='operator'
+        )
+        self.viewer = User.objects.create_user(
+            email='perm_view@example.com',
+            username='permview',
+            password='pass123',
+            role='viewer'
+        )
+        self.auditor = User.objects.create_user(
+            email='perm_audit@example.com',
+            username='permaudit',
+            password='pass123',
+            role='auditor'
+        )
+        self.superuser = User.objects.create_superuser(
+            email='super@example.com',
+            username='superuser',
+            password='pass123'
+        )
+
+    def test_role_based_permission_admin(self):
+        """Test RoleBasedPermission for admin"""
+        from accounts.permissions import RoleBasedPermission
+        from unittest.mock import MagicMock
+
+        perm = RoleBasedPermission()
+        request = MagicMock()
+        request.user = self.admin
+        request.method = 'DELETE'
+
+        self.assertTrue(perm.has_permission(request, None))
+
+    def test_role_based_permission_viewer(self):
+        """Test RoleBasedPermission for viewer"""
+        from accounts.permissions import RoleBasedPermission
+        from unittest.mock import MagicMock
+
+        perm = RoleBasedPermission()
+        request = MagicMock()
+        request.user = self.viewer
+        request.method = 'DELETE'
+
+        self.assertFalse(perm.has_permission(request, None))
+
+    def test_role_based_permission_viewer_get(self):
+        """Test RoleBasedPermission for viewer GET"""
+        from accounts.permissions import RoleBasedPermission
+        from unittest.mock import MagicMock
+
+        perm = RoleBasedPermission()
+        request = MagicMock()
+        request.user = self.viewer
+        request.method = 'GET'
+
+        self.assertTrue(perm.has_permission(request, None))
+
+    def test_is_administrator_permission(self):
+        """Test IsAdministrator permission"""
+        from accounts.permissions import IsAdministrator
+        from unittest.mock import MagicMock
+
+        perm = IsAdministrator()
+
+        request = MagicMock()
+        request.user = self.admin
+        self.assertTrue(perm.has_permission(request, None))
+
+        request.user = self.viewer
+        self.assertFalse(perm.has_permission(request, None))
+
+    def test_is_operator_or_admin_permission(self):
+        """Test IsOperatorOrAdmin permission"""
+        from accounts.permissions import IsOperatorOrAdmin
+        from unittest.mock import MagicMock
+
+        perm = IsOperatorOrAdmin()
+
+        request = MagicMock()
+        request.user = self.admin
+        self.assertTrue(perm.has_permission(request, None))
+
+        request.user = self.operator
+        self.assertTrue(perm.has_permission(request, None))
+
+        request.user = self.viewer
+        self.assertFalse(perm.has_permission(request, None))
+
+    def test_superuser_bypass(self):
+        """Test superuser bypasses all permissions"""
+        from accounts.permissions import RoleBasedPermission
+        from unittest.mock import MagicMock
+
+        perm = RoleBasedPermission()
+        request = MagicMock()
+        request.user = self.superuser
+        request.method = 'DELETE'
+
+        self.assertTrue(perm.has_permission(request, None))
+
+    def test_can_manage_devices_operator(self):
+        """Test CanManageDevices for operator"""
+        from accounts.permissions import CanManageDevices
+        from unittest.mock import MagicMock
+
+        perm = CanManageDevices()
+        request = MagicMock()
+        request.user = self.operator
+
+        request.method = 'POST'
+        self.assertTrue(perm.has_permission(request, None))
+
+        request.method = 'DELETE'
+        self.assertFalse(perm.has_permission(request, None))
+
+    def test_can_view_audit_logs(self):
+        """Test CanViewAuditLogs permission"""
+        from accounts.permissions import CanViewAuditLogs
+        from unittest.mock import MagicMock
+
+        perm = CanViewAuditLogs()
+
+        request = MagicMock()
+        request.user = self.auditor
+        self.assertTrue(perm.has_permission(request, None))
+
+        request.user = self.viewer
+        request.method = 'GET'
+        self.assertTrue(perm.has_permission(request, None))
