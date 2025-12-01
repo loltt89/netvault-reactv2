@@ -343,6 +343,18 @@ server {
 }
 ```
 
+## Third-Party Software
+
+NetVault использует следующие сторонние компоненты:
+
+### PuTTY (plink)
+- **Назначение:** SSH-клиент для подключения к legacy устройствам (включая SSH v1)
+- **Лицензия:** MIT License (Expat)
+- **Copyright:** © 1997-2022 Simon Tatham
+- **Сайт:** https://www.chiark.greenend.org.uk/~sgtatham/putty/
+
+PuTTY предоставляет надежную поддержку SSH протокола версий 1 и 2, обеспечивая совместимость с устаревшим сетевым оборудованием.
+
 ## Лицензия
 
 MIT License
