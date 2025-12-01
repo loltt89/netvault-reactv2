@@ -15,6 +15,14 @@ from typing import Optional, Tuple, List
 
 logger = logging.getLogger(__name__)
 
+# Try to import pexpect for SSH v1 support
+try:
+    import pexpect
+    PEXPECT_AVAILABLE = True
+except ImportError:
+    PEXPECT_AVAILABLE = False
+    logger.warning("pexpect not available - SSH v1 support will be limited")
+
 # ===== Compiled Regex Patterns (for performance) =====
 # These are compiled once at module load instead of on every line of config
 ANSI_ESCAPE_PATTERN = re.compile(r'\x1b\[[0-9;]*m')
@@ -378,6 +386,73 @@ class BaseDeviceConnection(ABC):
         self.disconnect()
 
 
+def try_ssh_v1_pexpect(host: str, port: int, username: str, password: str,
+                        command: str, timeout: int = 30) -> Tuple[bool, str]:
+    """
+    SSH v1 support using pexpect for automation
+
+    Modern OpenSSH removed SSH v1 support, so we use pexpect to automate
+    interaction with devices that only support SSH protocol version 1.
+
+    Args:
+        host: Target host
+        port: SSH port
+        username: Username
+        password: Password
+        command: Command to execute
+        timeout: Operation timeout
+
+    Returns:
+        Tuple of (success, output)
+    """
+    if not PEXPECT_AVAILABLE:
+        return False, "pexpect not installed - run: pip install pexpect"
+
+    try:
+        # Use pexpect to automate SSH connection
+        # This bypasses modern OpenSSH restrictions
+        ssh_cmd = f'/usr/bin/ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p {port} {username}@{host}'
+
+        child = pexpect.spawn(ssh_cmd, timeout=timeout)
+        child.logfile = None  # Don't log passwords
+
+        # Wait for password prompt
+        i = child.expect(['password:', 'Password:', pexpect.TIMEOUT, pexpect.EOF], timeout=10)
+
+        if i >= 2:  # TIMEOUT or EOF
+            return False, f"No password prompt: {child.before.decode('utf-8', errors='ignore')}"
+
+        # Send password
+        child.sendline(password)
+        time.sleep(1)
+
+        # Wait for shell prompt (various formats)
+        child.expect(['#', '>', r'\$'], timeout=10)
+
+        # Send command
+        child.sendline(command)
+        time.sleep(2)
+
+        # Wait for command to complete
+        child.expect(['#', '>', r'\$'], timeout=timeout)
+
+        # Get output
+        output = child.before.decode('utf-8', errors='ignore')
+
+        # Cleanup
+        child.sendline('exit')
+        child.close()
+
+        return True, output
+
+    except pexpect.TIMEOUT:
+        return False, "SSH v1 connection timeout"
+    except pexpect.EOF:
+        return False, "SSH v1 connection closed unexpectedly"
+    except Exception as e:
+        return False, f"SSH v1 pexpect error: {str(e)}"
+
+
 def try_system_ssh(host: str, port: int, username: str, password: str,
                    command: str, timeout: int = 30) -> Tuple[bool, str]:
     """
@@ -463,6 +538,7 @@ class SSHConnection(BaseDeviceConnection):
         self.client: Optional[paramiko.SSHClient] = None
         self.shell: Optional[paramiko.Channel] = None
         self.use_system_ssh: bool = False  # Flag for legacy device fallback
+        self.use_pexpect: bool = False  # Flag for SSH v1 devices
 
     def connect(self) -> None:
         """Establish SSH connection with legacy algorithm support and system SSH fallback"""
@@ -511,7 +587,22 @@ class SSHConnection(BaseDeviceConnection):
                     self.use_system_ssh = True
                     logger.info(f"Connected to {self.host} via system SSH (legacy device)")
                 else:
-                    raise DeviceConnectionError(f"System SSH also failed: {output}")
+                    # System SSH failed - check if it's SSH v1
+                    if 'Protocol major versions differ' in output or 'SSH protocol v.1' in output:
+                        # Try pexpect for SSH v1 devices
+                        logger.warning(f"SSH v1 detected for {self.host}, trying pexpect")
+                        success_v1, output_v1 = try_ssh_v1_pexpect(
+                            self.host, self.port, self.username, self.password,
+                            'echo "SSH_OK"', timeout=10
+                        )
+                        if success_v1 and 'SSH_OK' in output_v1:
+                            self.use_pexpect = True
+                            self.use_system_ssh = True
+                            logger.info(f"Connected to {self.host} via pexpect (SSH v1 device)")
+                        else:
+                            raise DeviceConnectionError(f"All SSH methods failed. Pexpect: {output_v1}")
+                    else:
+                        raise DeviceConnectionError(f"System SSH failed: {output}")
             except Exception as fallback_error:
                 raise DeviceConnectionError(
                     f"Both paramiko and system SSH failed for {self.host}. "
@@ -526,7 +617,7 @@ class SSHConnection(BaseDeviceConnection):
 
     def send_command(self, command: str, wait_time: float = 2, handle_paging: bool = True) -> str:
         """
-        Send command and return output (supports both paramiko and system SSH)
+        Send command and return output (supports paramiko, system SSH, and pexpect)
 
         Args:
             command: Command to execute
@@ -536,6 +627,16 @@ class SSHConnection(BaseDeviceConnection):
         Returns:
             Command output as string
         """
+        # If using pexpect for SSH v1, use pexpect function
+        if self.use_pexpect:
+            success, output = try_ssh_v1_pexpect(
+                self.host, self.port, self.username, self.password,
+                command, timeout=int(wait_time * 5)
+            )
+            if not success:
+                raise DeviceConnectionError(f"SSH v1 pexpect command failed: {output}")
+            return output
+
         # If using system SSH fallback, execute command directly
         if self.use_system_ssh:
             success, output = try_system_ssh(
