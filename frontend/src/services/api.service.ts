@@ -393,6 +393,13 @@ class APIService {
       });
       return response.data;
     },
+
+    bulkDelete: async (deviceIds: number[]) => {
+      const response = await apiClient.post('/devices/devices/bulk_delete/', {
+        device_ids: deviceIds,
+      });
+      return response.data;
+    },
   };
 
   /**

@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q, Count
 from django.http import HttpResponse
-from accounts.permissions import CanManageDevices
+from accounts.permissions import CanManageDevices, IsAdministrator
 import csv
 import io
 import re
@@ -576,3 +576,67 @@ class DeviceViewSet(viewsets.ModelViewSet):
         except Exception as e:
             logger.error(f"CSV import error: {str(e)}")
             return Response({'detail': f'Failed to import CSV file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdministrator])
+    def bulk_delete(self, request):
+        """
+        Delete multiple devices at once.
+        Only administrators can perform this action.
+
+        Request body: {"device_ids": [1, 2, 3]}
+        """
+        device_ids = request.data.get('device_ids', [])
+
+        if not device_ids:
+            return Response(
+                {'detail': 'No device IDs provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not isinstance(device_ids, list):
+            return Response(
+                {'detail': 'device_ids must be a list'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate all IDs are integers
+        try:
+            device_ids = [int(id) for id in device_ids]
+        except (ValueError, TypeError):
+            return Response(
+                {'detail': 'All device IDs must be integers'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get devices that exist
+        devices = Device.objects.filter(id__in=device_ids)
+        found_ids = set(devices.values_list('id', flat=True))
+        not_found_ids = set(device_ids) - found_ids
+
+        # Store device names for audit log
+        deleted_devices = list(devices.values('id', 'name', 'ip_address'))
+        deleted_count = devices.count()
+
+        # Delete devices
+        devices.delete()
+
+        # Log the bulk deletion
+        from accounts.models import AuditLog
+        AuditLog.objects.create(
+            user=request.user,
+            action='delete',
+            resource_type='Device',
+            resource_name=f'Bulk delete: {deleted_count} devices',
+            description=f'Deleted devices: {", ".join([d["name"] for d in deleted_devices])}',
+            ip_address=request.META.get('REMOTE_ADDR'),
+            success=True
+        )
+
+        logger.info(f"User {request.user.email} bulk deleted {deleted_count} devices: {[d['name'] for d in deleted_devices]}")
+
+        return Response({
+            'success': True,
+            'deleted_count': deleted_count,
+            'deleted_devices': deleted_devices,
+            'not_found_ids': list(not_found_ids) if not_found_ids else [],
+        })

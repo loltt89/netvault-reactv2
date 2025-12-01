@@ -94,7 +94,12 @@
       "preview_error": "Failed to preview file",
       "template_download_error": "Failed to download CSV template",
       "import_error": "Failed to import devices"
-    }
+    },
+    "bulk_delete": "Delete ({{count}})",
+    "bulk_delete_confirm": "Are you sure you want to delete {{count}} device(s)?\n\nDevices: {{names}}",
+    "bulk_delete_success": "Successfully deleted {{count}} device(s)",
+    "bulk_delete_failed": "Failed to delete devices",
+    "select_all": "Select all"
   },
   "backups": {
     "title": "Backups",
@@ -642,6 +647,7 @@
     "warning": "Warning",
     "days": "days",
     "weeks": "weeks",
-    "months": "months"
+    "months": "months",
+    "deleting": "Deleting..."
   }
 }

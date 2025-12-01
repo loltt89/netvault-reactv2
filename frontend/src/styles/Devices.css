@@ -642,6 +642,14 @@
   transform: translateX(2px);
 }
 
+.selected-row {
+  background-color: rgba(var(--primary-color-rgb, 59, 130, 246), 0.1) !important;
+}
+
+.selected-row:hover {
+  background-color: rgba(var(--primary-color-rgb, 59, 130, 246), 0.15) !important;
+}
+
 .btn-back {
   background: var(--bg-secondary);
   border: 1px solid var(--border-color);

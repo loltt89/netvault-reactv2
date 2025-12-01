@@ -94,7 +94,12 @@
       "preview_error": "Не удалось обработать файл",
       "template_download_error": "Не удалось скачать CSV шаблон",
       "import_error": "Не удалось импортировать устройства"
-    }
+    },
+    "bulk_delete": "Удалить ({{count}})",
+    "bulk_delete_confirm": "Вы уверены, что хотите удалить {{count}} устройств(а)?\n\nУстройства: {{names}}",
+    "bulk_delete_success": "Успешно удалено {{count}} устройств(а)",
+    "bulk_delete_failed": "Не удалось удалить устройства",
+    "select_all": "Выбрать все"
   },
   "backups": {
     "title": "Резервные копии",
@@ -642,6 +647,7 @@
     "warning": "Внимание",
     "days": "дней",
     "weeks": "недель",
-    "months": "месяцев"
+    "months": "месяцев",
+    "deleting": "Удаление..."
   }
 }

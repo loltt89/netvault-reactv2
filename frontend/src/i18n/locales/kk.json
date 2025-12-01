@@ -94,7 +94,12 @@
       "preview_error": "Файлды өңдеу мүмкін болмады",
       "template_download_error": "CSV үлгісін жүктеу мүмкін болмады",
       "import_error": "Құрылғыларды импорттау мүмкін болмады"
-    }
+    },
+    "bulk_delete": "Жою ({{count}})",
+    "bulk_delete_confirm": "{{count}} құрылғыны жоюға сенімдісіз бе?\n\nҚұрылғылар: {{names}}",
+    "bulk_delete_success": "{{count}} құрылғы сәтті жойылды",
+    "bulk_delete_failed": "Құрылғыларды жою мүмкін болмады",
+    "select_all": "Барлығын таңдау"
   },
   "backups": {
     "title": "Сақтық көшірмелер",
@@ -621,6 +626,7 @@
     "warning": "Назар аударыңыз",
     "days": "күндер",
     "weeks": "апталар",
-    "months": "айлар"
+    "months": "айлар",
+    "deleting": "Жою..."
   }
 }

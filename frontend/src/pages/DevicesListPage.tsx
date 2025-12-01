@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import '../styles/Devices.css';
@@ -61,6 +62,7 @@ interface DeviceFormData {
 const DevicesListPage: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [devices, setDevices] = useState<Device[]>([]);
   const [filteredDevices, setFilteredDevices] = useState<Device[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -68,6 +70,11 @@ const DevicesListPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
+  const [selectedDevices, setSelectedDevices] = useState<Set<number>>(new Set());
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
+
+  // Check if user is admin
+  const isAdmin = user?.role === 'administrator';
 
   // Import CSV state
   const [showImportModal, setShowImportModal] = useState(false);
@@ -423,6 +430,52 @@ const DevicesListPage: React.FC = () => {
     }
   };
 
+  // Bulk selection handlers
+  const handleSelectDevice = (deviceId: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    const newSelected = new Set(selectedDevices);
+    if (e.target.checked) {
+      newSelected.add(deviceId);
+    } else {
+      newSelected.delete(deviceId);
+    }
+    setSelectedDevices(newSelected);
+  };
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.checked) {
+      setSelectedDevices(new Set(filteredDevices.map(d => d.id)));
+    } else {
+      setSelectedDevices(new Set());
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedDevices.size === 0) return;
+
+    const selectedNames = devices
+      .filter(d => selectedDevices.has(d.id))
+      .map(d => d.name)
+      .join(', ');
+
+    if (!window.confirm(t('devices.bulk_delete_confirm', { count: selectedDevices.size, names: selectedNames }))) {
+      return;
+    }
+
+    setBulkDeleteLoading(true);
+    try {
+      const result = await apiService.devices.bulkDelete(Array.from(selectedDevices));
+      alert(t('devices.bulk_delete_success', { count: result.deleted_count }));
+      setSelectedDevices(new Set());
+      loadDevices();
+    } catch (error: any) {
+      logger.error('Error bulk deleting devices:', error);
+      alert(t('common.error') + ': ' + (error.response?.data?.detail || t('devices.bulk_delete_failed')));
+    } finally {
+      setBulkDeleteLoading(false);
+    }
+  };
+
   const handleBackupNow = async (device: Device, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -482,8 +535,18 @@ const DevicesListPage: React.FC = () => {
     <div className="devices-page">
       <div className="page-header">
         <h1>{t('devices.title')}</h1>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <button onClick={loadDevices} className="btn-primary">
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {isAdmin && selectedDevices.size > 0 && (
+            <button
+              onClick={handleBulkDelete}
+              className="btn-danger"
+              disabled={bulkDeleteLoading}
+              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              🗑️ {bulkDeleteLoading ? t('common.deleting') : t('devices.bulk_delete', { count: selectedDevices.size })}
+            </button>
+          )}
+          <button onClick={() => loadDevices()} className="btn-primary">
             🔄 {t('common.refresh')}
           </button>
           <button onClick={handleOpenImport} className="btn-primary">
@@ -571,6 +634,16 @@ const DevicesListPage: React.FC = () => {
           <table className="devices-table">
             <thead>
               <tr>
+                {isAdmin && (
+                  <th style={{ width: '40px', textAlign: 'center' }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedDevices.size === filteredDevices.length && filteredDevices.length > 0}
+                      onChange={handleSelectAll}
+                      title={t('devices.select_all')}
+                    />
+                  </th>
+                )}
                 <th onClick={() => handleSort('name')} className={`sortable ${sortField === 'name' ? 'active' : ''}`}>
                   {t('devices.name')}
                   <span className="sort-indicator">{sortField === 'name' ? (sortDirection === 'asc' ? '▲' : '▼') : '▲'}</span>
@@ -608,8 +681,17 @@ const DevicesListPage: React.FC = () => {
                   key={device.id}
                   onClick={() => navigate(`/devices/${device.id}`)}
                   style={{ cursor: 'pointer' }}
-                  className="table-row-hover"
+                  className={`table-row-hover ${selectedDevices.has(device.id) ? 'selected-row' : ''}`}
                 >
+                  {isAdmin && (
+                    <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedDevices.has(device.id)}
+                        onChange={(e) => handleSelectDevice(device.id, e)}
+                      />
+                    </td>
+                  )}
                   <td>
                     <strong>
                       {device.name}
