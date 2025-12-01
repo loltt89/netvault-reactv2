@@ -23,3 +23,4 @@ openpyxl==3.1.2
 reportlab==4.0.9
 python3-saml==1.16.0
 drf-spectacular==0.27.1
+django-prometheus==2.4.1

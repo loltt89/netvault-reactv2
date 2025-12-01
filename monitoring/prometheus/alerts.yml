@@ -1,0 +1,70 @@
+# NetVault Prometheus Alerting Rules
+
+groups:
+  - name: netvault-alerts
+    rules:
+      # API Health
+      - alert: NetVaultAPIDown
+        expr: up{job="netvault-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "NetVault API is down"
+          description: "NetVault API has been down for more than 1 minute."
+
+      # High error rate
+      - alert: NetVaultHighErrorRate
+        expr: |
+          sum(rate(django_http_responses_total_by_status_total{status=~"5.."}[5m]))
+          / sum(rate(django_http_responses_total_by_status_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High error rate on NetVault API"
+          description: "More than 10% of requests are failing with 5xx errors."
+
+      # Slow response time
+      - alert: NetVaultSlowResponses
+        expr: |
+          histogram_quantile(0.95, sum(rate(django_http_requests_latency_seconds_bucket[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Slow response times on NetVault API"
+          description: "95th percentile response time is above 2 seconds."
+
+      # High memory usage (Node Exporter)
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is above 90%."
+
+      # High CPU usage (Node Exporter)
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is above 90%."
+
+      # Disk space running low
+      - alert: DiskSpaceLow
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space"
+          description: "Less than 10% disk space remaining on root filesystem."
