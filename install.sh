@@ -91,7 +91,9 @@ install_dependencies() {
             libldap2-dev \
             libsasl2-dev \
             libssl-dev \
-            putty-tools
+            putty-tools \
+            docker.io \
+            docker-compose
 
         # Enable and start services
         systemctl enable redis-server
@@ -238,6 +240,13 @@ gather_settings() {
             print_success "${#ADMIN_ALLOWED_IPS[@]} IP(s) whitelisted for /admin/"
         fi
     fi
+
+    # Monitoring setup
+    echo ""
+    print_message "$BLUE" "Monitoring (Prometheus + Grafana)"
+    echo "Install monitoring stack? (Prometheus metrics, Grafana dashboards)"
+    read -p "Enable monitoring? [y/N]: " INSTALL_MONITORING
+    INSTALL_MONITORING=${INSTALL_MONITORING:-N}
 
     echo ""
     print_success "Configuration collected"
@@ -874,6 +883,53 @@ EOF
     print_success "Nginx configured and started"
 }
 
+# Setup monitoring (Prometheus + Grafana)
+setup_monitoring() {
+    if [[ ! "$INSTALL_MONITORING" =~ ^[Yy]$ ]]; then
+        return
+    fi
+
+    print_header "Setting Up Monitoring Stack"
+
+    # Enable Docker
+    systemctl enable docker
+    systemctl start docker
+
+    # Copy monitoring configs
+    cp -r ${CURRENT_DIR}/monitoring ${INSTALL_DIR}/
+
+    # Update Prometheus config with correct host
+    sed -i "s/host.docker.internal/172.17.0.1/g" ${INSTALL_DIR}/monitoring/prometheus/prometheus.yml
+
+    # Create systemd service for monitoring
+    cat > /etc/systemd/system/netvault-monitoring.service <<EOF
+[Unit]
+Description=NetVault Monitoring Stack (Prometheus + Grafana)
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=${INSTALL_DIR}/monitoring
+ExecStart=/usr/bin/docker-compose up -d
+ExecStop=/usr/bin/docker-compose down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Start monitoring
+    systemctl daemon-reload
+    systemctl enable netvault-monitoring
+    systemctl start netvault-monitoring
+
+    print_success "Monitoring stack installed"
+    print_message "$BLUE" "  - Prometheus: http://${DOMAIN}:9090"
+    print_message "$BLUE" "  - Grafana: http://${DOMAIN}:3000 (admin/admin)"
+}
+
 # Setup firewall
 setup_firewall() {
     print_header "Configuring Firewall"
@@ -889,6 +945,12 @@ setup_firewall() {
         fi
 
         ufw allow 22/tcp  # SSH
+
+        # Monitoring ports (if enabled)
+        if [[ "$INSTALL_MONITORING" =~ ^[Yy]$ ]]; then
+            ufw allow 9090/tcp  # Prometheus
+            ufw allow 3000/tcp  # Grafana
+        fi
 
         print_success "Firewall configured"
     else
@@ -950,6 +1012,15 @@ print_summary() {
         echo ""
     fi
 
+    if [[ "$INSTALL_MONITORING" =~ ^[Yy]$ ]]; then
+        echo "Monitoring:"
+        echo "  Prometheus: http://${DOMAIN}:9090"
+        echo "  Grafana: http://${DOMAIN}:3000"
+        echo "    Login: admin / admin (change on first login!)"
+        echo "  Service: systemctl status netvault-monitoring"
+        echo ""
+    fi
+
     print_message "$YELLOW" "IMPORTANT:"
     echo "  1. Configure email settings in ${INSTALL_DIR}/.env"
     echo "  2. Configure Telegram notifications (optional)"
@@ -993,6 +1064,7 @@ main() {
     setup_systemd_services
     setup_ssl_certificate
     setup_nginx
+    setup_monitoring
     setup_firewall
 
     print_summary
