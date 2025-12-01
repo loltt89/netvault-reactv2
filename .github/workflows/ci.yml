@@ -79,6 +79,10 @@ jobs:
           ENCRYPTION_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
           EOF
 
+      - name: Create logs directory
+        working-directory: ./backend
+        run: mkdir -p logs
+
       - name: Run migrations
         working-directory: ./backend
         run: python manage.py migrate --run-syncdb
