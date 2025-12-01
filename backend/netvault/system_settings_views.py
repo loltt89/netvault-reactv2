@@ -3,6 +3,7 @@ System-wide settings API views
 
 Settings are stored in database and applied immediately without restart
 """
+from django.conf import settings
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
@@ -66,6 +67,11 @@ def get_system_settings(request):
             'jwt': {
                 'access_token_lifetime': sys_settings.jwt_access_token_lifetime,
                 'refresh_token_lifetime': sys_settings.jwt_refresh_token_lifetime,
+            },
+
+            # Redis Settings (read from Django settings, not editable via UI)
+            'redis': {
+                'url': getattr(settings, 'CELERY_BROKER_URL', 'redis://localhost:6379/0'),
             },
         }
 
