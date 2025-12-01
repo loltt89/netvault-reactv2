@@ -3,6 +3,7 @@ from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
 from django.db.models import Q, Count
 from django.http import HttpResponse
 from accounts.permissions import CanManageDevices, IsAdministrator
@@ -11,6 +12,34 @@ import io
 import re
 
 logger = logging.getLogger(__name__)
+
+
+class UserPageSizePagination(PageNumberPagination):
+    """
+    Pagination that respects user's page_size preference.
+    Supports: 20, 50, 100 items per page.
+    """
+    page_size = 50  # Default
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+    def get_page_size(self, request):
+        # First check query param
+        if self.page_size_query_param in request.query_params:
+            try:
+                size = int(request.query_params[self.page_size_query_param])
+                if size in [20, 50, 100]:
+                    return size
+            except (ValueError, TypeError):
+                pass
+
+        # Then check user preference
+        if hasattr(request, 'user') and request.user.is_authenticated:
+            return request.user.page_size
+
+        return self.page_size
+
+
 from .models import Vendor, DeviceType, Device
 from .serializers import (
     VendorSerializer, DeviceTypeSerializer,
@@ -71,6 +100,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
     """
     queryset = Device.objects.select_related('vendor', 'device_type', 'created_by')
     permission_classes = [IsAuthenticated, CanManageDevices]
+    pagination_class = UserPageSizePagination
     search_fields = ['name', 'ip_address', 'location', 'description']
     ordering_fields = ['name', 'ip_address', 'created_at', 'last_backup']
     ordering = ['name']

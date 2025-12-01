@@ -99,7 +99,15 @@
     "bulk_delete_confirm": "Are you sure you want to delete {{count}} device(s)?\n\nDevices: {{names}}",
     "bulk_delete_success": "Successfully deleted {{count}} device(s)",
     "bulk_delete_failed": "Failed to delete devices",
-    "select_all": "Select all"
+    "select_all": "Select all",
+    "showing": "Showing",
+    "of": "of",
+    "filtered": "filtered",
+    "per_page": "Per page",
+    "first_page": "First page",
+    "last_page": "Last page",
+    "prev_page": "Previous page",
+    "next_page": "Next page"
   },
   "backups": {
     "title": "Backups",

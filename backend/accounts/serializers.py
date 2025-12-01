@@ -70,7 +70,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'username', 'first_name', 'last_name', 'full_name',
             'role', 'is_active', 'two_factor_enabled', 'is_ldap_user',
-            'date_joined', 'last_login', 'preferred_language', 'theme'
+            'date_joined', 'last_login', 'preferred_language', 'theme', 'page_size'
         ]
         read_only_fields = ['id', 'date_joined', 'last_login', 'is_ldap_user']
 
@@ -111,7 +111,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'first_name', 'last_name', 'preferred_language', 'theme'
+            'first_name', 'last_name', 'preferred_language', 'theme', 'page_size'
         ]
 
 

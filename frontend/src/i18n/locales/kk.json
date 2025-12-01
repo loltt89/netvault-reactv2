@@ -99,7 +99,15 @@
     "bulk_delete_confirm": "{{count}} құрылғыны жоюға сенімдісіз бе?\n\nҚұрылғылар: {{names}}",
     "bulk_delete_success": "{{count}} құрылғы сәтті жойылды",
     "bulk_delete_failed": "Құрылғыларды жою мүмкін болмады",
-    "select_all": "Барлығын таңдау"
+    "select_all": "Барлығын таңдау",
+    "showing": "Көрсетілуде",
+    "of": "ішінен",
+    "filtered": "сүзілген",
+    "per_page": "Бетте",
+    "first_page": "Бірінші бет",
+    "last_page": "Соңғы бет",
+    "prev_page": "Алдыңғы бет",
+    "next_page": "Келесі бет"
   },
   "backups": {
     "title": "Сақтық көшірмелер",

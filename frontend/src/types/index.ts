@@ -19,6 +19,7 @@ export interface User {
   last_login: string | null;
   preferred_language: Language;
   theme: Theme;
+  page_size: number;
 }
 
 export type UserRole = 'administrator' | 'operator' | 'viewer' | 'auditor';

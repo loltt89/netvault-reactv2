@@ -108,6 +108,11 @@ const DevicesListPage: React.FC = () => {
   const [sortField, setSortField] = useState<string>('ip_address');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
+  // Pagination
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(user?.page_size || 50);
+  const [totalCount, setTotalCount] = useState(0);
+
   const [formData, setFormData] = useState<DeviceFormData>({
     name: '',
     ip_address: '',
@@ -125,12 +130,25 @@ const DevicesListPage: React.FC = () => {
   });
 
   useEffect(() => {
-    loadData();
+    loadVendors();
+    loadDeviceTypes();
   }, []);
+
+  // Reload devices when pagination or filters change
+  useEffect(() => {
+    loadDevices();
+  }, [currentPage, pageSize]);
 
   useEffect(() => {
     applyFilters();
   }, [devices, searchTerm, filterVendor, filterType, filterStatus, filterLocation, sortField, sortDirection]);
+
+  // Update pageSize when user preference loads
+  useEffect(() => {
+    if (user?.page_size && user.page_size !== pageSize) {
+      setPageSize(user.page_size);
+    }
+  }, [user?.page_size]);
 
   const loadData = async () => {
     await Promise.all([loadDevices(), loadVendors(), loadDeviceTypes()]);
@@ -139,13 +157,28 @@ const DevicesListPage: React.FC = () => {
   const loadDevices = async () => {
     try {
       setLoading(true);
-      const response = await apiService.devices.list({ ordering: 'name' });
-      const devicesList = Array.isArray(response) ? response : response.results || [];
-      setDevices(devicesList);
+      const response = await apiService.devices.list({
+        ordering: 'name',
+        page: currentPage,
+        page_size: pageSize
+      });
+      // Handle paginated response
+      if (response.results) {
+        setDevices(response.results);
+        setTotalCount(response.count || 0);
+      } else if (Array.isArray(response)) {
+        // Fallback for non-paginated response
+        setDevices(response);
+        setTotalCount(response.length);
+      } else {
+        setDevices([]);
+        setTotalCount(0);
+      }
     } catch (error) {
       logger.error('Error loading devices:', error);
       // Don't show alert for empty device list - this is normal on fresh install
       setDevices([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
@@ -256,6 +289,26 @@ const DevicesListPage: React.FC = () => {
     setFilterType('');
     setFilterStatus('');
     setFilterLocation('');
+  };
+
+  // Pagination handlers
+  const totalPages = Math.ceil(totalCount / pageSize);
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
+
+  const handlePageSizeChange = async (newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1); // Reset to first page when changing page size
+    // Save preference to server
+    try {
+      await apiService.users.updateProfile({ page_size: newSize });
+    } catch (error) {
+      logger.error('Failed to save page size preference:', error);
+    }
   };
 
   const handleAddDevice = () => {
@@ -772,8 +825,76 @@ const DevicesListPage: React.FC = () => {
         </div>
       )}
 
-      <div className="footer-stats">
-        Total: {devices.length} | Filtered: {filteredDevices.length}
+      {/* Pagination Controls */}
+      <div className="pagination-container" style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '1rem',
+        backgroundColor: 'var(--card-bg)',
+        borderRadius: '8px',
+        marginTop: '1rem',
+        flexWrap: 'wrap',
+        gap: '1rem'
+      }}>
+        <div className="pagination-info" style={{ color: 'var(--text-secondary)' }}>
+          {t('devices.showing')} {Math.min((currentPage - 1) * pageSize + 1, totalCount)}-{Math.min(currentPage * pageSize, totalCount)} {t('devices.of')} {totalCount}
+          {filteredDevices.length !== devices.length && ` (${t('devices.filtered')}: ${filteredDevices.length})`}
+        </div>
+
+        <div className="pagination-controls" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button
+            onClick={() => handlePageChange(1)}
+            disabled={currentPage === 1}
+            className="btn-sm btn-secondary"
+            title={t('devices.first_page')}
+          >
+            ««
+          </button>
+          <button
+            onClick={() => handlePageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="btn-sm btn-secondary"
+            title={t('devices.prev_page')}
+          >
+            «
+          </button>
+
+          <span style={{ padding: '0 1rem', fontWeight: 500 }}>
+            {currentPage} / {totalPages || 1}
+          </span>
+
+          <button
+            onClick={() => handlePageChange(currentPage + 1)}
+            disabled={currentPage >= totalPages}
+            className="btn-sm btn-secondary"
+            title={t('devices.next_page')}
+          >
+            »
+          </button>
+          <button
+            onClick={() => handlePageChange(totalPages)}
+            disabled={currentPage >= totalPages}
+            className="btn-sm btn-secondary"
+            title={t('devices.last_page')}
+          >
+            »»
+          </button>
+        </div>
+
+        <div className="page-size-selector" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ color: 'var(--text-secondary)' }}>{t('devices.per_page')}:</label>
+          <select
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="filter-select"
+            style={{ width: 'auto', minWidth: '70px' }}
+          >
+            <option value={20}>20</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select>
+        </div>
       </div>
 
       {/* Add/Edit Device Modal - Same as before */}

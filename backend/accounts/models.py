@@ -81,6 +81,11 @@ class User(AbstractBaseUser, PermissionsMixin):
         ('glassmorphism', 'Glassmorphism'),
         ('blueprint', 'Blueprint'),
     ])
+    page_size = models.IntegerField(default=50, choices=[
+        (20, '20'),
+        (50, '50'),
+        (100, '100'),
+    ])
 
     objects = UserManager()
 
