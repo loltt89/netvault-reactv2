@@ -348,12 +348,24 @@ setup_python_env() {
     ./venv/bin/pip install --upgrade pip
     ./venv/bin/pip install -r requirements.txt
 
-    # Compile netvault-ssh binary for SSH v1/v2 support
-    print_status "Compiling netvault-ssh..."
-    if [ -f "tools/netvault-ssh/netvault-ssh.c" ]; then
-        gcc -o tools/netvault-ssh/netvault-ssh tools/netvault-ssh/netvault-ssh.c -lssh -O2
+    # Setup netvault-ssh binary for SSH v1/v2 support
+    print_status "Setting up netvault-ssh..."
+    if [ -x "tools/netvault-ssh/netvault-ssh" ] && [ -f "tools/netvault-ssh/lib/libssh.so.4.4.4" ]; then
+        # Pre-compiled binary with custom libssh exists - just set permissions
         chmod +x tools/netvault-ssh/netvault-ssh
-        print_success "netvault-ssh compiled"
+        print_success "netvault-ssh ready (pre-compiled with SSH v1 support)"
+    elif [ -f "tools/netvault-ssh/netvault-ssh.c" ]; then
+        # Compile with custom libssh if available, otherwise system libssh
+        if [ -f "tools/netvault-ssh/lib/libssh.so" ]; then
+            gcc -o tools/netvault-ssh/netvault-ssh tools/netvault-ssh/netvault-ssh.c \
+                -Ltools/netvault-ssh/lib -lssh -O2 \
+                -Wl,-rpath,\$ORIGIN/lib
+            print_success "netvault-ssh compiled with custom libssh (SSH v1 support)"
+        else
+            gcc -o tools/netvault-ssh/netvault-ssh tools/netvault-ssh/netvault-ssh.c -lssh -O2
+            print_warning "netvault-ssh compiled with system libssh (no SSH v1 support)"
+        fi
+        chmod +x tools/netvault-ssh/netvault-ssh
     fi
 
     print_success "Python environment configured"
