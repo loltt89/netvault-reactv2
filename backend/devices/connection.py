@@ -75,27 +75,32 @@ def validate_backup_config(config: str) -> Tuple[bool, str]:
         'authentication failed', 'invalid command', 'command not found',
         'unknown command', '% invalid', 'error:', 'login incorrect',
         'not authorized', 'privilege level', 'insufficient privilege',
-        'bad command', 'incomplete command', 'command authorization failed'
+        'bad command', 'incomplete command', 'command authorization failed',
+        'invalid password', 'password required', 'enable password'
     ]
 
     if not config or not config.strip():
         return False, "Configuration is empty"
 
-    lines = []
-    for line in config.strip().split('\n'):
-        stripped = line.strip()
-        if stripped:
-            lines.append(line)
-            if len(lines) >= 15:
-                break
+    # Check entire config for error patterns (not just first lines)
+    config_lower = config.lower()
+    for pattern in ERROR_PATTERNS:
+        if pattern in config_lower:
+            # Make sure it's an error, not part of config (e.g., "enable password" in ASA config is ok)
+            # Check if error appears without being part of a config line
+            lines_with_pattern = [l for l in config.split('\n') if pattern in l.lower()]
+            for line in lines_with_pattern:
+                # Skip config lines that contain passwords as settings
+                if line.strip().startswith(('enable password', 'password', 'username')) and '***' in line:
+                    continue
+                # Real errors
+                if 'invalid password' in line.lower() or 'access denied' in line.lower():
+                    return False, f"Error detected: '{line.strip()[:100]}'"
+
+    lines = [l for l in config.strip().split('\n') if l.strip()]
 
     if len(lines) < 5:
         return False, f"Configuration too short: {len(lines)} lines (minimum 5 required)"
-
-    first_lines = '\n'.join(lines[:5]).lower()
-    for pattern in ERROR_PATTERNS:
-        if pattern in first_lines:
-            return False, f"Error detected in configuration output: '{pattern}'"
 
     return True, ""
 
@@ -351,12 +356,20 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
     # Extract config section
     config_lines = lines[start_idx:end_idx]
 
-    # Final cleanup - remove any remaining prompt lines
+    # Final cleanup - remove any remaining prompt lines and session messages
     cleaned_lines = []
+    skip_patterns = [
+        'logoff', 'logout', 'connection closed', 'session ended',
+        'type help', 'logins over the last', 'failed logins since',
+        'last login:', 'user logged in'
+    ]
+
     for line in config_lines:
         stripped = line.strip()
         if not stripped:
             continue
+
+        stripped_lower = stripped.lower()
 
         # Skip obvious prompt lines (hostname# or hostname>)
         if DEVICE_PROMPT_PATTERN.match(stripped):
@@ -364,6 +377,10 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
 
         # Skip command echo lines
         if command and stripped.endswith(command):
+            continue
+
+        # Skip session messages (Logoff, login info, etc.)
+        if any(p in stripped_lower for p in skip_patterns):
             continue
 
         cleaned_lines.append(line.rstrip())
