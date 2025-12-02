@@ -11,7 +11,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         vendors_data = [
-            # Major vendors
+            # ===== Cisco family =====
             {
                 'name': 'Cisco',
                 'slug': 'cisco',
@@ -19,7 +19,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['terminal length 0', 'terminal width 0'],
                     'backup': 'show running-config',
-                    'enable_mode': True
+                    'enable_mode': True,
+                    'config_start': ['Building configuration', 'Current configuration', '!', 'version '],
+                    'config_end': ['end'],
                 }
             },
             {
@@ -29,7 +31,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['terminal length 0'],
                     'backup': 'show running-config',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['Building configuration', '!! IOS XR', '!', 'hostname '],
+                    'config_end': ['end'],
                 }
             },
             {
@@ -39,7 +43,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['terminal length 0'],
                     'backup': 'show running-config',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['!Command:', '!Running configuration', 'version '],
+                    'config_end': ['end'],
                 }
             },
             {
@@ -49,9 +55,12 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['terminal pager 0'],
                     'backup': 'show running-config',
-                    'enable_mode': True
+                    'enable_mode': True,
+                    'config_start': ['ASA Version', ': Saved', '!'],
+                    'config_end': ['end'],
                 }
             },
+            # ===== Juniper =====
             {
                 'name': 'Juniper JunOS',
                 'slug': 'juniper-junos',
@@ -59,9 +68,12 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['set cli screen-length 0'],
                     'backup': 'show configuration',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['## Last commit', 'version ', 'system {', 'groups {'],
+                    'config_end': [],
                 }
             },
+            # ===== Arista =====
             {
                 'name': 'Arista EOS',
                 'slug': 'arista-eos',
@@ -69,9 +81,12 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['terminal length 0'],
                     'backup': 'show running-config',
-                    'enable_mode': True
+                    'enable_mode': True,
+                    'config_start': ['! Command:', '! device:', '! boot', 'hostname '],
+                    'config_end': ['end'],
                 }
             },
+            # ===== HP / Aruba =====
             {
                 'name': 'HP ProCurve',
                 'slug': 'hp-procurve',
@@ -79,7 +94,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['no page'],
                     'backup': 'show running-config',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['Running configuration', ';', 'hostname '],
+                    'config_end': [],
                 }
             },
             {
@@ -89,197 +106,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['screen-length disable'],
                     'backup': 'display current-configuration',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'Huawei VRP',
-                'slug': 'huawei-vrp',
-                'description': 'Huawei routers and switches',
-                'backup_commands': {
-                    'setup': ['screen-length 0 temporary'],
-                    'backup': 'display current-configuration',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'Mikrotik RouterOS',
-                'slug': 'mikrotik',
-                'description': 'Mikrotik routers and switches',
-                'backup_commands': {
-                    'setup': [],
-                    'backup': '/export',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'Fortinet FortiGate',
-                'slug': 'fortinet-fortigate',
-                'description': 'FortiGate firewalls',
-                'backup_commands': {
-                    'setup': ['config system console', 'set output standard', 'end'],
-                    'backup': 'show full-configuration',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'Palo Alto Networks',
-                'slug': 'paloalto',
-                'description': 'Palo Alto firewalls',
-                'backup_commands': {
-                    'setup': ['set cli pager off'],
-                    'backup': 'show config running',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'F5 Networks',
-                'slug': 'f5-networks',
-                'description': 'F5 BIG-IP load balancers',
-                'backup_commands': {
-                    'setup': [],
-                    'backup': 'tmsh show running-config',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'Dell Force10',
-                'slug': 'dell-force10',
-                'description': 'Dell Force10 switches',
-                'backup_commands': {
-                    'setup': ['terminal length 0'],
-                    'backup': 'show running-config',
-                    'enable_mode': True
-                }
-            },
-            {
-                'name': 'Dell PowerConnect',
-                'slug': 'dell-powerconnect',
-                'description': 'Dell PowerConnect switches',
-                'backup_commands': {
-                    'setup': ['terminal datadump'],
-                    'backup': 'show running-config',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'Brocade',
-                'slug': 'brocade',
-                'description': 'Brocade switches',
-                'backup_commands': {
-                    'setup': ['skip-page-display'],
-                    'backup': 'show running-config',
-                    'enable_mode': True
-                }
-            },
-            {
-                'name': 'Extreme Networks',
-                'slug': 'extreme-networks',
-                'description': 'Extreme Networks switches',
-                'backup_commands': {
-                    'setup': ['disable clipaging'],
-                    'backup': 'show configuration',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'Alcatel-Lucent',
-                'slug': 'alcatel-lucent',
-                'description': 'Alcatel-Lucent switches',
-                'backup_commands': {
-                    'setup': [],
-                    'backup': 'show configuration snapshot',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'Ubiquiti EdgeRouter',
-                'slug': 'ubiquiti-edgerouter',
-                'description': 'Ubiquiti EdgeRouter devices',
-                'backup_commands': {
-                    'setup': ['set terminal length 0'],
-                    'backup': 'show configuration',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'Ubiquiti UniFi',
-                'slug': 'ubiquiti-unifi',
-                'description': 'Ubiquiti UniFi switches',
-                'backup_commands': {
-                    'setup': [],
-                    'backup': 'show running-config',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'VyOS',
-                'slug': 'vyos',
-                'description': 'VyOS network operating system (uses exec mode)',
-                'backup_commands': {
-                    'setup': [],
-                    'backup': 'show configuration',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'Check Point Gaia',
-                'slug': 'checkpoint-gaia',
-                'description': 'Check Point Gaia OS',
-                'backup_commands': {
-                    'setup': ['set clienv rows 0'],
-                    'backup': 'show configuration',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'Zyxel',
-                'slug': 'zyxel',
-                'description': 'Zyxel switches and routers',
-                'backup_commands': {
-                    'setup': [],
-                    'backup': 'show running-config',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'TP-Link',
-                'slug': 'tp-link',
-                'description': 'TP-Link switches',
-                'backup_commands': {
-                    'setup': [],
-                    'backup': 'show running-config',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'D-Link',
-                'slug': 'd-link',
-                'description': 'D-Link switches',
-                'backup_commands': {
-                    'setup': [],
-                    'backup': 'show config current_config',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'Netgear',
-                'slug': 'netgear',
-                'description': 'Netgear switches',
-                'backup_commands': {
-                    'setup': ['terminal length 0'],
-                    'backup': 'show running-config',
-                    'enable_mode': False
-                }
-            },
-            {
-                'name': 'Allied Telesis',
-                'slug': 'allied-telesis',
-                'description': 'Allied Telesis switches',
-                'backup_commands': {
-                    'setup': [],
-                    'backup': 'show running-config',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['#', 'sysname ', 'return', 'version'],
+                    'config_end': ['return'],
                 }
             },
             {
@@ -289,7 +118,140 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['no paging'],
                     'backup': 'show running-config',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['Running configuration', 'version', 'hostname '],
+                    'config_end': [],
+                }
+            },
+            # ===== Huawei =====
+            {
+                'name': 'Huawei VRP',
+                'slug': 'huawei-vrp',
+                'description': 'Huawei routers and switches',
+                'backup_commands': {
+                    'setup': ['screen-length 0 temporary'],
+                    'backup': 'display current-configuration',
+                    'enable_mode': False,
+                    'config_start': ['#', 'sysname ', 'return', 'version'],
+                    'config_end': ['return'],
+                }
+            },
+            # ===== MikroTik =====
+            {
+                'name': 'Mikrotik RouterOS',
+                'slug': 'mikrotik',
+                'description': 'Mikrotik routers and switches',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': '/export',
+                    'enable_mode': False,
+                    'exec_mode': True,  # Use exec instead of shell
+                    'config_start': ['# ', '/', '# software id'],
+                    'config_end': [],
+                }
+            },
+            # ===== Fortinet =====
+            {
+                'name': 'Fortinet FortiGate',
+                'slug': 'fortinet-fortigate',
+                'description': 'FortiGate firewalls',
+                'backup_commands': {
+                    'setup': ['config system console', 'set output standard', 'end'],
+                    'backup': 'show full-configuration',
+                    'enable_mode': False,
+                    'config_start': ['#config-version=', 'config system global', 'config '],
+                    'config_end': [],
+                }
+            },
+            # ===== Palo Alto =====
+            {
+                'name': 'Palo Alto Networks',
+                'slug': 'paloalto',
+                'description': 'Palo Alto firewalls',
+                'backup_commands': {
+                    'setup': ['set cli pager off'],
+                    'backup': 'show config running',
+                    'enable_mode': False,
+                    'config_start': ['<config ', '<entry ', 'set deviceconfig'],
+                    'config_end': [],
+                }
+            },
+            # ===== F5 =====
+            {
+                'name': 'F5 Networks',
+                'slug': 'f5-networks',
+                'description': 'F5 BIG-IP load balancers',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': 'tmsh show running-config',
+                    'enable_mode': False,
+                    'config_start': ['#TMSH-VERSION:', 'ltm ', 'sys '],
+                    'config_end': [],
+                }
+            },
+            # ===== Dell =====
+            {
+                'name': 'Dell Force10',
+                'slug': 'dell-force10',
+                'description': 'Dell Force10 switches',
+                'backup_commands': {
+                    'setup': ['terminal length 0'],
+                    'backup': 'show running-config',
+                    'enable_mode': True,
+                    'config_start': ['!Current Configuration', 'hostname '],
+                    'config_end': ['end'],
+                }
+            },
+            {
+                'name': 'Dell PowerConnect',
+                'slug': 'dell-powerconnect',
+                'description': 'Dell PowerConnect switches',
+                'backup_commands': {
+                    'setup': ['terminal datadump'],
+                    'backup': 'show running-config',
+                    'enable_mode': False,
+                    'config_start': ['!System Description', 'configure', 'hostname '],
+                    'config_end': [],
+                }
+            },
+            # ===== Brocade =====
+            {
+                'name': 'Brocade',
+                'slug': 'brocade',
+                'description': 'Brocade switches',
+                'backup_commands': {
+                    'setup': ['skip-page-display'],
+                    'backup': 'show running-config',
+                    'enable_mode': True,
+                    'config_start': ['!', 'ver ', 'module '],
+                    'config_end': ['end'],
+                }
+            },
+            # ===== Extreme =====
+            {
+                'name': 'Extreme Networks',
+                'slug': 'extreme',
+                'description': 'Extreme Networks EXOS switches',
+                'backup_commands': {
+                    'setup': ['disable clipaging'],
+                    'backup': 'show configuration',
+                    'enable_mode': False,
+                    'config_start': ['#', 'Module ', 'configure '],
+                    'config_end': [],
+                    'skip_patterns': ['disable clipaging', 'disable cli paging', 'exos-vm', 'primary.cfg'],
+                }
+            },
+            # ===== Alcatel / Nokia =====
+            {
+                'name': 'Alcatel-Lucent',
+                'slug': 'alcatel-lucent',
+                'description': 'Alcatel-Lucent switches',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': 'show configuration snapshot',
+                    'enable_mode': False,
+                    'config_start': ['# TiMOS', 'configure ', 'echo '],
+                    'config_end': [],
                 }
             },
             {
@@ -299,7 +261,123 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['environment no more'],
                     'backup': 'admin display-config',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['# TiMOS', 'configure ', 'echo '],
+                    'config_end': [],
+                }
+            },
+            # ===== Ubiquiti =====
+            {
+                'name': 'Ubiquiti EdgeRouter',
+                'slug': 'ubiquiti-edgerouter',
+                'description': 'Ubiquiti EdgeRouter devices',
+                'backup_commands': {
+                    'setup': ['set terminal length 0'],
+                    'backup': 'show configuration',
+                    'enable_mode': False,
+                    'config_start': ['firewall {', 'interfaces {', 'service {'],
+                    'config_end': [],
+                }
+            },
+            {
+                'name': 'Ubiquiti UniFi',
+                'slug': 'ubiquiti-unifi',
+                'description': 'Ubiquiti UniFi switches',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': 'show running-config',
+                    'enable_mode': False,
+                    'config_start': ['!', '#', 'hostname '],
+                    'config_end': [],
+                }
+            },
+            # ===== VyOS =====
+            {
+                'name': 'VyOS',
+                'slug': 'vyos',
+                'description': 'VyOS network operating system',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': 'show configuration',
+                    'enable_mode': False,
+                    'exec_mode': True,  # Use exec instead of shell
+                    'exec_wrapper': '/opt/vyatta/bin/vyatta-op-cmd-wrapper',  # VyOS wrapper
+                    'config_start': ['firewall {', 'interfaces {', 'service {', 'system {'],
+                    'config_end': [],
+                }
+            },
+            # ===== Check Point =====
+            {
+                'name': 'Check Point Gaia',
+                'slug': 'checkpoint-gaia',
+                'description': 'Check Point Gaia OS',
+                'backup_commands': {
+                    'setup': ['set clienv rows 0'],
+                    'backup': 'show configuration',
+                    'enable_mode': False,
+                    'config_start': [':set ', ':admininfo ', 'config '],
+                    'config_end': [],
+                }
+            },
+            # ===== Other vendors =====
+            {
+                'name': 'Zyxel',
+                'slug': 'zyxel',
+                'description': 'Zyxel switches and routers',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': 'show running-config',
+                    'enable_mode': False,
+                    'config_start': ['!', 'hostname ', 'vlan '],
+                    'config_end': [],
+                }
+            },
+            {
+                'name': 'TP-Link',
+                'slug': 'tplink',
+                'description': 'TP-Link switches',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': 'show running-config',
+                    'enable_mode': False,
+                    'config_start': ['!', '#', 'hostname '],
+                    'config_end': [],
+                }
+            },
+            {
+                'name': 'D-Link',
+                'slug': 'dlink',
+                'description': 'D-Link switches',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': 'show config current_config',
+                    'enable_mode': False,
+                    'config_start': ['#', 'config ', 'vlan '],
+                    'config_end': [],
+                }
+            },
+            {
+                'name': 'Netgear',
+                'slug': 'netgear',
+                'description': 'Netgear switches',
+                'backup_commands': {
+                    'setup': ['terminal length 0'],
+                    'backup': 'show running-config',
+                    'enable_mode': False,
+                    'config_start': ['!Current Configuration', 'vlan ', 'hostname '],
+                    'config_end': [],
+                }
+            },
+            {
+                'name': 'Allied Telesis',
+                'slug': 'allied-telesis',
+                'description': 'Allied Telesis switches',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': 'show running-config',
+                    'enable_mode': False,
+                    'config_start': ['!', 'hostname ', 'awplus '],
+                    'config_end': [],
                 }
             },
             {
@@ -309,7 +387,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['terminal length 0'],
                     'backup': 'show running-config',
-                    'enable_mode': True
+                    'enable_mode': True,
+                    'config_start': ['!', 'hostname ', 'version '],
+                    'config_end': ['end'],
                 }
             },
             {
@@ -319,7 +399,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': [],
                     'backup': 'show ns runningConfig',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['#NS', 'set ', 'add '],
+                    'config_end': [],
                 }
             },
             {
@@ -329,7 +411,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': [],
                     'backup': 'show configuration',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['!', '#', 'hostname '],
+                    'config_end': [],
                 }
             },
             {
@@ -339,7 +423,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': [],
                     'backup': 'show configuration',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['## ', 'hostname ', 'config '],
+                    'config_end': [],
                 }
             },
             {
@@ -349,7 +435,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': [],
                     'backup': 'show running-config',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['!', 'hostname ', 'version '],
+                    'config_end': [],
                 }
             },
             {
@@ -359,7 +447,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': [],
                     'backup': 'show running-config',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['!', '#', 'hostname '],
+                    'config_end': [],
                 }
             },
             {
@@ -369,7 +459,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['terminal length 0'],
                     'backup': 'show running-config',
-                    'enable_mode': True
+                    'enable_mode': True,
+                    'config_start': ['!', 'hostname ', 'version '],
+                    'config_end': ['end'],
                 }
             },
             {
@@ -379,7 +471,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': [],
                     'backup': 'configuration show',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['configuration ', '!', 'system '],
+                    'config_end': [],
                 }
             },
             {
@@ -389,7 +483,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['screen-length 0 temporary'],
                     'backup': 'show running-config',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['#', 'sysname ', 'version'],
+                    'config_end': ['return'],
                 }
             },
             {
@@ -399,7 +495,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': [],
                     'backup': 'show configuration',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['!', '#', 'hostname '],
+                    'config_end': [],
                 }
             },
             {
@@ -409,7 +507,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['set length 0'],
                     'backup': 'show configuration',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['#', 'set '],
+                    'config_end': [],
                 }
             },
             {
@@ -419,7 +519,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': [],
                     'backup': 'show running-config',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['!', '#', 'hostname '],
+                    'config_end': [],
                 }
             },
             {
@@ -429,7 +531,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': ['terminal datadump'],
                     'backup': 'show running-config',
-                    'enable_mode': True
+                    'enable_mode': True,
+                    'config_start': ['!', 'hostname ', 'version '],
+                    'config_end': ['end'],
                 }
             },
             {
@@ -439,7 +543,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': [],
                     'backup': 'for file in /etc/config/*; do echo "### $file ###"; cat "$file"; echo ""; done',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['### ', 'config ', 'option '],
+                    'config_end': [],
                 }
             },
             {
@@ -449,7 +555,9 @@ class Command(BaseCommand):
                 'backup_commands': {
                     'setup': [],
                     'backup': 'show running-config',
-                    'enable_mode': False
+                    'enable_mode': False,
+                    'config_start': ['!', '#', 'hostname ', 'version ', 'config'],
+                    'config_end': ['end'],
                 }
             },
         ]
@@ -465,8 +573,12 @@ class Command(BaseCommand):
             existing_vendor = Vendor.objects.filter(slug=slug).first()
 
             if existing_vendor:
-                # Update only if backup_commands is empty
-                if not existing_vendor.backup_commands:
+                # Update only if backup_commands is empty OR missing new fields
+                needs_update = (
+                    not existing_vendor.backup_commands or
+                    'config_start' not in existing_vendor.backup_commands
+                )
+                if needs_update:
                     existing_vendor.name = vendor_data['name']
                     existing_vendor.description = vendor_data['description']
                     existing_vendor.backup_commands = vendor_data['backup_commands']

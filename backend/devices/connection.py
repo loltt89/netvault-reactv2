@@ -123,217 +123,33 @@ def tcp_ping(host: str, port: int, timeout: int = 2) -> bool:
                 pass
 
 
-def clean_device_output(output: str, vendor: str = '', command: str = '') -> str:
-    """Clean command output from prompts and control characters"""
+def clean_device_output(output: str, vendor: str = '', command: str = '', backup_commands: dict = None) -> str:
+    """
+    Clean command output from prompts and control characters.
+
+    Uses config_start, config_end, and skip_patterns from backup_commands if provided.
+    Falls back to generic patterns if not specified.
+    """
     # First, clean control characters
     output = ANSI_ESCAPE_PATTERN.sub('', output)
     output = CARRIAGE_RETURN_PATTERN.sub('', output)
     output = MORE_PAGING_PATTERN.sub('', output)
 
-    vendor = vendor.lower()
-
-    # Normalize vendor slug to base name (e.g., 'fortinet-fortigate' -> 'fortinet')
-    vendor_aliases = {
-        'fortinet-fortigate': 'fortinet',
-        'cisco-ios-xr': 'iosxr',
-        'cisco-iosxr': 'iosxr',
-        'cisco-nxos': 'nxos',
-        'cisco-asa': 'asa',
-        'juniper-junos': 'juniper',
-        'arista-eos': 'arista',
-        'hp-procurve': 'procurve',
-        'hp-comware': 'huawei',  # Comware uses VRP-style commands
-        'huawei-vrp': 'huawei',
-        'extreme-networks': 'extreme',
-        'extreme-xos': 'extreme',
-        'ubiquiti-edgerouter': 'edgeos',
-        'ubiquiti-unifi': 'ubiquiti',
-        'checkpoint-gaia': 'checkpoint',
-        'dell-force10': 'dell',
-        'dell-powerconnect': 'powerconnect',
-        'f5-networks': 'f5',
-        'nokia-sros': 'nokia',
-        'allied-telesis': 'allied',
-        'a10-networks': 'cisco',  # A10 uses similar commands
-        'citrix-netscaler': 'cisco',
-    }
-
-    if vendor in vendor_aliases:
-        vendor = vendor_aliases[vendor]
-
-    # Config start/end markers by vendor (based on Oxidized models)
-    # https://github.com/ytti/oxidized/tree/master/lib/oxidized/model
-    config_start_markers = {
-        # Cisco family
-        'cisco': ['Building configuration', 'Current configuration', '!', 'version '],
-        'ios': ['Building configuration', 'Current configuration', '!', 'version '],
-        'iosxe': ['Building configuration', 'Current configuration', '!', 'version '],
-        'iosxr': ['Building configuration', '!! IOS XR', '!', 'hostname '],
-        'nxos': ['!Command:', '!Running configuration', 'version '],
-        'asa': ['ASA Version', ': Saved', '!'],
-        'catos': ['begin', '#version', 'set '],
-        'ciscosmb': ['!Current Configuration', 'sysinfo', 'vlan '],
-
-        # Fortinet
-        'fortinet': ['#config-version=', 'config system global', 'config '],
-        'fortios': ['#config-version=', 'config system global', 'config '],
-        'fortigate': ['#config-version=', 'config system global', 'config '],
-
-        # Juniper
-        'juniper': ['## Last commit', 'version ', 'system {', 'groups {'],
-        'junos': ['## Last commit', 'version ', 'system {', 'groups {'],
-        'screenos': ['set clock', 'set vrouter', 'set hostname'],
-
-        # Huawei
-        'huawei': ['#', 'sysname ', 'return', '<', 'version'],
-        'vrp': ['#', 'sysname ', 'return', 'software'],
-
-        # HP / Aruba / ProCurve
-        'hp': ['Running configuration', ';', 'hostname '],
-        'hpe': ['Running configuration', ';', 'hostname '],
-        'procurve': ['Running configuration', ';', 'hostname '],
-        'aruba': ['Running configuration', 'version', 'hostname '],
-        'arubaos': ['Building configuration', 'version', '!'],
-        'aoscx': ['Running configuration', 'hostname '],
-
-        # Extreme
-        'extreme': ['#', 'Module ', 'configure '],
-        'xos': ['#', 'Module ', 'configure '],
-        'exos': ['#', 'Module ', 'configure '],
-        'enterasys': ['#', 'set '],
-
-        # MikroTik
-        'mikrotik': ['# ', '/', '# software id'],
-        'routeros': ['# ', '/', '# software id'],
-
-        # Arista
-        'arista': ['! Command:', '! device:', '! boot', 'hostname '],
-        'eos': ['! Command:', '! device:', '! boot', 'hostname '],
-
-        # Dell
-        'dell': ['!Current Configuration', 'hostname '],
-        'dellos': ['!Current Configuration', 'hostname '],
-        'ftos': ['!Current Configuration', 'hostname '],
-        'dnos': ['!Current Configuration', 'hostname '],
-        'powerconnect': ['!System Description', 'configure', 'hostname '],
-
-        # Palo Alto
-        'paloalto': ['<config ', '<entry ', 'set deviceconfig'],
-        'panos': ['<config ', '<entry ', 'set deviceconfig'],
-
-        # Ubiquiti
-        'ubiquiti': ['firewall {', 'interfaces {', 'service {'],
-        'edgeos': ['firewall {', 'interfaces {', 'service {'],
-        'vyatta': ['firewall {', 'interfaces {', 'service {'],
-        'vyos': ['firewall {', 'interfaces {', 'service {'],
-
-        # Brocade / Ruckus
-        'brocade': ['!', 'ver ', 'module '],
-        'fastiron': ['!', 'ver ', 'module '],
-        'icx': ['!', 'ver ', 'module '],
-
-        # F5
-        'f5': ['#TMSH-VERSION:', 'ltm ', 'sys '],
-        'bigip': ['#TMSH-VERSION:', 'ltm ', 'sys '],
-        'tmos': ['#TMSH-VERSION:', 'ltm ', 'sys '],
-
-        # Alcatel / Nokia
-        'alcatel': ['# TiMOS', 'configure ', 'echo '],
-        'nokia': ['# TiMOS', 'configure ', 'echo '],
-        'sros': ['# TiMOS', 'configure ', 'echo '],
-
-        # Netgear
-        'netgear': ['!Current Configuration', 'vlan ', 'hostname '],
-
-        # Zyxel
-        'zyxel': ['!', 'hostname ', 'vlan '],
-        'zynos': ['!', 'hostname ', 'vlan '],
-
-        # Allied Telesis
-        'allied': ['!', 'hostname ', 'awplus '],
-        'awplus': ['!', 'hostname ', 'awplus '],
-
-        # Ciena
-        'ciena': ['configuration ', '!', 'system '],
-        'saos': ['configuration ', '!', 'system '],
-
-        # Riverbed
-        'riverbed': ['## ', 'hostname ', 'config '],
-
-        # CheckPoint
-        'checkpoint': [':set ', ':admininfo ', 'config '],
-        'gaia': [':set ', ':admininfo ', 'config '],
-
-        # Cumulus / NVIDIA
-        'cumulus': ['# ', 'auto ', 'iface '],
-
-        # Linux / OpenWrt
-        'linux': ['# ', 'config ', 'option '],
-        'openwrt': ['config ', 'option ', 'package '],
-
-        # pfSense / OPNsense
-        'pfsense': ['<?xml ', '<pfsense>', '<opnsense>'],
-        'opnsense': ['<?xml ', '<pfsense>', '<opnsense>'],
-
-        # Generic
-        'generic': ['!', '#', 'hostname ', 'version ', 'config'],
-    }
-
-    config_end_markers = {
-        # Cisco family
-        'cisco': ['end'],
-        'ios': ['end'],
-        'iosxe': ['end'],
-        'iosxr': ['end'],
-        'nxos': ['end'],
-        'asa': ['end'],
-        'catos': ['end'],
-        'ciscosmb': ['end'],
-
-        # Arista
-        'arista': ['end'],
-        'eos': ['end'],
-
-        # Huawei
-        'huawei': ['return'],
-        'vrp': ['return'],
-
-        # HP
-        'hp': [],
-        'hpe': [],
-        'procurve': [],
-        'aruba': [],
-        'arubaos': ['end'],
-        'aoscx': [],
-
-        # Others with no specific end marker - go to end of output
-        'fortinet': [], 'fortios': [], 'fortigate': [],
-        'juniper': [], 'junos': [], 'screenos': [],
-        'extreme': [], 'xos': [], 'exos': [], 'enterasys': [],
-        'mikrotik': [], 'routeros': [],
-        'dell': [], 'dellos': [], 'ftos': [], 'dnos': [], 'powerconnect': [],
-        'paloalto': [], 'panos': [],
-        'ubiquiti': [], 'edgeos': [], 'vyatta': [], 'vyos': [],
-        'brocade': [], 'fastiron': [], 'icx': [],
-        'f5': [], 'bigip': [], 'tmos': [],
-        'alcatel': [], 'nokia': [], 'sros': [],
-        'netgear': [], 'zyxel': [], 'zynos': [],
-        'allied': [], 'awplus': [],
-        'ciena': [], 'saos': [],
-        'riverbed': [],
-        'checkpoint': [], 'gaia': [],
-        'cumulus': [],
-        'linux': [], 'openwrt': [],
-        'pfsense': [], 'opnsense': [],
-        'generic': ['end'],
-    }
+    # Get markers from backup_commands or use generic defaults
+    if backup_commands and isinstance(backup_commands, dict):
+        start_markers = backup_commands.get('config_start', ['!', '#', 'version', 'config', 'hostname'])
+        end_markers = backup_commands.get('config_end', [])
+        custom_skip = backup_commands.get('skip_patterns', [])
+    else:
+        start_markers = ['!', '#', 'version', 'config', 'hostname']
+        end_markers = []
+        custom_skip = []
 
     lines = output.split('\n')
 
     # Find config start
     start_idx = 0
     found_start = False
-    start_markers = config_start_markers.get(vendor, ['!', '#', 'version', 'config'])
     for i, line in enumerate(lines):
         stripped = line.strip()
         for marker in start_markers:
@@ -346,7 +162,6 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
 
     # Find config end (search from the end)
     end_idx = len(lines)
-    end_markers = config_end_markers.get(vendor, ['end', 'exit'])
     if end_markers:
         for i in range(len(lines) - 1, start_idx, -1):
             stripped = lines[i].strip().lower()
@@ -357,18 +172,20 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
     # Extract config section
     config_lines = lines[start_idx:end_idx]
 
-    # Final cleanup - remove any remaining prompt lines and session messages
-    cleaned_lines = []
-    skip_patterns = [
+    # Default skip patterns for session messages
+    default_skip_patterns = [
         'logoff', 'logout', 'connection closed', 'session ended',
         'type help', 'logins over the last', 'failed logins since',
-        'last login:', 'user logged in',
-        # EXOS specific
-        'remember to save', 'last successful login', 'info: command executed',
-        'please use new command', 'disable clipaging', 'disable cli paging',
-        'exos-vm', '* exos', 'do you wish to save', 'primary.cfg'
+        'last login:', 'user logged in', 'remember to save',
+        'last successful login', 'info: command executed',
+        'please use new command', 'do you wish to save'
     ]
 
+    # Combine default and custom skip patterns
+    skip_patterns = default_skip_patterns + custom_skip
+
+    # Final cleanup - remove any remaining prompt lines and session messages
+    cleaned_lines = []
     for line in config_lines:
         stripped = line.strip()
         if not stripped:
@@ -384,7 +201,7 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
         if command and stripped.endswith(command):
             continue
 
-        # Skip session messages (Logoff, login info, etc.)
+        # Skip session messages
         if any(p in stripped_lower for p in skip_patterns):
             continue
 
@@ -546,10 +363,14 @@ class SSHConnection:
             setup_commands = backup_commands.get('setup', [])
             show_command = backup_commands.get('backup', 'show running-config')
             need_enable = backup_commands.get('enable_mode', False)
+            use_exec_mode = backup_commands.get('exec_mode', False)
+            exec_wrapper = backup_commands.get('exec_wrapper', '')
         else:
             setup_commands = []
             show_command = 'show running-config'
             need_enable = False
+            use_exec_mode = False
+            exec_wrapper = ''
 
         # Build command sequence
         all_commands = []
@@ -559,19 +380,20 @@ class SSHConnection:
 
         all_commands.extend(setup_commands)
 
-        # MikroTik and VyOS use exec mode
-        if vendor == 'mikrotik':
-            config = self.send_command_exec(show_command, timeout=30)
-        elif vendor == 'vyos':
-            # VyOS needs vyatta wrapper for exec mode
-            exec_command = f'/opt/vyatta/bin/vyatta-op-cmd-wrapper {show_command}'
+        # Use exec mode if specified in backup_commands
+        if use_exec_mode:
+            if exec_wrapper:
+                # Use wrapper (e.g., VyOS vyatta-op-cmd-wrapper)
+                exec_command = f'{exec_wrapper} {show_command}'
+            else:
+                exec_command = show_command
             config = self.send_command_exec(exec_command, timeout=30)
         else:
             all_commands.append(show_command)
             cmds_str = '|||'.join(all_commands)
 
-            # Longer idle time for config output
-            idle_ms = 2000 if vendor in ['mikrotik', 'fortinet'] else 1000
+            # Default idle time
+            idle_ms = 1000
 
             result = self._run_ssh(mode='shell', commands=cmds_str, idle_ms=idle_ms)
 
@@ -580,7 +402,7 @@ class SSHConnection:
 
             config = result.get('output', '')
 
-        return clean_device_output(config, vendor, show_command)
+        return clean_device_output(config, vendor, show_command, backup_commands)
 
     def disconnect(self) -> None:
         """Disconnect (no-op for binary-based connection)"""
@@ -744,7 +566,7 @@ class TelnetConnection:
         wait_time = 10 if vendor == 'mikrotik' else 3
         config = self.send_command(show_command, wait_time=wait_time)
 
-        return clean_device_output(config, vendor, show_command)
+        return clean_device_output(config, vendor, show_command, backup_commands)
 
     def disconnect(self) -> None:
         """Close Telnet connection"""
