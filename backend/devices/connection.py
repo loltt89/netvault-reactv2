@@ -195,10 +195,12 @@ class SSHConnection:
             cmd.extend(['-cmds', commands])
 
         try:
+            # For test mode use shorter subprocess timeout
+            proc_timeout = self.timeout + 5 if mode == 'test' else self.timeout * 2 + 10
             result = subprocess.run(
                 cmd,
                 capture_output=True,
-                timeout=self.timeout * 2 + 10,
+                timeout=proc_timeout,
                 text=True
             )
 
@@ -500,21 +502,26 @@ class TelnetConnection:
 
 def test_connection(host: str, port: int, protocol: str, username: str,
                    password: str, enable_password: Optional[str] = None,
-                   timeout: int = 10) -> Tuple[bool, str]:
+                   timeout: int = 5) -> Tuple[bool, str]:
     """Test device connection"""
     try:
         resolved_host = validate_target_host(host)
     except DeviceConnectionError as e:
         return False, str(e)
 
-    # Quick TCP check
+    # Quick TCP check first
     if not tcp_ping(resolved_host, port, timeout=2):
         return False, f"Port {port} is not reachable on {host}"
 
     try:
         if protocol.lower() == 'ssh':
-            with SSHConnection(resolved_host, port, username, password, enable_password, timeout) as conn:
+            # Use shorter timeout for test - just verify we can authenticate
+            conn = SSHConnection(resolved_host, port, username, password, enable_password, timeout=5)
+            result = conn._run_ssh(mode='test')
+            if result['success']:
                 return True, "Connection successful"
+            else:
+                return False, result.get('error', 'Connection failed')
         else:
             with TelnetConnection(resolved_host, port, username, password, enable_password, timeout) as conn:
                 return True, "Connection successful"
