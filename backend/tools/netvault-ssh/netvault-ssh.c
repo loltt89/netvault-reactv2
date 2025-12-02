@@ -19,6 +19,22 @@
 #define DEFAULT_TIMEOUT 10
 #define DEFAULT_IDLE_MS 500
 
+// Global password buffer (for secure cleanup before exit)
+static char g_pass_buffer[1024];
+
+// Secure exit: clear sensitive data from memory before exiting
+void secure_exit(int code) {
+    // Use explicit_bzero if available (prevents compiler optimization)
+    // Otherwise fall back to memset + memory barrier
+#ifdef __GLIBC__
+    explicit_bzero(g_pass_buffer, sizeof(g_pass_buffer));
+#else
+    memset(g_pass_buffer, 0, sizeof(g_pass_buffer));
+    __asm__ __volatile__("" : : "r"(g_pass_buffer) : "memory");
+#endif
+    exit(code);
+}
+
 // Output modes
 typedef enum {
     MODE_TEST,
@@ -102,26 +118,26 @@ void print_json_result(Result *r) {
 void result_error(const char *msg) {
     Result r = {0, NULL, (char*)msg, ERR_FATAL};
     print_json_result(&r);
-    exit(1);
+    secure_exit(1);
 }
 
 void result_error_code(const char *msg, int error_code) {
     Result r = {0, NULL, (char*)msg, error_code};
     print_json_result(&r);
-    exit(1);
+    secure_exit(1);
 }
 
 void result_success(const char *output) {
     Result r = {1, (char*)output, NULL, ERR_NONE};
     print_json_result(&r);
-    exit(0);
+    secure_exit(0);
 }
 
 void result_success_truncated(const char *output) {
     // Output was truncated due to MAX_OUTPUT limit
     Result r = {1, (char*)output, "WARNING: Output truncated (exceeded 10MB limit)", ERR_NONE};
     print_json_result(&r);
-    exit(0);
+    secure_exit(0);
 }
 
 // Wait for data with timeout (returns 1 if data available, 0 if timeout, -1 on error)
@@ -356,7 +372,6 @@ int main(int argc, char *argv[]) {
     };
 
     int read_pass_stdin = 0;
-    static char pass_buffer[1024];  // Static buffer for password from stdin
 
     // Parse arguments
     for (int i = 1; i < argc; i++) {
@@ -386,13 +401,13 @@ int main(int argc, char *argv[]) {
 
     // Read password from stdin if -pass-stdin was specified (more secure - not visible in ps)
     if (read_pass_stdin) {
-        if (fgets(pass_buffer, sizeof(pass_buffer), stdin) != NULL) {
+        if (fgets(g_pass_buffer, sizeof(g_pass_buffer), stdin) != NULL) {
             // Remove trailing newline
-            size_t len = strlen(pass_buffer);
-            if (len > 0 && pass_buffer[len - 1] == '\n') {
-                pass_buffer[len - 1] = '\0';
+            size_t len = strlen(g_pass_buffer);
+            if (len > 0 && g_pass_buffer[len - 1] == '\n') {
+                g_pass_buffer[len - 1] = '\0';
             }
-            cfg.pass = pass_buffer;
+            cfg.pass = g_pass_buffer;
         }
     }
 

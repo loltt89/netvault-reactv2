@@ -505,8 +505,9 @@ class TelnetConnection:
 
             # Idle detection: wait for N consecutive empty reads before finishing
             # This prevents premature exit if device "thinks" for a moment
+            # Network devices can pause 2-3+ seconds when generating heavy configs
             idle_count = 0
-            max_idle = 5  # 5 * 0.2s = 1 second of idle before considering done
+            max_idle = 20  # 20 * 0.2s = 4 seconds of idle before considering done
             idle_sleep = 0.2  # Time to wait between reads
 
             while iteration < max_iterations:
