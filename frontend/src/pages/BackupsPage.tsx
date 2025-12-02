@@ -261,7 +261,7 @@ const BackupsPage: React.FC = () => {
 
   const toggleGroupSelection = (group: BackupGroup) => {
     const newSelected = new Set(selectedBackups);
-    const groupBackupIds = group.backups.filter(b => b.success).map(b => b.id);
+    const groupBackupIds = group.backups.map(b => b.id);
     const allSelected = groupBackupIds.every(id => newSelected.has(id));
 
     if (allSelected) {
@@ -330,12 +330,12 @@ const BackupsPage: React.FC = () => {
   };
 
   const isGroupSelected = (group: BackupGroup) => {
-    const groupBackupIds = group.backups.filter(b => b.success).map(b => b.id);
+    const groupBackupIds = group.backups.map(b => b.id);
     return groupBackupIds.length > 0 && groupBackupIds.every(id => selectedBackups.has(id));
   };
 
   const isGroupPartiallySelected = (group: BackupGroup) => {
-    const groupBackupIds = group.backups.filter(b => b.success).map(b => b.id);
+    const groupBackupIds = group.backups.map(b => b.id);
     const selectedCount = groupBackupIds.filter(id => selectedBackups.has(id)).length;
     return selectedCount > 0 && selectedCount < groupBackupIds.length;
   };
