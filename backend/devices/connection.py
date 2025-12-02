@@ -145,6 +145,7 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
         'hp-comware': 'huawei',  # Comware uses VRP-style commands
         'huawei-vrp': 'huawei',
         'extreme-networks': 'extreme',
+        'extreme-xos': 'extreme',
         'ubiquiti-edgerouter': 'edgeos',
         'ubiquiti-unifi': 'ubiquiti',
         'checkpoint-gaia': 'checkpoint',
@@ -361,7 +362,11 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
     skip_patterns = [
         'logoff', 'logout', 'connection closed', 'session ended',
         'type help', 'logins over the last', 'failed logins since',
-        'last login:', 'user logged in'
+        'last login:', 'user logged in',
+        # EXOS specific
+        'remember to save', 'last successful login', 'info: command executed',
+        'please use new command', 'disable clipaging', 'disable cli paging',
+        'exos-vm', '* exos', 'do you wish to save', 'primary.cfg'
     ]
 
     for line in config_lines:

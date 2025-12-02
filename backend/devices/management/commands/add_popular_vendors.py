@@ -183,6 +183,16 @@ class Command(BaseCommand):
                 }
             },
             {
+                'name': 'Extreme EXOS',
+                'slug': 'extreme-xos',
+                'description': 'Extreme Networks EXOS switches (Summit, X-series)',
+                'backup_commands': {
+                    'setup': ['disable clipaging'],
+                    'backup': 'show configuration',
+                    'enable_mode': False
+                }
+            },
+            {
                 'name': 'Alcatel-Lucent',
                 'slug': 'alcatel-lucent',
                 'description': 'Alcatel-Lucent switches',
