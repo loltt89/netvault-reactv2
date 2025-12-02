@@ -142,7 +142,7 @@ def tcp_ping(host: str, port: int, timeout: int = 2) -> bool:
 
 def clean_device_output(output: str, vendor: str = '', command: str = '', backup_commands: dict = None) -> str:
     """
-    Clean command output from prompts and control characters.
+    Clean command output from prompts, control characters, and banners.
 
     Uses config_start, config_end, and skip_patterns from backup_commands if provided.
     Falls back to generic patterns if not specified.
@@ -164,16 +164,37 @@ def clean_device_output(output: str, vendor: str = '', command: str = '', backup
 
     lines = output.split('\n')
 
-    # Find config start
+    # Find REAL config start (skip banners)
+    # Config starts at lines like "hostname X", "version X", "!" at line start
+    # NOT at banner lines that happen to contain these words
     start_idx = 0
     found_start = False
     for i, line in enumerate(lines):
         stripped = line.strip()
+
+        # Skip empty lines
+        if not stripped:
+            continue
+
+        # Skip obvious banner lines (decorative characters)
+        if _is_banner_line(stripped):
+            continue
+
+        # Check for real config start markers
         for marker in start_markers:
-            if stripped.startswith(marker) or marker in stripped:
-                start_idx = i
-                found_start = True
-                break
+            # "hostname X" or "version X" at start of line = config
+            if stripped.startswith(marker):
+                # Make sure it's not inside a banner (check surrounding context)
+                if marker in ['hostname', 'version', 'config']:
+                    # These should be followed by actual value, not banner text
+                    if len(stripped.split()) >= 2 or stripped == '!':
+                        start_idx = i
+                        found_start = True
+                        break
+                else:
+                    start_idx = i
+                    found_start = True
+                    break
         if found_start:
             break
 
@@ -189,19 +210,23 @@ def clean_device_output(output: str, vendor: str = '', command: str = '', backup
     # Extract config section
     config_lines = lines[start_idx:end_idx]
 
-    # Default skip patterns for session messages
+    # Default skip patterns for session messages and banners
     default_skip_patterns = [
         'logoff', 'logout', 'connection closed', 'session ended',
         'type help', 'logins over the last', 'failed logins since',
         'last login:', 'user logged in', 'remember to save',
         'last successful login', 'info: command executed',
-        'please use new command', 'do you wish to save'
+        'please use new command', 'do you wish to save',
+        # Banner text patterns
+        'unauthorized access', 'authorized personnel', 'disconnect immediately',
+        'activities on this system', 'logged and monitored', 'consent to',
+        'security@', 'contact:', 'prohibited'
     ]
 
     # Combine default and custom skip patterns
     skip_patterns = default_skip_patterns + custom_skip
 
-    # Final cleanup - remove any remaining prompt lines and session messages
+    # Final cleanup - remove any remaining prompt lines, session messages, and banners
     cleaned_lines = []
     for line in config_lines:
         stripped = line.strip()
@@ -218,13 +243,42 @@ def clean_device_output(output: str, vendor: str = '', command: str = '', backup
         if command and stripped.endswith(command):
             continue
 
-        # Skip session messages
+        # Skip session messages and banner text
         if any(p in stripped_lower for p in skip_patterns):
+            continue
+
+        # Skip decorative banner lines
+        if _is_banner_line(stripped):
             continue
 
         cleaned_lines.append(line.rstrip())
 
     return '\n'.join(cleaned_lines).strip()
+
+
+def _is_banner_line(line: str) -> bool:
+    """
+    Detect decorative banner lines (asterisks, dashes, equals, box drawing).
+
+    Returns True if line is likely a banner decoration, not config content.
+    """
+    if not line:
+        return False
+
+    # Count decorative characters
+    decorative_chars = set('*=-_+|╔╗╚╝║═│┌┐└┘├┤┬┴┼')
+    decorative_count = sum(1 for c in line if c in decorative_chars)
+
+    # If >60% of non-space chars are decorative, it's a banner
+    non_space = len(line.replace(' ', ''))
+    if non_space > 0 and decorative_count / non_space > 0.6:
+        return True
+
+    # Lines that are ONLY decorative chars and spaces
+    if all(c in decorative_chars or c.isspace() for c in line):
+        return True
+
+    return False
 
 
 # ========== Paramiko SSH Helper (primary method) ==========

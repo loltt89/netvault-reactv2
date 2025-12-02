@@ -1796,13 +1796,7 @@ end
 """
 
     def test_clean_output_with_long_banner(self):
-        """Test output cleaning handles long banners
-
-        NOTE: Currently banners are NOT stripped from output.
-        This test documents current behavior - config extraction starts
-        at first config marker (!, hostname, etc.) but banner lines with *
-        are included. This is a known limitation.
-        """
+        """Test output cleaning removes long MOTD banners"""
         from devices.connection import clean_device_output
 
         output = self.LONG_BANNER + "\nhostname Router\n!\ninterface Gi0/0\n!\nend"
@@ -1811,11 +1805,14 @@ end
         # Config content should be present
         self.assertIn('hostname Router', cleaned)
         self.assertIn('interface Gi0/0', cleaned)
-        # NOTE: Banner is currently NOT filtered out - this documents the limitation
-        # A future improvement could add banner detection/removal
+        # Banner decorative lines (****) should be removed
+        self.assertNotIn('*****', cleaned)
+        # Banner text should be removed
+        self.assertNotIn('WARNING', cleaned)
+        self.assertNotIn('unauthorized', cleaned.lower())
 
     def test_clean_output_with_ansi_art(self):
-        """Test ANSI escape sequences are removed from banner"""
+        """Test ANSI escape sequences and box drawing are removed"""
         from devices.connection import clean_device_output
 
         output = self.ANSI_ART_BANNER + "\nhostname Router\n!\nend"
@@ -1824,6 +1821,31 @@ end
         # Should not contain any ANSI codes
         self.assertNotIn('\x1b', cleaned)
         self.assertNotIn('[31m', cleaned)
+        # Box drawing characters should be filtered
+        self.assertNotIn('╔', cleaned)
+        self.assertNotIn('╗', cleaned)
+
+    def test_is_banner_line_detection(self):
+        """Test banner line detection function"""
+        from devices.connection import _is_banner_line
+
+        # These ARE banner lines
+        self.assertTrue(_is_banner_line('*' * 50))
+        self.assertTrue(_is_banner_line('=' * 50))
+        self.assertTrue(_is_banner_line('-' * 50))
+        self.assertTrue(_is_banner_line('*   *   *   *   *'))
+        self.assertTrue(_is_banner_line('╔══════════════╗'))
+        self.assertTrue(_is_banner_line('║              ║'))
+        self.assertTrue(_is_banner_line('+----+----+----+'))
+
+        # These are NOT banner lines (real config)
+        self.assertFalse(_is_banner_line('hostname Router'))
+        self.assertFalse(_is_banner_line('interface GigabitEthernet0/0'))
+        self.assertFalse(_is_banner_line('ip address 192.168.1.1 255.255.255.0'))
+        self.assertFalse(_is_banner_line('!'))  # Config separator
+        self.assertFalse(_is_banner_line('#'))  # Comment marker
+        self.assertFalse(_is_banner_line('description WAN-Link'))
+        self.assertFalse(_is_banner_line('set policy-name "allow-all"'))
 
     def test_unicode_config_preserved(self):
         """Test Unicode/Russian characters in config are preserved"""
