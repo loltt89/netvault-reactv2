@@ -186,11 +186,9 @@
   border-radius: 12px;
   padding: 20px;
   box-shadow: 0 2px 8px var(--shadow);
-  transition: all 0.3s ease;
 }
 
 .backup-card:hover {
-  transform: translateY(-4px);
   box-shadow: 0 4px 16px var(--shadow);
 }
 
