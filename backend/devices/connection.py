@@ -15,8 +15,11 @@ from typing import Optional, Tuple, List
 
 logger = logging.getLogger(__name__)
 
-# Path to netvault-ssh binary
+# Path to netvault-ssh binaries
+# Legacy: libssh 0.8.x with SSH v1 support + older algorithms
+# Modern: libssh 0.10.x with modern algorithms (sha256, etc.) but no SSH v1
 NETVAULT_SSH_BIN = os.path.join(os.path.dirname(__file__), '..', 'tools', 'netvault-ssh', 'netvault-ssh')
+NETVAULT_SSH_MODERN_BIN = os.path.join(os.path.dirname(__file__), '..', 'tools', 'netvault-ssh', 'netvault-ssh-modern')
 
 # ===== Compiled Regex Patterns (for performance) =====
 ANSI_ESCAPE_PATTERN = re.compile(r'\x1b\[[0-9;]*m')
@@ -393,10 +396,12 @@ class SSHConnection:
         self._connected = True
         logger.info(f"Connected to {self.host} via netvault-ssh")
 
-    def _run_ssh(self, mode: str = 'shell', commands: str = '', idle_ms: int = 500) -> dict:
-        """Run netvault-ssh binary"""
+    def _run_ssh(self, mode: str = 'shell', commands: str = '', idle_ms: int = 500, use_modern: bool = False) -> dict:
+        """Run netvault-ssh binary with automatic fallback to modern version on KEX errors"""
+        ssh_bin = NETVAULT_SSH_MODERN_BIN if use_modern else NETVAULT_SSH_BIN
+
         cmd = [
-            NETVAULT_SSH_BIN,
+            ssh_bin,
             '-host', self.host,
             '-port', str(self.port),
             '-user', self.username,
@@ -421,17 +426,29 @@ class SSHConnection:
 
             # Parse JSON output
             try:
-                return json.loads(result.stdout)
+                parsed = json.loads(result.stdout)
             except json.JSONDecodeError:
                 return {
                     'success': False,
                     'error': f"Invalid response: {result.stdout[:200]}"
                 }
 
+            # Fallback to modern binary on KEX/algorithm errors (only if not already using modern)
+            if not parsed.get('success') and not use_modern:
+                error_msg = parsed.get('error', '').lower()
+                if 'kex error' in error_msg or 'no match for method' in error_msg:
+                    logger.info(f"KEX error with legacy SSH, trying modern binary for {self.host}")
+                    return self._run_ssh(mode, commands, idle_ms, use_modern=True)
+
+            return parsed
+
         except subprocess.TimeoutExpired:
             return {'success': False, 'error': 'Command timeout'}
         except FileNotFoundError:
-            return {'success': False, 'error': f'netvault-ssh binary not found at {NETVAULT_SSH_BIN}'}
+            # If legacy not found, try modern
+            if not use_modern and os.path.exists(NETVAULT_SSH_MODERN_BIN):
+                return self._run_ssh(mode, commands, idle_ms, use_modern=True)
+            return {'success': False, 'error': f'netvault-ssh binary not found'}
         except Exception as e:
             return {'success': False, 'error': str(e)}
 

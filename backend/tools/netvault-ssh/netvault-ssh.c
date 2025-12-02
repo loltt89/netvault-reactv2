@@ -360,6 +360,15 @@ int main(int argc, char *argv[]) {
     int strict = 0;
     ssh_options_set(session, SSH_OPTIONS_STRICTHOSTKEYCHECK, &strict);
 
+    // Allow legacy algorithms for compatibility with older devices
+    // This includes ssh-rsa which some devices like Cisco ASA still use
+    ssh_options_set(session, SSH_OPTIONS_HOSTKEYS,
+        "ssh-ed25519,ecdsa-sha2-nistp521,ecdsa-sha2-nistp384,ecdsa-sha2-nistp256,"
+        "rsa-sha2-512,rsa-sha2-256,ssh-rsa");
+    ssh_options_set(session, SSH_OPTIONS_PUBLICKEY_ACCEPTED_TYPES,
+        "ssh-ed25519,ecdsa-sha2-nistp521,ecdsa-sha2-nistp384,ecdsa-sha2-nistp256,"
+        "rsa-sha2-512,rsa-sha2-256,ssh-rsa");
+
     // Connect
     int rc = ssh_connect(session);
     if (rc != SSH_OK) {
