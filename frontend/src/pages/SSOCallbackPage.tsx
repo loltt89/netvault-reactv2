@@ -1,30 +1,24 @@
 /**
  * SSO Callback Page
- * Handles token storage after successful SAML SSO authentication
+ * Handles redirect after successful SAML SSO authentication
+ * Tokens are passed via HttpOnly cookies (not URL params for security)
  */
 
 import React, { useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { setTokens } from '../services/api.service';
+import { useNavigate } from 'react-router-dom';
 
 const SSOCallbackPage: React.FC = () => {
-  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const accessToken = searchParams.get('access');
-    const refreshToken = searchParams.get('refresh');
+    // Tokens are set as HttpOnly cookies by the backend
+    // Just redirect to dashboard - API calls will use cookies automatically
+    const timer = setTimeout(() => {
+      navigate('/dashboard', { replace: true });
+    }, 500);
 
-    if (accessToken && refreshToken) {
-      // Store access token in memory (cookies set by server)
-      setTokens(accessToken, refreshToken);
-
-      // Redirect to dashboard
-      window.location.href = '/dashboard';
-    } else {
-      // No tokens - redirect to login with error
-      window.location.href = '/login?error=sso_failed&message=No tokens received';
-    }
-  }, [searchParams]);
+    return () => clearTimeout(timer);
+  }, [navigate]);
 
   return (
     <div style={{

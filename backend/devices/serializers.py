@@ -3,73 +3,97 @@ from .models import Vendor, DeviceType, Device
 from core.utils import validate_csv_safe
 
 
-def validate_custom_commands(value):
+import re
+
+# Pattern for validating network commands (whitelist approach)
+SAFE_COMMAND_PATTERN = re.compile(r'^[a-zA-Z0-9\s\-_.:/@#|"\'=]+$')
+
+# Known keys for backup_commands schema
+BACKUP_COMMANDS_KEYS = {
+    'setup', 'backup', 'enable_mode', 'config_start', 'config_end',
+    'skip_patterns', 'exec_mode', 'exec_wrapper', 'logout'
+}
+
+
+def _validate_command(cmd, cmd_type):
+    """Validate single command against whitelist"""
+    if not cmd or not cmd.strip():
+        raise serializers.ValidationError(f'{cmd_type} command cannot be empty')
+    if len(cmd) > 500:
+        raise serializers.ValidationError(f'{cmd_type} command too long (max 500 chars)')
+    if not SAFE_COMMAND_PATTERN.match(cmd):
+        raise serializers.ValidationError(
+            f'{cmd_type} command contains invalid characters. '
+            f'Allowed: letters, numbers, spaces, - _ . : / @ # | " \' ='
+        )
+
+
+def validate_backup_commands(value, field_name='backup_commands'):
     """
-    Validate custom_commands JSON structure
+    Validate backup_commands JSON structure (used by both Vendor and Device custom_commands)
     Expected format:
     {
-        'setup': ['cmd1', 'cmd2'],  # optional, list of strings
-        'backup': 'show running-config',  # required, string
-        'enable_mode': True  # optional, bool
+        'backup': 'show running-config',      # required, string - main backup command
+        'setup': ['terminal length 0'],       # optional, list - pre-commands
+        'enable_mode': True,                  # optional, bool - needs enable password
+        'config_start': ['!', 'version'],     # optional, list - markers for config start
+        'config_end': ['end'],                # optional, list - markers for config end
+        'skip_patterns': ['Building config'], # optional, list - lines to skip
+        'exec_mode': False,                   # optional, bool - for MikroTik exec mode
+        'exec_wrapper': '',                   # optional, string - for VyOS
+        'logout': ['exit']                    # optional, list - logout commands
     }
     """
     if not isinstance(value, dict):
-        raise serializers.ValidationError('custom_commands must be a JSON object')
+        raise serializers.ValidationError(f'{field_name} must be a JSON object')
 
     # Check required 'backup' field
     if 'backup' not in value:
-        raise serializers.ValidationError('custom_commands must contain "backup" field')
+        raise serializers.ValidationError(f'{field_name} must contain "backup" field')
 
     if not isinstance(value['backup'], str) or not value['backup'].strip():
         raise serializers.ValidationError('backup command must be a non-empty string')
 
-    # Check optional 'setup' field
-    if 'setup' in value:
-        if not isinstance(value['setup'], list):
-            raise serializers.ValidationError('setup must be a list of commands')
-        if not all(isinstance(cmd, str) for cmd in value['setup']):
-            raise serializers.ValidationError('setup commands must be strings')
-
-    # Check optional 'enable_mode' field
-    if 'enable_mode' in value:
-        if not isinstance(value['enable_mode'], bool):
-            raise serializers.ValidationError('enable_mode must be a boolean')
-
-    # Validate commands using whitelist approach (more secure than blacklist)
-    # Allowed: alphanumeric, spaces, common network command chars
-    import re
-    SAFE_COMMAND_PATTERN = re.compile(r'^[a-zA-Z0-9\s\-_.:/@#]+$')
-
-    def validate_command(cmd, cmd_type):
-        """Validate single command against whitelist"""
-        if not cmd or not cmd.strip():
-            raise serializers.ValidationError(f'{cmd_type} command cannot be empty')
-        if len(cmd) > 500:
-            raise serializers.ValidationError(f'{cmd_type} command too long (max 500 chars)')
-        if not SAFE_COMMAND_PATTERN.match(cmd):
-            raise serializers.ValidationError(
-                f'{cmd_type} command contains invalid characters. '
-                f'Allowed: letters, numbers, spaces, - _ . : / @ #'
-            )
-
     # Validate backup command
-    validate_command(value.get('backup', ''), 'Backup')
+    _validate_command(value.get('backup', ''), 'Backup')
 
-    # Validate setup commands
-    if 'setup' in value:
-        for i, cmd in enumerate(value['setup']):
-            validate_command(cmd, f'Setup[{i}]')
+    # Check list fields
+    list_fields = ['setup', 'config_start', 'config_end', 'skip_patterns', 'logout']
+    for field in list_fields:
+        if field in value:
+            if not isinstance(value[field], list):
+                raise serializers.ValidationError(f'{field} must be a list')
+            if not all(isinstance(item, str) for item in value[field]):
+                raise serializers.ValidationError(f'{field} items must be strings')
+            # Validate each command/pattern
+            for i, item in enumerate(value[field]):
+                if field in ['setup', 'logout']:
+                    _validate_command(item, f'{field}[{i}]')
+
+    # Check boolean fields
+    bool_fields = ['enable_mode', 'exec_mode']
+    for field in bool_fields:
+        if field in value and not isinstance(value[field], bool):
+            raise serializers.ValidationError(f'{field} must be a boolean')
+
+    # Check string fields
+    if 'exec_wrapper' in value and not isinstance(value['exec_wrapper'], str):
+        raise serializers.ValidationError('exec_wrapper must be a string')
 
     # Warn about unknown keys
-    known_keys = {'setup', 'backup', 'enable_mode'}
-    unknown_keys = set(value.keys()) - known_keys
+    unknown_keys = set(value.keys()) - BACKUP_COMMANDS_KEYS
     if unknown_keys:
         raise serializers.ValidationError(
-            f'Unknown keys in custom_commands: {", ".join(unknown_keys)}. '
-            f'Valid keys are: {", ".join(known_keys)}'
+            f'Unknown keys in {field_name}: {", ".join(unknown_keys)}. '
+            f'Valid keys are: {", ".join(sorted(BACKUP_COMMANDS_KEYS))}'
         )
 
     return value
+
+
+def validate_custom_commands(value):
+    """Validate custom_commands - wrapper for backward compatibility"""
+    return validate_backup_commands(value, field_name='custom_commands')
 
 
 class VendorSerializer(serializers.ModelSerializer):
@@ -82,6 +106,12 @@ class VendorSerializer(serializers.ModelSerializer):
             'is_predefined', 'backup_commands', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_backup_commands(self, value):
+        """Validate backup_commands JSON structure"""
+        if value:
+            return validate_backup_commands(value)
+        return value
 
 
 class DeviceTypeSerializer(serializers.ModelSerializer):

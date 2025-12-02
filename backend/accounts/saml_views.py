@@ -201,9 +201,9 @@ class SAMLACSView(View):
             user.last_login = timezone.now()
             user.save(update_fields=['last_login'])
 
-            # Redirect to frontend with tokens
-            # Frontend will store these and redirect to dashboard
-            redirect_url = f'/sso-callback?access={access_token}&refresh={refresh_token}'
+            # Redirect to frontend SSO callback
+            # Tokens are passed via HttpOnly cookies only (not in URL for security)
+            redirect_url = '/sso-callback'
 
             response = HttpResponseRedirect(redirect_url)
             # Set HttpOnly cookies for XSS protection
