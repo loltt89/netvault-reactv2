@@ -3,6 +3,7 @@ Management command to add popular network device vendors
 Similar to oxidized's vendor support
 """
 from django.core.management.base import BaseCommand
+from django.db.models import Q
 from devices.models import Vendor
 
 
@@ -568,11 +569,17 @@ class Command(BaseCommand):
 
         for vendor_data in vendors_data:
             slug = vendor_data['slug']
+            name = vendor_data['name']
 
-            # Check if vendor already exists by slug (unique identifier)
-            existing_vendor = Vendor.objects.filter(slug=slug).first()
+            # Check if vendor already exists by slug OR name (both are unique)
+            existing_vendor = Vendor.objects.filter(
+                Q(slug=slug) | Q(name=name)
+            ).first()
 
             if existing_vendor:
+                # Update slug if it changed (name matched but slug different)
+                if existing_vendor.slug != slug:
+                    existing_vendor.slug = slug
                 # Update only if backup_commands is empty OR missing new fields
                 needs_update = (
                     not existing_vendor.backup_commands or
