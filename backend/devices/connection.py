@@ -86,8 +86,8 @@ def validate_backup_config(config: str) -> Tuple[bool, str]:
             if len(lines) >= 15:
                 break
 
-    if len(lines) < 10:
-        return False, f"Configuration too short: {len(lines)} lines (minimum 10 required)"
+    if len(lines) < 5:
+        return False, f"Configuration too short: {len(lines)} lines (minimum 5 required)"
 
     first_lines = '\n'.join(lines[:5]).lower()
     for pattern in ERROR_PATTERNS:
