@@ -501,8 +501,9 @@ class DeviceViewSet(viewsets.ModelViewSet):
                 if field:
                     field_mapping[header] = field
 
-            # Get existing data
-            existing_devices = {d.ip_address: d for d in Device.objects.all()}
+            # Get existing data efficiently (only what we need)
+            # Use values_list to avoid loading full objects into memory
+            existing_ips = set(Device.objects.values_list('ip_address', flat=True))
             valid_vendors = {v.slug: v for v in Vendor.objects.all()}
             valid_device_types = {dt.slug: dt for dt in DeviceType.objects.all()}
 
@@ -510,6 +511,11 @@ class DeviceViewSet(viewsets.ModelViewSet):
             updated = 0
             skipped = 0
             errors = []
+
+            # Batch processing for bulk operations
+            devices_to_create = []
+            devices_to_update = []
+            BATCH_SIZE = 100
 
             for row_num, row in enumerate(reader, start=2):
                 mapped_row = {}
@@ -525,19 +531,21 @@ class DeviceViewSet(viewsets.ModelViewSet):
                     errors.append(f'Row {row_num}: Missing required fields')
                     continue
 
-                # Check if exists
-                existing = existing_devices.get(ip_address)
-
-                if existing:
+                # Check if exists (using set lookup - O(1) instead of loading full objects)
+                if ip_address in existing_ips:
                     if update_existing:
-                        # Update existing device (store RAW values, sanitization only for CSV export)
-                        existing.name = name
-                        if mapped_row.get('location'):
-                            existing.location = mapped_row['location']
-                        if mapped_row.get('description'):
-                            existing.description = mapped_row['description']
-                        existing.save()
-                        updated += 1
+                        # Update existing device - fetch only when needed
+                        try:
+                            existing = Device.objects.get(ip_address=ip_address)
+                            existing.name = name
+                            if mapped_row.get('location'):
+                                existing.location = mapped_row['location']
+                            if mapped_row.get('description'):
+                                existing.description = mapped_row['description']
+                            devices_to_update.append(existing)
+                            updated += 1
+                        except Device.DoesNotExist:
+                            pass
                     else:
                         skipped += 1
                     continue
@@ -592,9 +600,19 @@ class DeviceViewSet(viewsets.ModelViewSet):
 
                     device.save()
                     created += 1
+                    # Add to existing_ips to handle duplicates within same CSV
+                    existing_ips.add(ip_address)
 
                 except Exception as e:
                     errors.append(f'Row {row_num}: {str(e)}')
+
+            # Bulk update existing devices (much faster than individual saves)
+            if devices_to_update:
+                Device.objects.bulk_update(
+                    devices_to_update,
+                    ['name', 'location', 'description'],
+                    batch_size=BATCH_SIZE
+                )
 
             return Response({
                 'success': True,
