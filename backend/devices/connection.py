@@ -124,6 +124,34 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
 
     vendor = vendor.lower()
 
+    # Normalize vendor slug to base name (e.g., 'fortinet-fortigate' -> 'fortinet')
+    vendor_aliases = {
+        'fortinet-fortigate': 'fortinet',
+        'cisco-ios-xr': 'iosxr',
+        'cisco-iosxr': 'iosxr',
+        'cisco-nxos': 'nxos',
+        'cisco-asa': 'asa',
+        'juniper-junos': 'juniper',
+        'arista-eos': 'arista',
+        'hp-procurve': 'procurve',
+        'hp-comware': 'huawei',  # Comware uses VRP-style commands
+        'huawei-vrp': 'huawei',
+        'extreme-networks': 'extreme',
+        'ubiquiti-edgerouter': 'edgeos',
+        'ubiquiti-unifi': 'ubiquiti',
+        'checkpoint-gaia': 'checkpoint',
+        'dell-force10': 'dell',
+        'dell-powerconnect': 'powerconnect',
+        'f5-networks': 'f5',
+        'nokia-sros': 'nokia',
+        'allied-telesis': 'allied',
+        'a10-networks': 'cisco',  # A10 uses similar commands
+        'citrix-netscaler': 'cisco',
+    }
+
+    if vendor in vendor_aliases:
+        vendor = vendor_aliases[vendor]
+
     # Config start/end markers by vendor (based on Oxidized models)
     # https://github.com/ytti/oxidized/tree/master/lib/oxidized/model
     config_start_markers = {
