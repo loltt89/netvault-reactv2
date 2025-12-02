@@ -40,7 +40,6 @@
 
 .btn-icon:hover {
   background-color: var(--hover-bg);
-  transform: translateY(-1px);
 }
 
 .config-viewer-content {

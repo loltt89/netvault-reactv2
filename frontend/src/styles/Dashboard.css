@@ -42,7 +42,6 @@
 }
 
 .stat-card:hover {
-  transform: translateY(-4px);
   box-shadow: 0 4px 16px var(--shadow);
 }
 

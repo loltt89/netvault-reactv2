@@ -110,7 +110,6 @@
 
 .theme-neumorphism .card:hover,
 .theme-neumorphism .device-card:hover {
-  transform: translateY(-5px);
   box-shadow: 10px 10px 20px var(--shadow-dark),
               -10px -10px 20px var(--shadow-light);
 }
@@ -183,7 +182,6 @@
 
 .theme-isometric .card:hover,
 .theme-isometric .device-card:hover {
-  transform: translateY(-5px);
   box-shadow: 0 0 20px 0px var(--shadow),
               0 5px 15px rgba(0, 0, 0, 0.3);
   border-color: var(--accent-primary);
@@ -264,7 +262,6 @@
 
 .theme-glassmorphism .card:hover,
 .theme-glassmorphism .device-card:hover {
-  transform: translateY(-5px);
   border-color: var(--accent-primary);
   box-shadow: 0 0 20px 0px var(--shadow);
 }
@@ -335,7 +332,6 @@
 
 .theme-blueprint .card:hover,
 .theme-blueprint .device-card:hover {
-  transform: translateY(-5px);
   border-color: var(--text-primary);
 }
 
@@ -396,7 +392,6 @@ body {
 
 .btn-primary:hover {
   opacity: 0.9;
-  transform: translateY(-1px);
 }
 
 .btn-success {

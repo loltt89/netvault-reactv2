@@ -102,7 +102,6 @@
 
 .language-card:hover {
   border-color: var(--accent-primary);
-  transform: translateY(-2px);
 }
 
 .language-card.selected {
@@ -139,7 +138,6 @@
 
 .theme-card:hover {
   border-color: var(--accent-primary);
-  transform: translateY(-2px);
 }
 
 .theme-card.selected {
