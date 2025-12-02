@@ -360,10 +360,9 @@ int main(int argc, char *argv[]) {
     int strict = 0;
     ssh_options_set(session, SSH_OPTIONS_STRICTHOSTKEYCHECK, &strict);
 
-    // Set KEX algorithms (must match what's compiled into libssh)
-    ssh_options_set(session, SSH_OPTIONS_KEY_EXCHANGE,
-        "curve25519-sha256@libssh.org,ecdh-sha2-nistp256,"
-        "diffie-hellman-group14-sha1,diffie-hellman-group1-sha1");
+    // Don't override KEX algorithms - let libssh use its defaults
+    // System libssh 0.10.x supports all modern algorithms including sha256 variants
+    // Custom libssh 0.7.x supports legacy algorithms including SSH v1
 
     // Allow legacy algorithms for compatibility with older devices
     ssh_options_set(session, SSH_OPTIONS_HOSTKEYS,
