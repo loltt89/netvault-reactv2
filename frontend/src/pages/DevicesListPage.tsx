@@ -129,9 +129,6 @@ const DevicesListPage: React.FC = () => {
     backup_enabled: true,
   });
 
-  // Track if password field was modified (for router-style password handling)
-  const [passwordTouched, setPasswordTouched] = useState(false);
-  const [enablePasswordTouched, setEnablePasswordTouched] = useState(false);
 
   useEffect(() => {
     loadVendors();
@@ -332,8 +329,6 @@ const DevicesListPage: React.FC = () => {
       criticality: 'medium',
       backup_enabled: true,
     });
-    setPasswordTouched(false);
-    setEnablePasswordTouched(false);
     setShowModal(true);
   };
 
@@ -354,8 +349,6 @@ const DevicesListPage: React.FC = () => {
       criticality: device.criticality,
       backup_enabled: device.backup_enabled,
     });
-    setPasswordTouched(false);
-    setEnablePasswordTouched(false);
     setShowModal(true);
   };
 
