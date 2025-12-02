@@ -323,14 +323,16 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
 
     # Find config start
     start_idx = 0
+    found_start = False
     start_markers = config_start_markers.get(vendor, ['!', '#', 'version', 'config'])
     for i, line in enumerate(lines):
         stripped = line.strip()
         for marker in start_markers:
             if stripped.startswith(marker) or marker in stripped:
                 start_idx = i
+                found_start = True
                 break
-        if start_idx > 0:
+        if found_start:
             break
 
     # Find config end (search from the end)
@@ -518,9 +520,13 @@ class SSHConnection:
 
         all_commands.extend(setup_commands)
 
-        # MikroTik uses exec mode
+        # MikroTik and VyOS use exec mode
         if vendor == 'mikrotik':
             config = self.send_command_exec(show_command, timeout=30)
+        elif vendor == 'vyos':
+            # VyOS needs vyatta wrapper for exec mode
+            exec_command = f'/opt/vyatta/bin/vyatta-op-cmd-wrapper {show_command}'
+            config = self.send_command_exec(exec_command, timeout=30)
         else:
             all_commands.append(show_command)
             cmds_str = '|||'.join(all_commands)

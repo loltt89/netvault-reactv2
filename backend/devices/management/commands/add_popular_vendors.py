@@ -213,6 +213,16 @@ class Command(BaseCommand):
                 }
             },
             {
+                'name': 'VyOS',
+                'slug': 'vyos',
+                'description': 'VyOS network operating system (uses exec mode)',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': 'show configuration',
+                    'enable_mode': False
+                }
+            },
+            {
                 'name': 'Check Point Gaia',
                 'slug': 'checkpoint-gaia',
                 'description': 'Check Point Gaia OS',
