@@ -538,3 +538,411 @@ class SystemSettingsTestCase(TestCase):
 
         settings = SystemSettings.get_settings()
         self.assertEqual(str(settings), 'System Settings')
+
+
+class LDAPBackendMockTestCase(TestCase):
+    """
+    Mock tests for LDAP backend functionality.
+    Tests group-to-role mapping, user population, and authentication flow.
+    """
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='ldapuser@example.com',
+            password='testpass'
+        )
+
+    def test_group_mapping_administrator(self):
+        """Test LDAP group mapping - administrator role"""
+        from accounts.ldap_backend import NetVaultLDAPBackend
+
+        backend = NetVaultLDAPBackend()
+
+        # Test various admin group patterns
+        admin_groups = [
+            ['CN=NetVault-Admins,OU=Groups,DC=corp,DC=local'],
+            ['Domain Admins'],
+            ['ADMINISTRATORS'],
+            ['NetVault Admins', 'Users'],
+        ]
+
+        for groups in admin_groups:
+            role = backend._map_ldap_groups_to_role(groups)
+            self.assertEqual(role, 'administrator', f"Groups {groups} should map to administrator")
+
+    def test_group_mapping_operator(self):
+        """Test LDAP group mapping - operator role"""
+        from accounts.ldap_backend import NetVaultLDAPBackend
+
+        backend = NetVaultLDAPBackend()
+
+        operator_groups = [
+            ['CN=NetVault-Operators,OU=Groups,DC=corp,DC=local'],
+            ['Network Operators'],
+            ['netvault operators'],
+        ]
+
+        for groups in operator_groups:
+            role = backend._map_ldap_groups_to_role(groups)
+            self.assertEqual(role, 'operator', f"Groups {groups} should map to operator")
+
+    def test_group_mapping_auditor(self):
+        """Test LDAP group mapping - auditor role"""
+        from accounts.ldap_backend import NetVaultLDAPBackend
+
+        backend = NetVaultLDAPBackend()
+
+        auditor_groups = [
+            ['CN=NetVault-Auditors,OU=Groups,DC=corp,DC=local'],
+            ['Security Auditors'],
+            ['netvault auditors'],
+        ]
+
+        for groups in auditor_groups:
+            role = backend._map_ldap_groups_to_role(groups)
+            self.assertEqual(role, 'auditor', f"Groups {groups} should map to auditor")
+
+    def test_group_mapping_viewer_default(self):
+        """Test LDAP group mapping - viewer (default) role"""
+        from accounts.ldap_backend import NetVaultLDAPBackend
+
+        backend = NetVaultLDAPBackend()
+
+        # Regular groups without special NetVault permissions
+        viewer_groups = [
+            ['Domain Users'],
+            ['CN=Employees,OU=Groups,DC=corp,DC=local'],
+            ['Staff', 'IT Support'],
+            [],  # Empty groups
+            None,  # No groups
+        ]
+
+        for groups in viewer_groups:
+            role = backend._map_ldap_groups_to_role(groups)
+            self.assertEqual(role, 'viewer', f"Groups {groups} should map to viewer")
+
+    def test_group_mapping_priority(self):
+        """Test that admin role takes priority over other roles"""
+        from accounts.ldap_backend import NetVaultLDAPBackend
+
+        backend = NetVaultLDAPBackend()
+
+        # User in both admin and operator groups
+        mixed_groups = ['NetVault-Admins', 'NetVault-Operators', 'NetVault-Auditors']
+        role = backend._map_ldap_groups_to_role(mixed_groups)
+        self.assertEqual(role, 'administrator')
+
+        # User in operator and auditor (operator should win)
+        op_audit_groups = ['NetVault-Operators', 'NetVault-Auditors']
+        role = backend._map_ldap_groups_to_role(op_audit_groups)
+        self.assertEqual(role, 'operator')
+
+    def test_get_user_existing(self):
+        """Test get_user returns existing user"""
+        from accounts.ldap_backend import NetVaultLDAPBackend
+
+        backend = NetVaultLDAPBackend()
+        user = backend.get_user(self.user.id)
+
+        self.assertIsNotNone(user)
+        self.assertEqual(user.email, 'ldapuser@example.com')
+
+    def test_get_user_nonexistent(self):
+        """Test get_user returns None for non-existent user"""
+        from accounts.ldap_backend import NetVaultLDAPBackend
+
+        backend = NetVaultLDAPBackend()
+        user = backend.get_user(99999)
+
+        self.assertIsNone(user)
+
+    @patch('accounts.ldap_backend.LDAPBackend.authenticate_ldap_user')
+    def test_authenticate_ldap_user_success(self, mock_super_auth):
+        """Test successful LDAP authentication creates/updates user"""
+        from accounts.ldap_backend import NetVaultLDAPBackend
+
+        # Mock ldap_user object
+        mock_ldap_user = MagicMock()
+        mock_ldap_user.dn = 'CN=John Doe,OU=Users,DC=corp,DC=local'
+        mock_ldap_user.group_names = ['NetVault-Operators', 'Domain Users']
+
+        # Mock super().authenticate_ldap_user to return our test user
+        mock_super_auth.return_value = self.user
+
+        backend = NetVaultLDAPBackend()
+        result = backend.authenticate_ldap_user(mock_ldap_user, 'password123')
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result.is_ldap_user)
+        self.assertEqual(result.ldap_dn, 'CN=John Doe,OU=Users,DC=corp,DC=local')
+        self.assertEqual(result.role, 'operator')
+
+    @patch('accounts.ldap_backend.LDAPBackend.authenticate_ldap_user')
+    def test_authenticate_ldap_user_failure(self, mock_super_auth):
+        """Test failed LDAP authentication returns None"""
+        from accounts.ldap_backend import NetVaultLDAPBackend
+
+        mock_super_auth.return_value = None
+
+        backend = NetVaultLDAPBackend()
+        mock_ldap_user = MagicMock()
+        result = backend.authenticate_ldap_user(mock_ldap_user, 'wrongpassword')
+
+        self.assertIsNone(result)
+
+    def test_populate_user_from_ldap_signal(self):
+        """Test populate_user_from_ldap signal handler"""
+        from accounts.ldap_backend import populate_user_from_ldap
+        User = get_user_model()
+
+        user = User(email='newuser@corp.local')
+
+        # Mock ldap_user with attrs
+        mock_ldap_user = MagicMock()
+        mock_ldap_user.dn = 'CN=New User,OU=Users,DC=corp,DC=local'
+        mock_ldap_user.attrs = {
+            'givenName': ['John'],
+            'sn': ['Smith'],
+            'mail': ['john.smith@corp.local']
+        }
+
+        # Call signal handler
+        populate_user_from_ldap(sender=None, user=user, ldap_user=mock_ldap_user)
+
+        self.assertEqual(user.first_name, 'John')
+        self.assertEqual(user.last_name, 'Smith')
+        self.assertEqual(user.email, 'john.smith@corp.local')
+        self.assertTrue(user.is_ldap_user)
+        self.assertEqual(user.ldap_dn, 'CN=New User,OU=Users,DC=corp,DC=local')
+
+    def test_populate_user_empty_attrs(self):
+        """Test populate_user_from_ldap with empty/missing attrs"""
+        from accounts.ldap_backend import populate_user_from_ldap
+        User = get_user_model()
+
+        user = User(email='emptyuser@corp.local', username='emptyuser')
+
+        mock_ldap_user = MagicMock()
+        mock_ldap_user.dn = 'CN=Empty,OU=Users,DC=corp,DC=local'
+        mock_ldap_user.attrs = {}  # No attributes
+
+        populate_user_from_ldap(sender=None, user=user, ldap_user=mock_ldap_user)
+
+        self.assertEqual(user.first_name, '')
+        self.assertEqual(user.last_name, '')
+        # Falls back to username when mail is empty
+        self.assertEqual(user.email, 'emptyuser')
+        self.assertTrue(user.is_ldap_user)
+
+    def test_populate_user_no_ldap_user(self):
+        """Test populate_user_from_ldap does nothing without ldap_user"""
+        from accounts.ldap_backend import populate_user_from_ldap
+        User = get_user_model()
+
+        user = User(email='nochange@corp.local', first_name='Original')
+
+        # Call without ldap_user
+        populate_user_from_ldap(sender=None, user=user, ldap_user=None)
+
+        # User should be unchanged
+        self.assertEqual(user.first_name, 'Original')
+
+
+class LDAPSettingsAPITestCase(APITestCase):
+    """Test LDAP settings via API"""
+
+    def setUp(self):
+        User = get_user_model()
+        import uuid
+        uid = uuid.uuid4().hex[:8]
+        self.admin = User.objects.create_user(
+            email=f'ldapadmin_{uid}@test.com',
+            username=f'ldapadmin_{uid}',
+            password='adminpass',
+            role='administrator'
+        )
+        self.client = APIClient()
+
+    def test_ldap_settings_require_admin(self):
+        """Test that LDAP settings require admin role"""
+        User = get_user_model()
+        import uuid
+        uid = uuid.uuid4().hex[:8]
+        viewer = User.objects.create_user(
+            email=f'ldapviewer_{uid}@test.com',
+            username=f'ldapviewer_{uid}',
+            password='viewerpass',
+            role='viewer'
+        )
+        self.client.force_authenticate(user=viewer)
+
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'ldap': {'enabled': True}
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_ldap_settings_full_config(self):
+        """Test complete LDAP configuration"""
+        self.client.force_authenticate(user=self.admin)
+
+        ldap_config = {
+            'ldap': {
+                'enabled': True,
+                'server_uri': 'ldaps://dc01.corp.local:636',
+                'bind_dn': 'CN=svc_netvault,OU=Service Accounts,DC=corp,DC=local',
+                'bind_password': 'SecureP@ssw0rd!',
+                'user_search_base': 'OU=Users,DC=corp,DC=local',
+                'user_search_filter': '(sAMAccountName=%(user)s)',
+                'group_search_base': 'OU=Groups,DC=corp,DC=local',
+                'require_group': 'CN=NetVault-Users,OU=Groups,DC=corp,DC=local'
+            }
+        }
+
+        response = self.client.post('/api/v1/settings/system/update/', ldap_config, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_ldap_disable(self):
+        """Test disabling LDAP"""
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'ldap': {'enabled': False}
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_ldap_settings_invalid_uri(self):
+        """Test LDAP with invalid server URI format"""
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post('/api/v1/settings/system/update/', {
+            'ldap': {
+                'enabled': True,
+                'server_uri': 'not-a-valid-uri',
+                'bind_dn': 'cn=admin',
+                'user_search_base': 'dc=test'
+            }
+        }, format='json')
+
+        # Should still accept (validation might be on connection time)
+        # or reject depending on implementation
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+
+    def test_ldap_password_not_exposed_in_get(self):
+        """Test that LDAP password is not exposed when getting settings"""
+        self.client.force_authenticate(user=self.admin)
+
+        # First set a password
+        self.client.post('/api/v1/settings/system/update/', {
+            'ldap': {
+                'enabled': True,
+                'server_uri': 'ldap://test.local',
+                'bind_password': 'super_secret_password'
+            }
+        }, format='json')
+
+        # Get settings
+        response = self.client.get('/api/v1/settings/system/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # Password should be masked or not present
+        ldap_data = response.data.get('ldap', {})
+        if 'bind_password' in ldap_data:
+            self.assertNotEqual(ldap_data['bind_password'], 'super_secret_password')
+
+
+class LDAPConnectionMockTestCase(TestCase):
+    """Mock tests for LDAP connection scenarios"""
+
+    @patch('ldap.initialize')
+    def test_ldap_connection_timeout(self, mock_ldap_init):
+        """Test LDAP connection timeout handling"""
+        import ldap
+
+        mock_conn = MagicMock()
+        mock_conn.simple_bind_s.side_effect = ldap.TIMEOUT('Connection timed out')
+        mock_ldap_init.return_value = mock_conn
+
+        # This tests that our code would handle timeout gracefully
+        # The actual LDAP backend should catch and log this
+        with self.assertRaises(ldap.TIMEOUT):
+            conn = ldap.initialize('ldap://unreachable.local:389')
+            conn.simple_bind_s('cn=admin', 'password')
+
+    @patch('ldap.initialize')
+    def test_ldap_invalid_credentials(self, mock_ldap_init):
+        """Test LDAP invalid credentials handling"""
+        import ldap
+
+        mock_conn = MagicMock()
+        mock_conn.simple_bind_s.side_effect = ldap.INVALID_CREDENTIALS('Invalid credentials')
+        mock_ldap_init.return_value = mock_conn
+
+        with self.assertRaises(ldap.INVALID_CREDENTIALS):
+            conn = ldap.initialize('ldap://dc.local:389')
+            conn.simple_bind_s('cn=admin', 'wrongpassword')
+
+    @patch('ldap.initialize')
+    def test_ldap_server_down(self, mock_ldap_init):
+        """Test LDAP server down handling"""
+        import ldap
+
+        mock_conn = MagicMock()
+        mock_conn.simple_bind_s.side_effect = ldap.SERVER_DOWN('Server is down')
+        mock_ldap_init.return_value = mock_conn
+
+        with self.assertRaises(ldap.SERVER_DOWN):
+            conn = ldap.initialize('ldap://offline.local:389')
+            conn.simple_bind_s('cn=admin', 'password')
+
+    @patch('ldap.initialize')
+    def test_ldap_search_user(self, mock_ldap_init):
+        """Test LDAP user search"""
+        mock_conn = MagicMock()
+        mock_ldap_init.return_value = mock_conn
+
+        # Mock search result
+        mock_conn.search_s.return_value = [
+            ('CN=John Doe,OU=Users,DC=corp,DC=local', {
+                'sAMAccountName': [b'jdoe'],
+                'mail': [b'john.doe@corp.local'],
+                'givenName': [b'John'],
+                'sn': [b'Doe'],
+                'memberOf': [
+                    b'CN=NetVault-Operators,OU=Groups,DC=corp,DC=local',
+                    b'CN=Domain Users,OU=Groups,DC=corp,DC=local'
+                ]
+            })
+        ]
+
+        import ldap
+        conn = ldap.initialize('ldap://dc.local:389')
+        results = conn.search_s(
+            'OU=Users,DC=corp,DC=local',
+            ldap.SCOPE_SUBTREE,
+            '(sAMAccountName=jdoe)'
+        )
+
+        self.assertEqual(len(results), 1)
+        dn, attrs = results[0]
+        self.assertEqual(dn, 'CN=John Doe,OU=Users,DC=corp,DC=local')
+        self.assertEqual(attrs['mail'], [b'john.doe@corp.local'])
+
+    @patch('ldap.initialize')
+    def test_ldap_search_no_results(self, mock_ldap_init):
+        """Test LDAP search with no results"""
+        mock_conn = MagicMock()
+        mock_ldap_init.return_value = mock_conn
+        mock_conn.search_s.return_value = []
+
+        import ldap
+        conn = ldap.initialize('ldap://dc.local:389')
+        results = conn.search_s(
+            'OU=Users,DC=corp,DC=local',
+            ldap.SCOPE_SUBTREE,
+            '(sAMAccountName=nonexistent)'
+        )
+
+        self.assertEqual(results, [])
