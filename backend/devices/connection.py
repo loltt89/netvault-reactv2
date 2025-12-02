@@ -24,7 +24,8 @@ CARRIAGE_RETURN_PATTERN = re.compile(r'\r')
 MORE_PAGING_PATTERN = re.compile(r'--More--|-- More --|<--- More --->')
 MIKROTIK_PROMPT_PATTERN = re.compile(r'^\[.*?\]\s*[>\/]')
 FORTINET_PROMPT_PATTERN = re.compile(r'^[A-Z0-9]+\s+\(.*\)\s+[#>]')
-DEVICE_PROMPT_PATTERN = re.compile(r'^[^\s#>]+[#>]\s*$')
+# Matches prompt with or without command (e.g., "Router#" or "Router#show run")
+DEVICE_PROMPT_PATTERN = re.compile(r'^[^\s#>]+[#>].*$')
 
 
 class DeviceConnectionError(Exception):
