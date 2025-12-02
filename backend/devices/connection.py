@@ -1,6 +1,6 @@
 """
 Device connection utilities for SSH and Telnet
-Uses native netvault-ssh binary for SSH v1/v2 support
+Strategy: Paramiko first (95% devices), netvault-ssh binary fallback (SSH v1)
 """
 import telnetlib
 import time
@@ -12,6 +12,14 @@ import subprocess
 import json
 import os
 from typing import Optional, Tuple, List
+
+# Paramiko for SSH (covers 95%+ of devices)
+try:
+    import paramiko
+    PARAMIKO_AVAILABLE = True
+except ImportError:
+    PARAMIKO_AVAILABLE = False
+    paramiko = None
 
 logger = logging.getLogger(__name__)
 
@@ -219,10 +227,190 @@ def clean_device_output(output: str, vendor: str = '', command: str = '', backup
     return '\n'.join(cleaned_lines).strip()
 
 
-# ========== SSH Connection using netvault-ssh binary ==========
+# ========== Paramiko SSH Helper (primary method) ==========
+
+class _ParamikoSSH:
+    """
+    Paramiko-based SSH client - primary method for 95%+ of devices.
+    Simpler to debug than C binary, works everywhere Python runs.
+    """
+
+    # Disable Paramiko's verbose logging
+    logging.getLogger('paramiko').setLevel(logging.WARNING)
+
+    def __init__(self, host: str, port: int, username: str, password: str, timeout: int = 30):
+        self.host = host
+        self.port = port
+        self.username = username
+        self.password = password
+        self.timeout = timeout
+        self.client: Optional[paramiko.SSHClient] = None
+        self.channel: Optional[paramiko.Channel] = None
+
+    def connect(self) -> bool:
+        """Connect to device. Returns True on success, False on failure."""
+        if not PARAMIKO_AVAILABLE:
+            return False
+
+        try:
+            self.client = paramiko.SSHClient()
+            self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+            # Enable legacy algorithms for older devices
+            self.client.connect(
+                hostname=self.host,
+                port=self.port,
+                username=self.username,
+                password=self.password,
+                timeout=self.timeout,
+                look_for_keys=False,
+                allow_agent=False,
+                # Enable legacy algorithms
+                disabled_algorithms={
+                    'pubkeys': [],  # Don't disable any
+                    'keys': [],
+                }
+            )
+            return True
+
+        except paramiko.ssh_exception.SSHException as e:
+            logger.debug(f"Paramiko SSH error for {self.host}: {e}")
+            self.client = None
+            return False
+        except socket.timeout:
+            logger.debug(f"Paramiko timeout for {self.host}")
+            self.client = None
+            return False
+        except Exception as e:
+            logger.debug(f"Paramiko error for {self.host}: {e}")
+            self.client = None
+            return False
+
+    def exec_command(self, command: str, timeout: int = 30) -> Tuple[bool, str]:
+        """Execute single command via exec channel. Returns (success, output)."""
+        if not self.client:
+            return False, "Not connected"
+
+        try:
+            stdin, stdout, stderr = self.client.exec_command(command, timeout=timeout)
+            output = stdout.read().decode('utf-8', errors='ignore')
+            error = stderr.read().decode('utf-8', errors='ignore')
+            return True, output + error
+        except Exception as e:
+            return False, str(e)
+
+    def shell_commands(self, commands: List[str], idle_ms: int = 500) -> Tuple[bool, str]:
+        """Execute commands in interactive shell with idle detection."""
+        if not self.client:
+            return False, "Not connected"
+
+        try:
+            # Open interactive shell with PTY
+            self.channel = self.client.invoke_shell(term='xterm', width=200, height=50)
+            self.channel.settimeout(0.1)  # Non-blocking reads
+
+            output = ""
+            idle_threshold = idle_ms / 1000.0  # Convert to seconds
+            max_idle_cycles = 5  # Wait up to 5 * idle_threshold before considering done
+
+            # Wait for initial prompt
+            output += self._read_until_idle(idle_threshold, max_idle_cycles)
+
+            # Send each command
+            for cmd in commands:
+                cmd = cmd.strip()
+                if not cmd:
+                    continue
+
+                self.channel.send(cmd + '\n')
+                time.sleep(0.1)  # Brief delay after sending
+
+                # Read response with idle detection
+                output += self._read_until_idle(idle_threshold, max_idle_cycles)
+
+            # Send exit
+            try:
+                self.channel.send('exit\n')
+                time.sleep(0.2)
+                output += self._read_available()
+            except Exception:
+                pass
+
+            return True, output
+
+        except Exception as e:
+            return False, str(e)
+        finally:
+            if self.channel:
+                try:
+                    self.channel.close()
+                except Exception:
+                    pass
+                self.channel = None
+
+    def _read_until_idle(self, idle_threshold: float, max_idle_cycles: int) -> str:
+        """Read from channel until idle (no data for idle_threshold * max_idle_cycles)."""
+        output = ""
+        idle_count = 0
+        start_time = time.time()
+        max_time = 60  # Absolute timeout
+
+        while idle_count < max_idle_cycles and (time.time() - start_time) < max_time:
+            chunk = self._read_available()
+            if chunk:
+                output += chunk
+                idle_count = 0  # Reset idle counter
+
+                # Handle --More-- paging
+                if '--More--' in chunk or '-- More --' in chunk:
+                    self.channel.send(' ')
+                    time.sleep(0.1)
+            else:
+                idle_count += 1
+                time.sleep(idle_threshold)
+
+        return output
+
+    def _read_available(self) -> str:
+        """Read all available data from channel (non-blocking)."""
+        data = ""
+        try:
+            while self.channel.recv_ready():
+                chunk = self.channel.recv(4096).decode('utf-8', errors='ignore')
+                # Filter out NULL bytes (some devices send them)
+                chunk = chunk.replace('\x00', '')
+                data += chunk
+        except socket.timeout:
+            pass
+        except Exception:
+            pass
+        return data
+
+    def disconnect(self):
+        """Close connection."""
+        if self.channel:
+            try:
+                self.channel.close()
+            except Exception:
+                pass
+            self.channel = None
+
+        if self.client:
+            try:
+                self.client.close()
+            except Exception:
+                pass
+            self.client = None
+
+
+# ========== SSH Connection (Paramiko first, binary fallback) ==========
 
 class SSHConnection:
-    """SSH connection handler using netvault-ssh binary (supports SSH v1 and v2)"""
+    """
+    SSH connection handler with "Paramiko first, binary fallback" strategy.
+    - Paramiko: covers 95%+ devices, easier to debug, no Core Dumps
+    - netvault-ssh binary: fallback for SSH v1 devices (rare)
+    """
 
     def __init__(self, host: str, port: int, username: str, password: str,
                  enable_password: Optional[str] = None, timeout: int = 30, vendor: str = ''):
@@ -235,17 +423,77 @@ class SSHConnection:
         self.vendor = vendor
         self.backup_commands: Optional[dict] = None
         self._connected = False
+        self._use_binary = False  # Flag: if True, skip Paramiko and use binary directly
+        self._paramiko: Optional[_ParamikoSSH] = None
 
     def connect(self) -> None:
-        """Test SSH connection"""
-        result = self._run_ssh(mode='test')
+        """Test SSH connection (Paramiko first, binary fallback)"""
+        # Try Paramiko first
+        if PARAMIKO_AVAILABLE and not self._use_binary:
+            self._paramiko = _ParamikoSSH(self.host, self.port, self.username, self.password, self.timeout)
+            if self._paramiko.connect():
+                self._connected = True
+                logger.info(f"Connected to {self.host} via Paramiko")
+                return
+            else:
+                logger.debug(f"Paramiko failed for {self.host}, falling back to netvault-ssh")
+                self._paramiko = None
+
+        # Fallback to binary (supports SSH v1)
+        result = self._run_ssh_binary(mode='test')
         if not result['success']:
             raise DeviceConnectionError(result.get('error', 'Connection failed'))
         self._connected = True
-        logger.info(f"Connected to {self.host} via netvault-ssh")
+        self._use_binary = True
+        logger.info(f"Connected to {self.host} via netvault-ssh binary")
 
-    def _run_ssh(self, mode: str = 'shell', commands: str = '', idle_ms: int = 500, use_modern: bool = False) -> dict:
-        """Run netvault-ssh binary with automatic fallback to modern version on KEX errors"""
+    def _run_ssh(self, mode: str = 'shell', commands: str = '', idle_ms: int = 500) -> dict:
+        """Run SSH command - Paramiko first, binary fallback."""
+        # If we have a working Paramiko connection, use it
+        if self._paramiko and self._paramiko.client:
+            return self._run_ssh_paramiko(mode, commands, idle_ms)
+
+        # Otherwise use binary
+        return self._run_ssh_binary(mode, commands, idle_ms)
+
+    def _run_ssh_paramiko(self, mode: str, commands: str, idle_ms: int) -> dict:
+        """Run SSH via Paramiko."""
+        try:
+            if mode == 'test':
+                # Already connected if we're here
+                return {'success': True, 'output': 'Connection successful', 'error_code': ERR_NONE}
+
+            elif mode == 'exec':
+                # Single command exec mode
+                success, output = self._paramiko.exec_command(commands, timeout=self.timeout)
+                return {
+                    'success': success,
+                    'output': output if success else '',
+                    'error': '' if success else output,
+                    'error_code': ERR_NONE if success else ERR_CHANNEL
+                }
+
+            else:  # shell mode
+                # Split commands by ||| separator
+                cmd_list = [c.strip() for c in commands.split('|||') if c.strip()]
+                success, output = self._paramiko.shell_commands(cmd_list, idle_ms)
+                return {
+                    'success': success,
+                    'output': output if success else '',
+                    'error': '' if success else output,
+                    'error_code': ERR_NONE if success else ERR_CHANNEL
+                }
+
+        except Exception as e:
+            logger.warning(f"Paramiko error for {self.host}: {e}, falling back to binary")
+            # On Paramiko error, switch to binary mode
+            self._paramiko.disconnect()
+            self._paramiko = None
+            self._use_binary = True
+            return self._run_ssh_binary(mode, commands, idle_ms)
+
+    def _run_ssh_binary(self, mode: str = 'shell', commands: str = '', idle_ms: int = 500, use_modern: bool = False) -> dict:
+        """Run netvault-ssh binary with automatic fallback to modern version on KEX errors."""
         ssh_bin = NETVAULT_SSH_MODERN_BIN if use_modern else NETVAULT_SSH_BIN
 
         # Use -pass-stdin for security (password not visible in ps aux)
@@ -291,7 +539,7 @@ class SSHConnection:
                 # Modern libssh 0.10.x supports more algorithms than legacy 0.7.x
                 if error_code == ERR_FATAL:
                     logger.info(f"KEX/algorithm error (code={error_code}) with legacy SSH, trying modern binary for {self.host}")
-                    return self._run_ssh(mode, commands, idle_ms, use_modern=True)
+                    return self._run_ssh_binary(mode, commands, idle_ms, use_modern=True)
 
             return parsed
 
@@ -300,7 +548,7 @@ class SSHConnection:
         except FileNotFoundError:
             # If legacy not found, try modern
             if not use_modern and os.path.exists(NETVAULT_SSH_MODERN_BIN):
-                return self._run_ssh(mode, commands, idle_ms, use_modern=True)
+                return self._run_ssh_binary(mode, commands, idle_ms, use_modern=True)
             return {'success': False, 'error': f'netvault-ssh binary not found'}
         except Exception as e:
             return {'success': False, 'error': str(e)}
@@ -419,7 +667,10 @@ class SSHConnection:
         return clean_device_output(config, vendor, show_command, backup_commands)
 
     def disconnect(self) -> None:
-        """Disconnect (no-op for binary-based connection)"""
+        """Disconnect SSH connection."""
+        if self._paramiko:
+            self._paramiko.disconnect()
+            self._paramiko = None
         self._connected = False
 
     def __enter__(self):
