@@ -117,19 +117,27 @@ int wait_for_data(ssh_channel channel, int timeout_ms) {
 }
 
 // Read all available data from channel (non-blocking)
+// Filters out NULL bytes that some devices send
 int read_available(ssh_channel channel, char *buffer, int max_len, int *total_read) {
     int nbytes;
     int pos = *total_read;
+    char temp_buf[4096];
 
     while (pos < max_len - 1) {
-        nbytes = ssh_channel_read_nonblocking(channel, buffer + pos, max_len - pos - 1, 0);
+        nbytes = ssh_channel_read_nonblocking(channel, temp_buf, sizeof(temp_buf) - 1, 0);
         if (nbytes < 0) {
             return -1;  // Error
         }
         if (nbytes == 0) {
             break;  // No more data
         }
-        pos += nbytes;
+
+        // Copy data filtering out NULL bytes
+        for (int i = 0; i < nbytes && pos < max_len - 1; i++) {
+            if (temp_buf[i] != '\0') {
+                buffer[pos++] = temp_buf[i];
+            }
+        }
 
         // Check for --More-- paging
         buffer[pos] = '\0';
@@ -157,8 +165,8 @@ char* run_shell_mode(ssh_session session, Config *cfg) {
         return strdup("Failed to open channel");
     }
 
-    // Request PTY
-    if (ssh_channel_request_pty(channel) != SSH_OK) {
+    // Request PTY with explicit terminal type and size
+    if (ssh_channel_request_pty_size(channel, "xterm", 80, 24) != SSH_OK) {
         ssh_channel_close(channel);
         ssh_channel_free(channel);
         return strdup("Failed to request PTY");
