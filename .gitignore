@@ -38,3 +38,6 @@ Thumbs.db
 # backend/backup_files/
 CLAUDE.md
 backend/staticfiles/
+
+# Claude architecture doc (not for git)
+CLAUDE_ARCHITECTURE.md
