@@ -489,7 +489,7 @@ class TelnetConnection:
             raise DeviceConnectionError(f"Failed to connect to {self.host}: {str(e)}")
 
     def send_command(self, command: str, wait_time: float = 2, handle_paging: bool = True) -> str:
-        """Send command and return output"""
+        """Send command and return output with idle detection"""
         if not self.connection:
             raise DeviceConnectionError("Not connected")
 
@@ -503,6 +503,12 @@ class TelnetConnection:
             start_time = time.time()
             read_timeout = 60
 
+            # Idle detection: wait for N consecutive empty reads before finishing
+            # This prevents premature exit if device "thinks" for a moment
+            idle_count = 0
+            max_idle = 5  # 5 * 0.2s = 1 second of idle before considering done
+            idle_sleep = 0.2  # Time to wait between reads
+
             while iteration < max_iterations:
                 if time.time() - start_time > read_timeout:
                     break
@@ -514,6 +520,7 @@ class TelnetConnection:
 
                 if chunk:
                     output += chunk
+                    idle_count = 0  # Reset idle counter - we got data
 
                     if handle_paging and ('--More--' in chunk or '-- More --' in chunk or
                                          '(more)' in chunk.lower() or 'press any key' in chunk.lower()):
@@ -524,7 +531,11 @@ class TelnetConnection:
 
                     time.sleep(0.1)
                 else:
-                    break
+                    # No data - increment idle counter
+                    idle_count += 1
+                    if idle_count >= max_idle:
+                        break  # Enough idle cycles - we're done
+                    time.sleep(idle_sleep)  # Wait before next attempt
                 iteration += 1
 
             return output
