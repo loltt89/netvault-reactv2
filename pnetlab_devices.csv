@@ -70,5 +70,5 @@ Cisco-Telnet-57;192.168.100.57;cisco;switch;telnet;23;test;test;;PNetLab;Cisco I
 Cisco-Telnet-58;192.168.100.58;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
 Cisco-Telnet-59;192.168.100.59;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
 Cisco-Telnet-60;192.168.100.60;cisco;switch;telnet;23;test;test;;PNetLab;Cisco IOS Telnet;true;medium
-Extreme-61;192.168.100.61;extreme;switch;ssh;22;admin;;;PNetLab;Extreme SSH v2;true;medium
-Extreme-62;192.168.100.62;extreme;switch;ssh;22;admin;;;PNetLab;Extreme SSH v2;true;medium
+Extreme-61;192.168.100.61;extreme-networks;switch;ssh;22;admin;;;PNetLab;Extreme SSH v2;true;medium
+Extreme-62;192.168.100.62;extreme-networks;switch;ssh;22;admin;;;PNetLab;Extreme SSH v2;true;medium

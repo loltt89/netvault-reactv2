@@ -186,6 +186,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
 
             from django.conf import settings
 
+            # Use shorter timeout for test (5 sec) vs full backup timeout
             success, message = test_connection(
                 host=device.ip_address,
                 port=device.port,
@@ -193,7 +194,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
                 username=username,
                 password=password,
                 enable_password=enable_password,
-                timeout=settings.BACKUP_CONNECTION_TIMEOUT
+                timeout=5  # Quick test, not full backup
             )
 
             # Update device status based on connection test result

@@ -287,7 +287,7 @@ class Command(BaseCommand):
                 'slug': 'nokia-sros',
                 'description': 'Nokia Service Router OS',
                 'backup_commands': {
-                    'setup': ['environment more false'],
+                    'setup': ['environment no more'],
                     'backup': 'admin display-config',
                     'enable_mode': False
                 }
