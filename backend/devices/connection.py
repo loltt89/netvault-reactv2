@@ -359,18 +359,37 @@ class TelnetConnection:
         try:
             self.connection = telnetlib.Telnet(self.host, self.port, self.timeout)
 
-            # Wait for login prompt
-            self.connection.read_until(b"sername:", timeout=10)
-            self.connection.write(self.username.encode('ascii') + b'\n')
+            # Quick initial read to check if connection is alive
+            time.sleep(0.5)
 
-            # Wait for password prompt (some devices may not require password)
-            index, match, text = self.connection.expect([b"assword:", b"[#>]"], timeout=10)
+            # Wait for login prompt with shorter timeout
+            login_timeout = min(self.timeout, 5)
+            index, match, text = self.connection.expect(
+                [b"sername:", b"ogin:", b"[#>$]"], timeout=login_timeout
+            )
+
+            if index == 2:
+                # Already at prompt, no login needed
+                return
+            elif index in (0, 1):
+                # Login prompt
+                self.connection.write(self.username.encode('ascii') + b'\n')
+            else:
+                # No prompt found, try sending username anyway
+                self.connection.write(self.username.encode('ascii') + b'\n')
+
+            # Wait for password prompt or command prompt
+            index, match, text = self.connection.expect(
+                [b"assword:", b"[#>$]"], timeout=login_timeout
+            )
 
             if index == 0:  # Password prompt
                 self.connection.write(self.password.encode('ascii') + b'\n')
-                time.sleep(2)
+                time.sleep(1)
             # If index == 1, we got a prompt directly (no password needed)
 
+        except EOFError:
+            raise DeviceConnectionError(f"Connection closed by {self.host}")
         except socket.timeout:
             raise DeviceConnectionError(f"Connection timeout to {self.host}")
         except Exception as e:
