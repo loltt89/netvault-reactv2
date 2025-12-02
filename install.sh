@@ -91,6 +91,7 @@ install_dependencies() {
             libldap2-dev \
             libsasl2-dev \
             libssl-dev \
+            libssh-dev \
             putty-tools \
             docker.io \
             docker-compose
@@ -346,6 +347,14 @@ setup_python_env() {
     # Install Python dependencies
     ./venv/bin/pip install --upgrade pip
     ./venv/bin/pip install -r requirements.txt
+
+    # Compile netvault-ssh binary for SSH v1/v2 support
+    print_status "Compiling netvault-ssh..."
+    if [ -f "tools/netvault-ssh/netvault-ssh.c" ]; then
+        gcc -o tools/netvault-ssh/netvault-ssh tools/netvault-ssh/netvault-ssh.c -lssh -O2
+        chmod +x tools/netvault-ssh/netvault-ssh
+        print_success "netvault-ssh compiled"
+    fi
 
     print_success "Python environment configured"
 }
