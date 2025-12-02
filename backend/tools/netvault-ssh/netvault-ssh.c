@@ -520,6 +520,16 @@ int main(int argc, char *argv[]) {
 
 auth_success:
 
+    // Clear password from memory IMMEDIATELY after auth (defense against core dumps)
+    // Password is no longer needed - SSH session is authenticated
+#ifdef __GLIBC__
+    explicit_bzero(g_pass_buffer, sizeof(g_pass_buffer));
+#else
+    memset(g_pass_buffer, 0, sizeof(g_pass_buffer));
+    __asm__ __volatile__("" : : "r"(g_pass_buffer) : "memory");
+#endif
+    cfg.pass = "";  // Point to empty string, not cleared buffer
+
     // Execute based on mode
     char *output = NULL;
 
