@@ -752,3 +752,1001 @@ class DeviceViewSetActionsTestCase(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data['success'])
+
+
+# ============================================================
+# Connection Module Tests with Realistic Device Output Mocks
+# ============================================================
+
+class ConnectionModuleTestCase(TestCase):
+    """Tests for connection.py module functions"""
+
+    # ===== Realistic Device Outputs (based on real device configs) =====
+
+    CISCO_IOS_CONFIG = """
+Router#terminal length 0
+Router#show running-config
+Building configuration...
+
+Current configuration : 2048 bytes
+!
+! Last configuration change at 14:32:15 UTC Mon Dec 2 2025
+!
+version 15.7
+service timestamps debug datetime msec
+service timestamps log datetime msec
+service password-encryption
+!
+hostname Router
+!
+boot-start-marker
+boot-end-marker
+!
+enable secret 9 $9$randomhash
+!
+no aaa new-model
+!
+ip cef
+no ipv6 cef
+!
+interface GigabitEthernet0/0
+ description WAN Interface
+ ip address 192.168.1.1 255.255.255.0
+ duplex auto
+ speed auto
+!
+interface GigabitEthernet0/1
+ description LAN Interface
+ ip address 10.0.0.1 255.255.255.0
+ duplex auto
+ speed auto
+!
+ip forward-protocol nd
+!
+no ip http server
+no ip http secure-server
+!
+ip route 0.0.0.0 0.0.0.0 192.168.1.254
+!
+line con 0
+line aux 0
+line vty 0 4
+ login local
+ transport input ssh
+!
+end
+
+Router#"""
+
+    HUAWEI_VRP_CONFIG = """
+<Huawei>screen-length 0 temporary
+Info: The configuration takes effect for the current user terminal only.
+<Huawei>display current-configuration
+#
+sysname Huawei
+#
+undo info-center enable
+#
+vlan batch 10 20 30
+#
+cluster enable
+ntdp enable
+ndp enable
+#
+drop illegal-mac alarm
+#
+interface Vlanif10
+ ip address 10.10.10.1 255.255.255.0
+#
+interface GigabitEthernet0/0/1
+ port link-type trunk
+ port trunk allow-pass vlan 10 20 30
+#
+interface GigabitEthernet0/0/2
+ port link-type access
+ port default vlan 10
+#
+ospf 1
+ area 0.0.0.0
+  network 10.10.10.0 0.0.0.255
+#
+user-interface vty 0 4
+ authentication-mode aaa
+ protocol inbound ssh
+#
+return
+<Huawei>"""
+
+    FORTINET_CONFIG = """
+FGT100D # get system status
+Version: FortiGate-100D v7.0.5,build0304,220401 (GA.F)
+Virus-DB: 91.00000(2023-01-01)
+Extended DB: 91.00000(2023-01-01)
+IPS-DB: 6.00741(2021-12-01)
+Serial-Number: FGT100D123456789
+License Status: Valid
+FGT100D # show full-configuration
+#config-version=FGT100D-7.0.5-FW-build0304-220401:opmode=0:vdom=0:user=admin
+#conf_file_ver=1234567890
+#buildno=0304
+#global_vdom=1
+config system global
+    set admin-https-pki-required disable
+    set admin-https-redirect enable
+    set admin-scp enable
+    set admin-sport 443
+    set admintimeout 10
+    set alias "FGT100D"
+    set hostname "FGT100D"
+    set timezone "US/Eastern"
+end
+config system interface
+    edit "wan1"
+        set vdom "root"
+        set ip 192.168.1.99 255.255.255.0
+        set allowaccess ping https ssh
+        set type physical
+        set snmp-index 1
+    next
+    edit "lan"
+        set vdom "root"
+        set ip 10.0.0.1 255.255.255.0
+        set allowaccess ping https ssh
+        set type physical
+        set snmp-index 2
+    next
+end
+config firewall policy
+    edit 1
+        set srcintf "lan"
+        set dstintf "wan1"
+        set srcaddr "all"
+        set dstaddr "all"
+        set action accept
+        set schedule "always"
+        set service "ALL"
+        set nat enable
+    next
+end
+FGT100D # """
+
+    MIKROTIK_CONFIG = """
+[admin@MikroTik] > /export
+# dec/02/2025 14:30:00 by RouterOS 7.12.1
+#
+/interface bridge
+add name=bridge1
+/interface ethernet
+set [ find default-name=ether1 ] comment="WAN"
+set [ find default-name=ether2 ] comment="LAN"
+/ip address
+add address=192.168.88.1/24 interface=bridge1 network=192.168.88.0
+add address=10.0.0.1/24 interface=ether2 network=10.0.0.0
+/ip dhcp-server network
+add address=192.168.88.0/24 gateway=192.168.88.1
+/ip dns
+set servers=8.8.8.8,8.8.4.4
+/ip firewall filter
+add action=accept chain=input protocol=icmp
+add action=accept chain=input connection-state=established,related
+add action=drop chain=input in-interface=ether1
+/ip route
+add distance=1 gateway=192.168.88.254
+/system identity
+set name=MikroTik
+/system clock
+set time-zone-name=Europe/Moscow
+[admin@MikroTik] > """
+
+    JUNIPER_CONFIG = """
+root@juniper> show configuration
+## Last commit: 2025-12-02 14:30:00 UTC
+version 21.4R1.12;
+system {
+    host-name juniper;
+    domain-name example.com;
+    root-authentication {
+        encrypted-password "$6$randomhash";
+    }
+    login {
+        user admin {
+            uid 2000;
+            class super-user;
+        }
+    }
+    services {
+        ssh;
+        netconf {
+            ssh;
+        }
+    }
+    syslog {
+        file messages {
+            any notice;
+        }
+    }
+}
+interfaces {
+    ge-0/0/0 {
+        description "WAN Interface";
+        unit 0 {
+            family inet {
+                address 192.168.1.1/24;
+            }
+        }
+    }
+    ge-0/0/1 {
+        description "LAN Interface";
+        unit 0 {
+            family inet {
+                address 10.0.0.1/24;
+            }
+        }
+    }
+}
+routing-options {
+    static {
+        route 0.0.0.0/0 next-hop 192.168.1.254;
+    }
+}
+security {
+    policies {
+        from-zone trust to-zone untrust {
+            policy allow-all {
+                match {
+                    source-address any;
+                    destination-address any;
+                    application any;
+                }
+                then {
+                    permit;
+                }
+            }
+        }
+    }
+}
+
+root@juniper> """
+
+    ERROR_CONFIG_ACCESS_DENIED = """
+Router#show running-config
+% Access denied
+Router#"""
+
+    ERROR_CONFIG_AUTH_FAILED = """
+Username: admin
+Password:
+% Authentication failed
+"""
+
+    def test_validate_backup_config_cisco_success(self):
+        """Test Cisco config validation passes"""
+        from devices.connection import validate_backup_config
+        is_valid, error = validate_backup_config(self.CISCO_IOS_CONFIG)
+        self.assertTrue(is_valid, f"Should be valid, got error: {error}")
+
+    def test_validate_backup_config_huawei_success(self):
+        """Test Huawei config validation passes"""
+        from devices.connection import validate_backup_config
+        is_valid, error = validate_backup_config(self.HUAWEI_VRP_CONFIG)
+        self.assertTrue(is_valid, f"Should be valid, got error: {error}")
+
+    def test_validate_backup_config_fortinet_success(self):
+        """Test Fortinet config validation passes"""
+        from devices.connection import validate_backup_config
+        is_valid, error = validate_backup_config(self.FORTINET_CONFIG)
+        self.assertTrue(is_valid, f"Should be valid, got error: {error}")
+
+    def test_validate_backup_config_mikrotik_success(self):
+        """Test MikroTik config validation passes"""
+        from devices.connection import validate_backup_config
+        is_valid, error = validate_backup_config(self.MIKROTIK_CONFIG)
+        self.assertTrue(is_valid, f"Should be valid, got error: {error}")
+
+    def test_validate_backup_config_juniper_success(self):
+        """Test Juniper config validation passes"""
+        from devices.connection import validate_backup_config
+        is_valid, error = validate_backup_config(self.JUNIPER_CONFIG)
+        self.assertTrue(is_valid, f"Should be valid, got error: {error}")
+
+    def test_validate_backup_config_empty(self):
+        """Test empty config fails validation"""
+        from devices.connection import validate_backup_config
+        is_valid, error = validate_backup_config("")
+        self.assertFalse(is_valid)
+        self.assertIn("empty", error.lower())
+
+    def test_validate_backup_config_too_short(self):
+        """Test config with too few lines fails"""
+        from devices.connection import validate_backup_config
+        is_valid, error = validate_backup_config("line1\nline2\nline3")
+        self.assertFalse(is_valid)
+        self.assertIn("short", error.lower())
+
+    def test_validate_backup_config_access_denied(self):
+        """Test config with access denied error fails"""
+        from devices.connection import validate_backup_config
+        is_valid, error = validate_backup_config(self.ERROR_CONFIG_ACCESS_DENIED)
+        self.assertFalse(is_valid)
+
+    def test_clean_device_output_cisco(self):
+        """Test Cisco output cleaning"""
+        from devices.connection import clean_device_output
+        cleaned = clean_device_output(self.CISCO_IOS_CONFIG, 'cisco', 'show running-config')
+        # Should not contain prompt
+        self.assertNotIn('Router#', cleaned)
+        # Should contain config content
+        self.assertIn('hostname Router', cleaned)
+        self.assertIn('interface GigabitEthernet', cleaned)
+
+    def test_clean_device_output_huawei(self):
+        """Test Huawei output cleaning"""
+        from devices.connection import clean_device_output
+        cleaned = clean_device_output(self.HUAWEI_VRP_CONFIG, 'huawei', 'display current-configuration')
+        # Should contain config content
+        self.assertIn('sysname Huawei', cleaned)
+        self.assertIn('interface Vlanif10', cleaned)
+
+    def test_clean_device_output_mikrotik(self):
+        """Test MikroTik output cleaning"""
+        from devices.connection import clean_device_output
+        cleaned = clean_device_output(self.MIKROTIK_CONFIG, 'mikrotik', '/export')
+        # Should contain config content
+        self.assertIn('interface bridge', cleaned)
+        self.assertIn('ip address', cleaned)
+
+    def test_clean_device_output_removes_ansi(self):
+        """Test ANSI escape sequences are removed"""
+        from devices.connection import clean_device_output
+        output_with_ansi = "\x1b[32mGreen Text\x1b[0m\nhostname Router\n!"
+        cleaned = clean_device_output(output_with_ansi, 'cisco', '')
+        self.assertNotIn('\x1b', cleaned)
+
+    def test_clean_device_output_handles_more_paging(self):
+        """Test --More-- prompts are removed"""
+        from devices.connection import clean_device_output
+        output_with_paging = "hostname Router\n--More--\ninterface Gi0/0\n-- More --\nip address"
+        cleaned = clean_device_output(output_with_paging, 'cisco', '')
+        self.assertNotIn('--More--', cleaned)
+        self.assertNotIn('-- More --', cleaned)
+
+
+class SSHConnectionMockTestCase(TestCase):
+    """Tests for SSH connection with mocked Paramiko"""
+
+    @patch('devices.connection.paramiko')
+    @patch('devices.connection.PARAMIKO_AVAILABLE', True)
+    def test_paramiko_connect_success(self, mock_paramiko):
+        """Test Paramiko connection success"""
+        from devices.connection import SSHConnection
+
+        mock_client = MagicMock()
+        mock_paramiko.SSHClient.return_value = mock_client
+        mock_paramiko.AutoAddPolicy.return_value = MagicMock()
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn.connect()
+
+        mock_client.connect.assert_called_once()
+        self.assertTrue(conn._connected)
+
+    @patch('devices.connection.paramiko')
+    @patch('devices.connection.PARAMIKO_AVAILABLE', True)
+    def test_paramiko_connect_auth_failure(self, mock_paramiko):
+        """Test Paramiko authentication failure falls back to binary"""
+        from devices.connection import SSHConnection, DeviceConnectionError
+        import paramiko as real_paramiko
+
+        mock_client = MagicMock()
+        mock_client.connect.side_effect = real_paramiko.ssh_exception.AuthenticationException("Auth failed")
+        mock_paramiko.SSHClient.return_value = mock_client
+        mock_paramiko.AutoAddPolicy.return_value = MagicMock()
+        mock_paramiko.ssh_exception = real_paramiko.ssh_exception
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'wrongpass')
+
+        # Should fall back to binary and fail
+        with patch.object(conn, '_run_ssh_binary') as mock_binary:
+            mock_binary.return_value = {'success': False, 'error': 'Auth failed'}
+            with self.assertRaises(DeviceConnectionError):
+                conn.connect()
+
+    @patch('devices.connection.paramiko')
+    @patch('devices.connection.PARAMIKO_AVAILABLE', True)
+    def test_paramiko_exec_command(self, mock_paramiko):
+        """Test Paramiko exec command"""
+        from devices.connection import _ParamikoSSH
+
+        mock_client = MagicMock()
+        mock_stdout = MagicMock()
+        mock_stdout.read.return_value = b"Linux server 5.15.0\n"
+        mock_stderr = MagicMock()
+        mock_stderr.read.return_value = b""
+        mock_client.exec_command.return_value = (MagicMock(), mock_stdout, mock_stderr)
+        mock_paramiko.SSHClient.return_value = mock_client
+
+        ssh = _ParamikoSSH('192.168.1.1', 22, 'admin', 'password')
+        ssh.client = mock_client
+
+        success, output = ssh.exec_command('uname -a')
+        self.assertTrue(success)
+        self.assertIn('Linux', output)
+
+
+class TelnetConnectionMockTestCase(TestCase):
+    """Tests for Telnet connection with mocked telnetlib"""
+
+    @patch('devices.connection.telnetlib.Telnet')
+    def test_telnet_connect_success(self, mock_telnet_class):
+        """Test Telnet connection success"""
+        from devices.connection import TelnetConnection
+
+        mock_telnet = MagicMock()
+        mock_telnet.expect.return_value = (0, None, b"Username:")
+        mock_telnet_class.return_value = mock_telnet
+
+        conn = TelnetConnection('192.168.1.1', 23, 'admin', 'password')
+        conn.connect()
+
+        mock_telnet.write.assert_called()
+
+    @patch('devices.connection.telnetlib.Telnet')
+    def test_telnet_send_command(self, mock_telnet_class):
+        """Test Telnet send command"""
+        from devices.connection import TelnetConnection
+
+        mock_telnet = MagicMock()
+        mock_telnet.expect.return_value = (0, None, b"Username:")
+        mock_telnet.read_very_eager.side_effect = [
+            b"hostname Router\n!",
+            b"",  # Empty to trigger idle
+            b"",
+            EOFError()
+        ]
+        mock_telnet_class.return_value = mock_telnet
+
+        conn = TelnetConnection('192.168.1.1', 23, 'admin', 'password')
+        conn.connection = mock_telnet
+
+        output = conn.send_command('show run', wait_time=0.1)
+        self.assertIn('hostname Router', output)
+
+    @patch('devices.connection.telnetlib.Telnet')
+    def test_telnet_handles_paging(self, mock_telnet_class):
+        """Test Telnet handles --More-- paging"""
+        from devices.connection import TelnetConnection
+
+        mock_telnet = MagicMock()
+        mock_telnet.read_very_eager.side_effect = [
+            b"line1\n--More--",
+            b"line2\nline3",
+            b"",
+            EOFError()
+        ]
+        mock_telnet_class.return_value = mock_telnet
+
+        conn = TelnetConnection('192.168.1.1', 23, 'admin', 'password')
+        conn.connection = mock_telnet
+
+        output = conn.send_command('show config', wait_time=0.1, handle_paging=True)
+        # Should have sent space for paging
+        self.assertTrue(any(call[0][0] == b' ' for call in mock_telnet.write.call_args_list))
+
+
+class SSHBinaryMockTestCase(TestCase):
+    """Tests for netvault-ssh binary with mocked subprocess"""
+
+    @patch('devices.connection.subprocess.run')
+    def test_ssh_binary_success(self, mock_run):
+        """Test SSH binary success response"""
+        from devices.connection import SSHConnection
+
+        mock_run.return_value = MagicMock(
+            stdout='{"success":true,"output":"hostname Router\\n!"}',
+            returncode=0
+        )
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='shell', commands='show run')
+        self.assertTrue(result['success'])
+        self.assertIn('hostname Router', result['output'])
+
+    @patch('devices.connection.subprocess.run')
+    def test_ssh_binary_auth_failure(self, mock_run):
+        """Test SSH binary auth failure with error code"""
+        from devices.connection import SSHConnection, ERR_AUTH_FAILED
+
+        mock_run.return_value = MagicMock(
+            stdout='{"success":false,"error":"Authentication failed","error_code":10}',
+            returncode=1
+        )
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'wrongpass')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='test')
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error_code'], ERR_AUTH_FAILED)
+
+    @patch('devices.connection.subprocess.run')
+    def test_ssh_binary_kex_fallback(self, mock_run):
+        """Test SSH binary KEX error triggers modern binary fallback"""
+        from devices.connection import SSHConnection, ERR_FATAL
+
+        # First call returns KEX error, second call (modern) succeeds
+        mock_run.side_effect = [
+            MagicMock(stdout='{"success":false,"error":"KEX failure","error_code":2}', returncode=1),
+            MagicMock(stdout='{"success":true,"output":"config"}', returncode=0)
+        ]
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='shell', commands='show run')
+        self.assertTrue(result['success'])
+        # Should have been called twice (legacy + modern)
+        self.assertEqual(mock_run.call_count, 2)
+
+    @patch('devices.connection.subprocess.run')
+    def test_ssh_binary_timeout(self, mock_run):
+        """Test SSH binary timeout handling"""
+        from devices.connection import SSHConnection
+        import subprocess
+
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd='ssh', timeout=30)
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='test')
+        self.assertFalse(result['success'])
+        self.assertIn('timeout', result['error'].lower())
+
+
+class TargetHostValidationTestCase(TestCase):
+    """Tests for SSRF protection in validate_target_host"""
+
+    def test_validate_loopback_blocked(self):
+        """Test loopback addresses are blocked"""
+        from devices.connection import validate_target_host, DeviceConnectionError
+
+        with self.assertRaises(DeviceConnectionError) as ctx:
+            validate_target_host('127.0.0.1')
+        self.assertIn('loopback', str(ctx.exception).lower())
+
+    def test_validate_valid_ip(self):
+        """Test valid IP passes"""
+        from devices.connection import validate_target_host
+
+        # This should not raise
+        result = validate_target_host('192.168.1.1')
+        self.assertEqual(result, '192.168.1.1')
+
+    def test_validate_invalid_hostname(self):
+        """Test invalid hostname fails"""
+        from devices.connection import validate_target_host, DeviceConnectionError
+
+        with self.assertRaises(DeviceConnectionError) as ctx:
+            validate_target_host('this-host-does-not-exist-12345.invalid')
+        self.assertIn('resolve', str(ctx.exception).lower())
+
+
+class TCPPingTestCase(TestCase):
+    """Tests for tcp_ping function"""
+
+    @patch('devices.connection.socket.socket')
+    def test_tcp_ping_success(self, mock_socket_class):
+        """Test TCP ping success"""
+        from devices.connection import tcp_ping
+
+        mock_socket = MagicMock()
+        mock_socket.connect_ex.return_value = 0
+        mock_socket_class.return_value = mock_socket
+
+        result = tcp_ping('192.168.1.1', 22, timeout=2)
+        self.assertTrue(result)
+
+    @patch('devices.connection.socket.socket')
+    def test_tcp_ping_failure(self, mock_socket_class):
+        """Test TCP ping failure"""
+        from devices.connection import tcp_ping
+
+        mock_socket = MagicMock()
+        mock_socket.connect_ex.return_value = 111  # Connection refused
+        mock_socket_class.return_value = mock_socket
+
+        result = tcp_ping('192.168.1.1', 9999, timeout=2)
+        self.assertFalse(result)
+
+
+class BackupDeviceConfigMockTestCase(TestCase):
+    """Tests for backup_device_config function with mocks"""
+
+    @patch('devices.connection.SSHConnection')
+    @patch('devices.connection.validate_target_host')
+    def test_backup_ssh_success(self, mock_validate, mock_ssh_class):
+        """Test SSH backup success"""
+        from devices.connection import backup_device_config
+
+        mock_validate.return_value = '192.168.1.1'
+
+        mock_conn = MagicMock()
+        mock_conn.get_config.return_value = ConnectionModuleTestCase.CISCO_IOS_CONFIG
+        mock_ssh_class.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_ssh_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        success, config, error = backup_device_config(
+            '192.168.1.1', 22, 'ssh', 'admin', 'password', 'cisco'
+        )
+
+        self.assertTrue(success)
+        self.assertIn('hostname Router', config)
+        self.assertEqual(error, '')
+
+    @patch('devices.connection.TelnetConnection')
+    @patch('devices.connection.validate_target_host')
+    def test_backup_telnet_success(self, mock_validate, mock_telnet_class):
+        """Test Telnet backup success"""
+        from devices.connection import backup_device_config
+
+        mock_validate.return_value = '192.168.1.1'
+
+        mock_conn = MagicMock()
+        mock_conn.get_config.return_value = ConnectionModuleTestCase.HUAWEI_VRP_CONFIG
+        mock_telnet_class.return_value.__enter__ = MagicMock(return_value=mock_conn)
+        mock_telnet_class.return_value.__exit__ = MagicMock(return_value=False)
+
+        success, config, error = backup_device_config(
+            '192.168.1.1', 23, 'telnet', 'admin', 'password', 'huawei'
+        )
+
+        self.assertTrue(success)
+        self.assertIn('sysname Huawei', config)
+
+    @patch('devices.connection.SSHConnection')
+    @patch('devices.connection.validate_target_host')
+    def test_backup_connection_error(self, mock_validate, mock_ssh_class):
+        """Test backup handles connection error"""
+        from devices.connection import backup_device_config, DeviceConnectionError
+
+        mock_validate.return_value = '192.168.1.1'
+        mock_ssh_class.return_value.__enter__ = MagicMock(
+            side_effect=DeviceConnectionError("Connection refused")
+        )
+
+        success, config, error = backup_device_config(
+            '192.168.1.1', 22, 'ssh', 'admin', 'password', 'cisco'
+        )
+
+        self.assertFalse(success)
+        self.assertEqual(config, '')
+        self.assertIn('refused', error.lower())
+
+
+class SSHVersionAndAlgorithmTestCase(TestCase):
+    """Tests for SSH version and algorithm handling (SSH v1, KEX, etc.)"""
+
+    # Realistic error messages from different devices/scenarios
+
+    SSH_V1_KEX_ERROR = '{"success":false,"error":"kex error: no match for method kex algo","error_code":2}'
+    SSH_CHACHA20_ERROR = '{"success":false,"error":"crypt_set_algorithms2: no crypto algorithm function found for chacha20-poly1305@openssh.com","error_code":2}'
+    SSH_DIFFIE_HELLMAN_ERROR = '{"success":false,"error":"kex error: no match for method server host key algo: server [ssh-rsa], client [ssh-ed25519,ecdsa-sha2-nistp256]","error_code":2}'
+    SSH_OLD_NOKIA_ERROR = '{"success":false,"error":"SSH-1.99-OpenSSH_3.4p1: KEX negotiation failed","error_code":2}'
+    SSH_AUTH_FAILED = '{"success":false,"error":"Authentication failed: Access denied","error_code":10}'
+    SSH_TIMEOUT = '{"success":false,"error":"Connection timeout","error_code":11}'
+    SSH_SUCCESS = '{"success":true,"output":"hostname OldRouter\\n!"}'
+
+    @patch('devices.connection.subprocess.run')
+    def test_legacy_kex_fallback_to_modern(self, mock_run):
+        """Test KEX error with legacy binary triggers modern binary fallback"""
+        from devices.connection import SSHConnection
+
+        # Legacy binary fails with KEX error, modern succeeds
+        mock_run.side_effect = [
+            MagicMock(stdout=self.SSH_V1_KEX_ERROR, returncode=1),
+            MagicMock(stdout=self.SSH_SUCCESS, returncode=0)
+        ]
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='shell', commands='show run')
+        self.assertTrue(result['success'])
+        self.assertEqual(mock_run.call_count, 2)
+
+    @patch('devices.connection.subprocess.run')
+    def test_chacha20_cipher_not_supported(self, mock_run):
+        """Test chacha20-poly1305 cipher error triggers fallback"""
+        from devices.connection import SSHConnection
+
+        # Both binaries fail with cipher error (device requires specific cipher)
+        mock_run.side_effect = [
+            MagicMock(stdout=self.SSH_CHACHA20_ERROR, returncode=1),
+            MagicMock(stdout=self.SSH_CHACHA20_ERROR, returncode=1)
+        ]
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='shell', commands='show run')
+        self.assertFalse(result['success'])
+        self.assertIn('chacha20', result['error'])
+
+    @patch('devices.connection.subprocess.run')
+    def test_diffie_hellman_key_exchange_mismatch(self, mock_run):
+        """Test Diffie-Hellman KEX mismatch with old devices"""
+        from devices.connection import SSHConnection
+
+        # Legacy fails, modern succeeds with different algorithms
+        mock_run.side_effect = [
+            MagicMock(stdout=self.SSH_DIFFIE_HELLMAN_ERROR, returncode=1),
+            MagicMock(stdout=self.SSH_SUCCESS, returncode=0)
+        ]
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='shell', commands='show run')
+        self.assertTrue(result['success'])
+
+    @patch('devices.connection.subprocess.run')
+    def test_old_nokia_sros_ssh1(self, mock_run):
+        """Test old Nokia SR-OS with SSH v1.99"""
+        from devices.connection import SSHConnection
+
+        # Simulates Nokia TiMOS that needs legacy SSH
+        mock_run.side_effect = [
+            MagicMock(stdout=self.SSH_OLD_NOKIA_ERROR, returncode=1),
+            MagicMock(stdout=self.SSH_SUCCESS, returncode=0)
+        ]
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='shell', commands='admin display-config')
+        self.assertTrue(result['success'])
+
+    @patch('devices.connection.subprocess.run')
+    def test_auth_failure_no_kex_fallback(self, mock_run):
+        """Test auth failure (code 10) doesn't trigger KEX fallback"""
+        from devices.connection import SSHConnection, ERR_AUTH_FAILED
+
+        # Auth failure should NOT trigger fallback to modern binary
+        mock_run.return_value = MagicMock(stdout=self.SSH_AUTH_FAILED, returncode=1)
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'wrongpass')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='test')
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error_code'], ERR_AUTH_FAILED)
+        # Should only call once - no fallback for auth errors
+        self.assertEqual(mock_run.call_count, 1)
+
+    @patch('devices.connection.subprocess.run')
+    def test_timeout_no_kex_fallback(self, mock_run):
+        """Test timeout (code 11) doesn't trigger KEX fallback"""
+        from devices.connection import SSHConnection, ERR_TIMEOUT
+
+        mock_run.return_value = MagicMock(stdout=self.SSH_TIMEOUT, returncode=1)
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='test')
+        self.assertFalse(result['success'])
+        self.assertEqual(result['error_code'], ERR_TIMEOUT)
+        self.assertEqual(mock_run.call_count, 1)
+
+    @patch('devices.connection.paramiko')
+    @patch('devices.connection.PARAMIKO_AVAILABLE', True)
+    def test_paramiko_legacy_algorithm_negotiation(self, mock_paramiko):
+        """Test Paramiko handles legacy algorithm negotiation"""
+        from devices.connection import SSHConnection
+        import paramiko as real_paramiko
+
+        mock_client = MagicMock()
+        # Simulate successful connection with disabled_algorithms
+        mock_paramiko.SSHClient.return_value = mock_client
+        mock_paramiko.AutoAddPolicy.return_value = MagicMock()
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn.connect()
+
+        # Verify connect was called with disabled_algorithms param
+        connect_call = mock_client.connect.call_args
+        self.assertIn('disabled_algorithms', connect_call.kwargs)
+
+    @patch('devices.connection.paramiko')
+    @patch('devices.connection.PARAMIKO_AVAILABLE', True)
+    def test_paramiko_fails_ssh_fallback_to_binary(self, mock_paramiko):
+        """Test Paramiko SSH exception falls back to binary"""
+        from devices.connection import SSHConnection
+        import paramiko as real_paramiko
+
+        mock_client = MagicMock()
+        mock_client.connect.side_effect = real_paramiko.ssh_exception.SSHException(
+            "Incompatible ssh peer (no acceptable kex algorithm)"
+        )
+        mock_paramiko.SSHClient.return_value = mock_client
+        mock_paramiko.AutoAddPolicy.return_value = MagicMock()
+        mock_paramiko.ssh_exception = real_paramiko.ssh_exception
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+
+        with patch.object(conn, '_run_ssh_binary') as mock_binary:
+            mock_binary.return_value = {'success': True, 'output': 'config'}
+            conn.connect()
+            # Should have fallen back to binary
+            mock_binary.assert_called()
+            self.assertTrue(conn._use_binary)
+
+
+class VendorSpecificSSHTestCase(TestCase):
+    """Tests for vendor-specific SSH behaviors"""
+
+    CISCO_OLD_IOS = """
+hostname OldCisco
+!
+version 12.4
+service timestamps debug datetime msec
+service timestamps log datetime msec
+service password-encryption
+!
+interface FastEthernet0/0
+ ip address 192.168.1.1 255.255.255.0
+!
+end
+"""
+
+    NOKIA_SROS_CONFIG = """
+#--------------------------------------------------
+echo "System Configuration"
+#--------------------------------------------------
+    system
+        name "Nokia-SROS"
+        location "DataCenter"
+        time
+            ntp
+                server 192.168.1.10
+            exit
+        exit
+    exit
+"""
+
+    HUAWEI_OLD_VRP = """
+#
+sysname OldHuawei
+#
+aaa
+ authentication-scheme default
+ authorization-scheme default
+#
+interface GigabitEthernet0/0/0
+ ip address 10.0.0.1 255.255.255.0
+#
+return
+"""
+
+    @patch('devices.connection.subprocess.run')
+    def test_cisco_ios_12_ssh_v1(self, mock_run):
+        """Test Cisco IOS 12.x with SSH v1 (legacy device)"""
+        from devices.connection import SSHConnection
+        import json
+
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps({"success": True, "output": self.CISCO_OLD_IOS}),
+            returncode=0
+        )
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'cisco123')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='shell', commands='show run')
+        self.assertTrue(result['success'])
+        self.assertIn('version 12.4', result['output'])
+
+    @patch('devices.connection.subprocess.run')
+    def test_nokia_timos_admin_commands(self, mock_run):
+        """Test Nokia TiMOS/SR-OS with admin display-config"""
+        from devices.connection import SSHConnection
+        import json
+
+        mock_run.return_value = MagicMock(
+            stdout=json.dumps({"success": True, "output": self.NOKIA_SROS_CONFIG}),
+            returncode=0
+        )
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'nokia123')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='shell', commands='admin display-config')
+        self.assertTrue(result['success'])
+        self.assertIn('Nokia-SROS', result['output'])
+
+    @patch('devices.connection.subprocess.run')
+    def test_huawei_vrp3_legacy(self, mock_run):
+        """Test Huawei VRP3 (legacy device with old SSH)"""
+        from devices.connection import SSHConnection
+        import json
+
+        # First call fails with old algorithm, second succeeds
+        mock_run.side_effect = [
+            MagicMock(stdout='{"success":false,"error":"kex error: diffie-hellman-group1-sha1","error_code":2}', returncode=1),
+            MagicMock(stdout=json.dumps({"success": True, "output": self.HUAWEI_OLD_VRP}), returncode=0)
+        ]
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'huawei123')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='shell', commands='display current')
+        self.assertTrue(result['success'])
+
+    def test_clean_nokia_output(self):
+        """Test Nokia output cleaning preserves config structure"""
+        from devices.connection import clean_device_output
+        cleaned = clean_device_output(self.NOKIA_SROS_CONFIG, 'nokia', 'admin display-config')
+        self.assertIn('system', cleaned)
+        self.assertIn('name "Nokia-SROS"', cleaned)
+
+    def test_clean_old_cisco_output(self):
+        """Test old Cisco IOS output cleaning"""
+        from devices.connection import clean_device_output
+        cleaned = clean_device_output(self.CISCO_OLD_IOS, 'cisco', 'show running-config')
+        self.assertIn('hostname OldCisco', cleaned)
+        self.assertIn('version 12.4', cleaned)
+
+
+class ErrorCodeMappingTestCase(TestCase):
+    """Tests for error code constants and mapping"""
+
+    def test_error_codes_defined(self):
+        """Test all error codes are properly defined"""
+        from devices.connection import (
+            ERR_NONE, ERR_REQUEST_DENIED, ERR_FATAL,
+            ERR_AUTH_FAILED, ERR_TIMEOUT, ERR_CHANNEL
+        )
+
+        self.assertEqual(ERR_NONE, 0)
+        self.assertEqual(ERR_REQUEST_DENIED, 1)
+        self.assertEqual(ERR_FATAL, 2)
+        self.assertEqual(ERR_AUTH_FAILED, 10)
+        self.assertEqual(ERR_TIMEOUT, 11)
+        self.assertEqual(ERR_CHANNEL, 12)
+
+    @patch('devices.connection.subprocess.run')
+    def test_error_code_parsing(self, mock_run):
+        """Test error codes are correctly parsed from binary output"""
+        from devices.connection import SSHConnection, ERR_AUTH_FAILED
+
+        mock_run.return_value = MagicMock(
+            stdout='{"success":false,"error":"Auth failed","error_code":10}',
+            returncode=1
+        )
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='test')
+        self.assertEqual(result.get('error_code'), ERR_AUTH_FAILED)
+
+    @patch('devices.connection.subprocess.run')
+    def test_missing_error_code_defaults_to_none(self, mock_run):
+        """Test missing error_code in response is handled"""
+        from devices.connection import SSHConnection
+
+        # Old binary format without error_code
+        mock_run.return_value = MagicMock(
+            stdout='{"success":false,"error":"Some error"}',
+            returncode=1
+        )
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='test')
+        self.assertFalse(result['success'])
+        # Should not crash even without error_code
+        self.assertIn('error', result)
