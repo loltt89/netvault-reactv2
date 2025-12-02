@@ -348,8 +348,8 @@ const DevicesListPage: React.FC = () => {
       protocol: device.protocol,
       port: String(device.port),
       username: device.username,
-      password: '',
-      enable_password: '',
+      password: '*****',  // Router-style: show ***** as actual value
+      enable_password: '*****',
       location: device.location,
       criticality: device.criticality,
       backup_enabled: device.backup_enabled,
@@ -449,12 +449,13 @@ const DevicesListPage: React.FC = () => {
 
       if (editingDevice) {
         // Router-style password handling for edit mode:
-        // - If password field was touched (user interacted with it), send the value (can be empty to clear)
-        // - If password field was NOT touched, don't send it (keep existing password)
-        if (passwordTouched) {
+        // - If password is '*****' (unchanged placeholder), don't send it
+        // - If password was cleared (empty), send empty to clear password
+        // - If password was changed to something else, send new password
+        if (formData.password !== '*****') {
           payload.password = formData.password; // Can be empty string to clear password
         }
-        if (enablePasswordTouched) {
+        if (formData.enable_password !== '*****') {
           payload.enable_password = formData.enable_password;
         }
         await apiService.devices.update(editingDevice.id, payload);
@@ -1032,16 +1033,20 @@ const DevicesListPage: React.FC = () => {
                       value={formData.password}
                       onChange={(e) => {
                         setFormData({ ...formData, password: e.target.value });
-                        if (editingDevice) setPasswordTouched(true);
                       }}
-                      onFocus={() => { if (editingDevice) setPasswordTouched(true); }}
-                      placeholder={editingDevice ? '*****' : t('devices.password_optional')}
+                      onFocus={() => {
+                        // Router-style: clear ***** on focus to allow new input
+                        if (editingDevice && formData.password === '*****') {
+                          setFormData({ ...formData, password: '' });
+                        }
+                      }}
+                      placeholder={!editingDevice ? t('devices.password_optional') : undefined}
                     />
                     {editingDevice && (
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                        {passwordTouched
-                          ? (formData.password ? t('devices.password_will_change') : t('devices.password_will_clear'))
-                          : t('devices.password_unchanged')}
+                        {formData.password === '*****'
+                          ? t('devices.password_unchanged')
+                          : (formData.password ? t('devices.password_will_change') : t('devices.password_will_clear'))}
                       </div>
                     )}
                   </div>
@@ -1053,11 +1058,22 @@ const DevicesListPage: React.FC = () => {
                       value={formData.enable_password}
                       onChange={(e) => {
                         setFormData({ ...formData, enable_password: e.target.value });
-                        if (editingDevice) setEnablePasswordTouched(true);
                       }}
-                      onFocus={() => { if (editingDevice) setEnablePasswordTouched(true); }}
-                      placeholder={editingDevice ? '*****' : t('devices.enable_password_optional')}
+                      onFocus={() => {
+                        // Router-style: clear ***** on focus to allow new input
+                        if (editingDevice && formData.enable_password === '*****') {
+                          setFormData({ ...formData, enable_password: '' });
+                        }
+                      }}
+                      placeholder={!editingDevice ? t('devices.enable_password_optional') : undefined}
                     />
+                    {editingDevice && (
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                        {formData.enable_password === '*****'
+                          ? t('devices.password_unchanged')
+                          : (formData.enable_password ? t('devices.password_will_change') : t('devices.password_will_clear'))}
+                      </div>
+                    )}
                   </div>
                 </div>
 
