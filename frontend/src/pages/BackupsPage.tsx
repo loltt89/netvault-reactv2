@@ -541,7 +541,6 @@ const BackupsPage: React.FC = () => {
                             type="checkbox"
                             checked={selectedBackups.has(backup.id)}
                             onChange={() => toggleBackupSelection(backup.id)}
-                            disabled={!backup.success}
                           />
                           <h3>{backup.device?.name || t('devices.unknown_device')}</h3>
                           <p className="backup-date">
