@@ -124,29 +124,171 @@ def clean_device_output(output: str, vendor: str = '', command: str = '') -> str
 
     vendor = vendor.lower()
 
-    # Try to find config start/end markers by vendor
+    # Config start/end markers by vendor (based on Oxidized models)
+    # https://github.com/ytti/oxidized/tree/master/lib/oxidized/model
     config_start_markers = {
+        # Cisco family
         'cisco': ['Building configuration', 'Current configuration', '!', 'version '],
+        'ios': ['Building configuration', 'Current configuration', '!', 'version '],
+        'iosxe': ['Building configuration', 'Current configuration', '!', 'version '],
+        'iosxr': ['Building configuration', '!! IOS XR', '!', 'hostname '],
+        'nxos': ['!Command:', '!Running configuration', 'version '],
+        'asa': ['ASA Version', ': Saved', '!'],
+        'catos': ['begin', '#version', 'set '],
+        'ciscosmb': ['!Current Configuration', 'sysinfo', 'vlan '],
+
+        # Fortinet
         'fortinet': ['#config-version=', 'config system global', 'config '],
-        'huawei': ['#', 'sysname ', 'return'],
-        'juniper': ['## Last commit', 'version ', 'system {'],
-        'mikrotik': ['# ', '/'],
-        'extreme': ['#', 'Module '],
-        'arista': ['! Command:', '! device:'],
-        'hp': ['Running configuration', ';'],
-        'aruba': ['Running configuration', 'version'],
+        'fortios': ['#config-version=', 'config system global', 'config '],
+        'fortigate': ['#config-version=', 'config system global', 'config '],
+
+        # Juniper
+        'juniper': ['## Last commit', 'version ', 'system {', 'groups {'],
+        'junos': ['## Last commit', 'version ', 'system {', 'groups {'],
+        'screenos': ['set clock', 'set vrouter', 'set hostname'],
+
+        # Huawei
+        'huawei': ['#', 'sysname ', 'return', '<', 'version'],
+        'vrp': ['#', 'sysname ', 'return', 'software'],
+
+        # HP / Aruba / ProCurve
+        'hp': ['Running configuration', ';', 'hostname '],
+        'hpe': ['Running configuration', ';', 'hostname '],
+        'procurve': ['Running configuration', ';', 'hostname '],
+        'aruba': ['Running configuration', 'version', 'hostname '],
+        'arubaos': ['Building configuration', 'version', '!'],
+        'aoscx': ['Running configuration', 'hostname '],
+
+        # Extreme
+        'extreme': ['#', 'Module ', 'configure '],
+        'xos': ['#', 'Module ', 'configure '],
+        'exos': ['#', 'Module ', 'configure '],
+        'enterasys': ['#', 'set '],
+
+        # MikroTik
+        'mikrotik': ['# ', '/', '# software id'],
+        'routeros': ['# ', '/', '# software id'],
+
+        # Arista
+        'arista': ['! Command:', '! device:', '! boot', 'hostname '],
+        'eos': ['! Command:', '! device:', '! boot', 'hostname '],
+
+        # Dell
+        'dell': ['!Current Configuration', 'hostname '],
+        'dellos': ['!Current Configuration', 'hostname '],
+        'ftos': ['!Current Configuration', 'hostname '],
+        'dnos': ['!Current Configuration', 'hostname '],
+        'powerconnect': ['!System Description', 'configure', 'hostname '],
+
+        # Palo Alto
+        'paloalto': ['<config ', '<entry ', 'set deviceconfig'],
+        'panos': ['<config ', '<entry ', 'set deviceconfig'],
+
+        # Ubiquiti
+        'ubiquiti': ['firewall {', 'interfaces {', 'service {'],
+        'edgeos': ['firewall {', 'interfaces {', 'service {'],
+        'vyatta': ['firewall {', 'interfaces {', 'service {'],
+        'vyos': ['firewall {', 'interfaces {', 'service {'],
+
+        # Brocade / Ruckus
+        'brocade': ['!', 'ver ', 'module '],
+        'fastiron': ['!', 'ver ', 'module '],
+        'icx': ['!', 'ver ', 'module '],
+
+        # F5
+        'f5': ['#TMSH-VERSION:', 'ltm ', 'sys '],
+        'bigip': ['#TMSH-VERSION:', 'ltm ', 'sys '],
+        'tmos': ['#TMSH-VERSION:', 'ltm ', 'sys '],
+
+        # Alcatel / Nokia
+        'alcatel': ['# TiMOS', 'configure ', 'echo '],
+        'nokia': ['# TiMOS', 'configure ', 'echo '],
+        'sros': ['# TiMOS', 'configure ', 'echo '],
+
+        # Netgear
+        'netgear': ['!Current Configuration', 'vlan ', 'hostname '],
+
+        # Zyxel
+        'zyxel': ['!', 'hostname ', 'vlan '],
+        'zynos': ['!', 'hostname ', 'vlan '],
+
+        # Allied Telesis
+        'allied': ['!', 'hostname ', 'awplus '],
+        'awplus': ['!', 'hostname ', 'awplus '],
+
+        # Ciena
+        'ciena': ['configuration ', '!', 'system '],
+        'saos': ['configuration ', '!', 'system '],
+
+        # Riverbed
+        'riverbed': ['## ', 'hostname ', 'config '],
+
+        # CheckPoint
+        'checkpoint': [':set ', ':admininfo ', 'config '],
+        'gaia': [':set ', ':admininfo ', 'config '],
+
+        # Cumulus / NVIDIA
+        'cumulus': ['# ', 'auto ', 'iface '],
+
+        # Linux / OpenWrt
+        'linux': ['# ', 'config ', 'option '],
+        'openwrt': ['config ', 'option ', 'package '],
+
+        # pfSense / OPNsense
+        'pfsense': ['<?xml ', '<pfsense>', '<opnsense>'],
+        'opnsense': ['<?xml ', '<pfsense>', '<opnsense>'],
+
+        # Generic
+        'generic': ['!', '#', 'hostname ', 'version ', 'config'],
     }
 
     config_end_markers = {
-        'cisco': ['end', 'exit'],
-        'fortinet': [],  # FortiGate config goes to the end
-        'huawei': ['return', '#'],
-        'juniper': [],
-        'mikrotik': [],
-        'extreme': [],
+        # Cisco family
+        'cisco': ['end'],
+        'ios': ['end'],
+        'iosxe': ['end'],
+        'iosxr': ['end'],
+        'nxos': ['end'],
+        'asa': ['end'],
+        'catos': ['end'],
+        'ciscosmb': ['end'],
+
+        # Arista
         'arista': ['end'],
+        'eos': ['end'],
+
+        # Huawei
+        'huawei': ['return'],
+        'vrp': ['return'],
+
+        # HP
         'hp': [],
+        'hpe': [],
+        'procurve': [],
         'aruba': [],
+        'arubaos': ['end'],
+        'aoscx': [],
+
+        # Others with no specific end marker - go to end of output
+        'fortinet': [], 'fortios': [], 'fortigate': [],
+        'juniper': [], 'junos': [], 'screenos': [],
+        'extreme': [], 'xos': [], 'exos': [], 'enterasys': [],
+        'mikrotik': [], 'routeros': [],
+        'dell': [], 'dellos': [], 'ftos': [], 'dnos': [], 'powerconnect': [],
+        'paloalto': [], 'panos': [],
+        'ubiquiti': [], 'edgeos': [], 'vyatta': [], 'vyos': [],
+        'brocade': [], 'fastiron': [], 'icx': [],
+        'f5': [], 'bigip': [], 'tmos': [],
+        'alcatel': [], 'nokia': [], 'sros': [],
+        'netgear': [], 'zyxel': [], 'zynos': [],
+        'allied': [], 'awplus': [],
+        'ciena': [], 'saos': [],
+        'riverbed': [],
+        'checkpoint': [], 'gaia': [],
+        'cumulus': [],
+        'linux': [], 'openwrt': [],
+        'pfsense': [], 'opnsense': [],
+        'generic': ['end'],
     }
 
     lines = output.split('\n')
