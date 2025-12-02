@@ -8,6 +8,33 @@ import re
 # Pattern for validating network commands (whitelist approach)
 SAFE_COMMAND_PATTERN = re.compile(r'^[a-zA-Z0-9\s\-_.:/@#|"\'=]+$')
 
+# Dangerous commands blacklist - can damage device or network
+# These commands should NEVER be used in backup operations
+DANGEROUS_COMMANDS = [
+    # Reboot/shutdown
+    'reload', 'reboot', 'shutdown', 'reset', 'restart',
+    # Erase config
+    'write erase', 'erase startup', 'erase nvram', 'erase flash',
+    'delete startup', 'clear startup', 'reset factory',
+    # Format/delete
+    'format', 'delete', 'remove', 'destroy',
+    # Config replacement (can overwrite running config)
+    'configure replace', 'copy tftp', 'copy ftp', 'copy scp',
+    'copy running', 'copy startup',
+    # Debug (can overload CPU)
+    'debug all', 'undebug all', 'debug ip packet',
+    # Dangerous Huawei
+    'reset saved-configuration', 'startup saved-configuration',
+    # Dangerous Juniper
+    'request system reboot', 'request system halt',
+    # Dangerous Nokia
+    'admin reboot', 'admin save',
+    # Dangerous Fortinet
+    'execute reboot', 'execute shutdown', 'execute factoryreset',
+    # Dangerous MikroTik
+    '/system reset', '/system reboot', '/system shutdown',
+]
+
 # Known keys for backup_commands schema
 BACKUP_COMMANDS_KEYS = {
     'setup', 'backup', 'enable_mode', 'config_start', 'config_end',
@@ -16,7 +43,7 @@ BACKUP_COMMANDS_KEYS = {
 
 
 def _validate_command(cmd, cmd_type):
-    """Validate single command against whitelist"""
+    """Validate single command against whitelist and blacklist"""
     if not cmd or not cmd.strip():
         raise serializers.ValidationError(f'{cmd_type} command cannot be empty')
     if len(cmd) > 500:
@@ -26,6 +53,16 @@ def _validate_command(cmd, cmd_type):
             f'{cmd_type} command contains invalid characters. '
             f'Allowed: letters, numbers, spaces, - _ . : / @ # | " \' ='
         )
+
+    # Check against dangerous commands blacklist
+    cmd_lower = cmd.lower().strip()
+    for dangerous in DANGEROUS_COMMANDS:
+        if dangerous in cmd_lower:
+            raise serializers.ValidationError(
+                f'{cmd_type} command contains dangerous operation "{dangerous}". '
+                f'This command can damage device configuration or cause downtime. '
+                f'Backup commands should only READ configuration, not modify it.'
+            )
 
 
 def validate_backup_commands(value, field_name='backup_commands'):
@@ -86,6 +123,23 @@ def validate_backup_commands(value, field_name='backup_commands'):
         raise serializers.ValidationError(
             f'Unknown keys in {field_name}: {", ".join(unknown_keys)}. '
             f'Valid keys are: {", ".join(sorted(BACKUP_COMMANDS_KEYS))}'
+        )
+
+    # Check total command chain length (C buffer is 4096, keep margin for ||| separators)
+    MAX_TOTAL_CMD_LENGTH = 3500
+    total_len = len(value.get('backup', ''))
+    for cmd in value.get('setup', []):
+        total_len += len(cmd) + 3  # +3 for ||| separator
+    for cmd in value.get('logout', []):
+        total_len += len(cmd) + 3
+    if value.get('exec_wrapper'):
+        total_len += len(value['exec_wrapper']) + 3
+
+    if total_len > MAX_TOTAL_CMD_LENGTH:
+        raise serializers.ValidationError(
+            f'Total command chain too long ({total_len} chars). '
+            f'Maximum allowed: {MAX_TOTAL_CMD_LENGTH} chars. '
+            f'Reduce number or length of setup/backup/logout commands.'
         )
 
     return value

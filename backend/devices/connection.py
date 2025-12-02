@@ -21,6 +21,15 @@ logger = logging.getLogger(__name__)
 NETVAULT_SSH_BIN = os.path.join(os.path.dirname(__file__), '..', 'tools', 'netvault-ssh', 'netvault-ssh')
 NETVAULT_SSH_MODERN_BIN = os.path.join(os.path.dirname(__file__), '..', 'tools', 'netvault-ssh', 'netvault-ssh-modern')
 
+# Error codes from netvault-ssh (stable across versions)
+# These match the codes defined in netvault-ssh.c
+ERR_NONE = 0           # No error
+ERR_REQUEST_DENIED = 1 # Request was denied
+ERR_FATAL = 2          # Fatal error (includes KEX failures, algorithm mismatches)
+ERR_AUTH_FAILED = 10   # Authentication failed
+ERR_TIMEOUT = 11       # Connection timeout
+ERR_CHANNEL = 12       # Channel error
+
 # ===== Compiled Regex Patterns (for performance) =====
 ANSI_ESCAPE_PATTERN = re.compile(r'\x1b\[[0-9;]*m')
 CARRIAGE_RETURN_PATTERN = re.compile(r'\r')
@@ -239,12 +248,13 @@ class SSHConnection:
         """Run netvault-ssh binary with automatic fallback to modern version on KEX errors"""
         ssh_bin = NETVAULT_SSH_MODERN_BIN if use_modern else NETVAULT_SSH_BIN
 
+        # Use -pass-stdin for security (password not visible in ps aux)
         cmd = [
             ssh_bin,
             '-host', self.host,
             '-port', str(self.port),
             '-user', self.username,
-            '-pass', self.password,
+            '-pass-stdin',  # Read password from stdin (secure)
             '-timeout', str(self.timeout),
             '-idle', str(idle_ms),
             '-mode', mode,
@@ -260,7 +270,8 @@ class SSHConnection:
                 cmd,
                 capture_output=True,
                 timeout=proc_timeout,
-                text=True
+                text=True,
+                input=self.password  # Pass password via stdin
             )
 
             # Parse JSON output
@@ -274,16 +285,12 @@ class SSHConnection:
 
             # Fallback to modern binary on KEX/algorithm errors (only if not already using modern)
             if not parsed.get('success') and not use_modern:
-                error_msg = parsed.get('error', '').lower()
-                # Fallback triggers:
-                # - 'kex error' / 'no match for method' - explicit KEX mismatch
-                # - 'connection failed: ' with empty details - legacy libssh can't negotiate algorithms
-                # - 'no hmac algorithm' / 'no cipher algorithm' / 'no crypto algorithm' - unsupported in legacy
-                if ('kex error' in error_msg or 'no match for method' in error_msg or
-                    error_msg == 'connection failed: ' or
-                    'no hmac algorithm' in error_msg or 'no cipher algorithm' in error_msg or
-                    'no crypto algorithm' in error_msg):
-                    logger.info(f"KEX/algorithm error with legacy SSH, trying modern binary for {self.host}")
+                error_code = parsed.get('error_code', 0)
+
+                # ERR_FATAL (2) indicates KEX/algorithm failure - try modern binary
+                # Modern libssh 0.10.x supports more algorithms than legacy 0.7.x
+                if error_code == ERR_FATAL:
+                    logger.info(f"KEX/algorithm error (code={error_code}) with legacy SSH, trying modern binary for {self.host}")
                     return self._run_ssh(mode, commands, idle_ms, use_modern=True)
 
             return parsed

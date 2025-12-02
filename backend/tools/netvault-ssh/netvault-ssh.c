@@ -38,11 +38,21 @@ typedef struct {
     char *commands;  // ||| separated
 } Config;
 
+// Error codes for Python (stable across libssh versions)
+// These map to libssh error codes from ssh_get_error_code()
+#define ERR_NONE           0   // No error
+#define ERR_REQUEST_DENIED 1   // Request was denied
+#define ERR_FATAL          2   // Fatal error (includes KEX failures)
+#define ERR_AUTH_FAILED    10  // Authentication failed (our custom code)
+#define ERR_TIMEOUT        11  // Connection timeout (our custom code)
+#define ERR_CHANNEL        12  // Channel error (our custom code)
+
 // Result
 typedef struct {
     int success;
     char *output;
     char *error;
+    int error_code;  // Numeric error code for reliable error handling
 } Result;
 
 void print_json_result(Result *r) {
@@ -83,17 +93,33 @@ void print_json_result(Result *r) {
         printf("\"");
     }
 
+    // Always output error_code (0 for success)
+    printf(",\"error_code\":%d", r->error_code);
+
     printf("}\n");
 }
 
 void result_error(const char *msg) {
-    Result r = {0, NULL, (char*)msg};
+    Result r = {0, NULL, (char*)msg, ERR_FATAL};
+    print_json_result(&r);
+    exit(1);
+}
+
+void result_error_code(const char *msg, int error_code) {
+    Result r = {0, NULL, (char*)msg, error_code};
     print_json_result(&r);
     exit(1);
 }
 
 void result_success(const char *output) {
-    Result r = {1, (char*)output, NULL};
+    Result r = {1, (char*)output, NULL, ERR_NONE};
+    print_json_result(&r);
+    exit(0);
+}
+
+void result_success_truncated(const char *output) {
+    // Output was truncated due to MAX_OUTPUT limit
+    Result r = {1, (char*)output, "WARNING: Output truncated (exceeded 10MB limit)", ERR_NONE};
     print_json_result(&r);
     exit(0);
 }
@@ -153,6 +179,9 @@ int read_available(ssh_channel channel, char *buffer, int max_len, int *total_re
     return pos;
 }
 
+// Global truncation flag
+static int output_truncated = 0;
+
 // Execute commands in shell mode with idle detection
 char* run_shell_mode(ssh_session session, Config *cfg) {
     ssh_channel channel = ssh_channel_new(session);
@@ -207,6 +236,11 @@ char* run_shell_mode(ssh_session session, Config *cfg) {
         if (ssh_channel_is_eof(channel)) break;
     }
 
+    // Check if output was truncated
+    if (output_len >= MAX_OUTPUT - 1) {
+        output_truncated = 1;
+    }
+
     // Execute commands
     if (cfg->commands && strlen(cfg->commands) > 0) {
         char *cmds = strdup(cfg->commands);
@@ -244,6 +278,11 @@ char* run_shell_mode(ssh_session session, Config *cfg) {
             cmd = strtok(NULL, "|||");
         }
         free(cmds);
+
+        // Check if output was truncated during command execution
+        if (output_len >= MAX_OUTPUT - 1) {
+            output_truncated = 1;
+        }
     }
 
     // Send exit
@@ -290,7 +329,10 @@ char* run_exec_mode(ssh_session session, const char *command) {
 
     while ((nbytes = ssh_channel_read(channel, output + pos, MAX_OUTPUT - pos - 1, 0)) > 0) {
         pos += nbytes;
-        if (pos >= MAX_OUTPUT - 1) break;
+        if (pos >= MAX_OUTPUT - 1) {
+            output_truncated = 1;
+            break;
+        }
     }
     output[pos] = '\0';
 
@@ -313,6 +355,9 @@ int main(int argc, char *argv[]) {
         .commands = NULL
     };
 
+    int read_pass_stdin = 0;
+    static char pass_buffer[1024];  // Static buffer for password from stdin
+
     // Parse arguments
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-host") == 0 && i + 1 < argc) {
@@ -323,6 +368,8 @@ int main(int argc, char *argv[]) {
             cfg.user = argv[++i];
         } else if (strcmp(argv[i], "-pass") == 0 && i + 1 < argc) {
             cfg.pass = argv[++i];
+        } else if (strcmp(argv[i], "-pass-stdin") == 0) {
+            read_pass_stdin = 1;  // Read password from stdin (more secure)
         } else if (strcmp(argv[i], "-timeout") == 0 && i + 1 < argc) {
             cfg.timeout = atoi(argv[++i]);
         } else if (strcmp(argv[i], "-idle") == 0 && i + 1 < argc) {
@@ -334,6 +381,18 @@ int main(int argc, char *argv[]) {
             else if (strcmp(argv[i], "shell") == 0) cfg.mode = MODE_SHELL;
         } else if (strcmp(argv[i], "-cmds") == 0 && i + 1 < argc) {
             cfg.commands = argv[++i];
+        }
+    }
+
+    // Read password from stdin if -pass-stdin was specified (more secure - not visible in ps)
+    if (read_pass_stdin) {
+        if (fgets(pass_buffer, sizeof(pass_buffer), stdin) != NULL) {
+            // Remove trailing newline
+            size_t len = strlen(pass_buffer);
+            if (len > 0 && pass_buffer[len - 1] == '\n') {
+                pass_buffer[len - 1] = '\0';
+            }
+            cfg.pass = pass_buffer;
         }
     }
 
@@ -361,35 +420,51 @@ int main(int argc, char *argv[]) {
     ssh_options_set(session, SSH_OPTIONS_STRICTHOSTKEYCHECK, &strict);
 
     // Don't override KEX algorithms - let libssh use its defaults
-    // System libssh 0.10.x supports all modern algorithms including sha256 variants
-    // Custom libssh 0.7.x supports legacy algorithms including SSH v1
+    // System libssh 0.10.x supports all modern algorithms
+    // Legacy libssh 0.7.7 supports legacy algorithms including SSH v1
 
-    // Allow legacy algorithms for compatibility with older devices
+    // Allow legacy host key algorithms for compatibility with older devices
     ssh_options_set(session, SSH_OPTIONS_HOSTKEYS,
         "ssh-ed25519,ecdsa-sha2-nistp521,ecdsa-sha2-nistp384,ecdsa-sha2-nistp256,"
         "rsa-sha2-512,rsa-sha2-256,ssh-rsa,ssh-dss");
 
-    // Allow legacy ciphers and MACs for very old devices
+    // Allow modern + legacy ciphers and MACs for maximum compatibility
     ssh_options_set(session, SSH_OPTIONS_CIPHERS_C_S,
-        "aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,"
-        "aes256-cbc,aes192-cbc,aes128-cbc,3des-cbc");
+        "chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,"
+        "aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,3des-cbc");
     ssh_options_set(session, SSH_OPTIONS_CIPHERS_S_C,
-        "aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,"
-        "aes256-cbc,aes192-cbc,aes128-cbc,3des-cbc");
+        "chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,"
+        "aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,3des-cbc");
     ssh_options_set(session, SSH_OPTIONS_HMAC_C_S,
+        "umac-128-etm@openssh.com,umac-64-etm@openssh.com,"
         "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,"
+        "umac-128@openssh.com,umac-64@openssh.com,"
         "hmac-sha2-256,hmac-sha2-512,hmac-sha1,hmac-md5");
     ssh_options_set(session, SSH_OPTIONS_HMAC_S_C,
+        "umac-128-etm@openssh.com,umac-64-etm@openssh.com,"
         "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,"
+        "umac-128@openssh.com,umac-64@openssh.com,"
         "hmac-sha2-256,hmac-sha2-512,hmac-sha1,hmac-md5");
 
     // Connect
     int rc = ssh_connect(session);
     if (rc != SSH_OK) {
         char err[256];
-        snprintf(err, sizeof(err), "Connection failed: %s", ssh_get_error(session));
+        const char *ssh_err = ssh_get_error(session);
+        int libssh_code = ssh_get_error_code(session);  // SSH_NO_ERROR, SSH_REQUEST_DENIED, or SSH_FATAL
+
+        // Map libssh error code to our error codes
+        int our_code = ERR_FATAL;  // Default for KEX failures, protocol errors
+
+        // Check timeout first (can come with SSH_FATAL too)
+        if (strstr(ssh_err, "Timeout") || strstr(ssh_err, "timeout")) {
+            our_code = ERR_TIMEOUT;
+        }
+        // Otherwise use libssh code (SSH_FATAL = 2 = ERR_FATAL)
+
+        snprintf(err, sizeof(err), "Connection failed: %s", ssh_err);
         ssh_free(session);
-        result_error(err);
+        result_error_code(err, our_code);
     }
 
     // Try multiple authentication methods
@@ -425,7 +500,7 @@ int main(int argc, char *argv[]) {
         snprintf(err, sizeof(err), "Authentication failed: %s", ssh_get_error(session));
         ssh_disconnect(session);
         ssh_free(session);
-        result_error(err);
+        result_error_code(err, ERR_AUTH_FAILED);
     }
 
 auth_success:
@@ -465,7 +540,12 @@ auth_success:
             free(output);
             exit(1);
         }
-        result_success(output);
+        // Use truncated result if output exceeded MAX_OUTPUT limit
+        if (output_truncated) {
+            result_success_truncated(output);
+        } else {
+            result_success(output);
+        }
         free(output);
     }
 
