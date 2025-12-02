@@ -69,6 +69,11 @@
     "device_created": "Device created",
     "device_deleted": "Device deleted",
     "password_required": "Password is required for new devices",
+    "password_optional": "Optional",
+    "password_will_change": "Password will be changed",
+    "password_will_clear": "Password will be cleared",
+    "password_unchanged": "Leave empty to keep current password",
+    "enable_password_optional": "For Cisco devices",
     "failed_save": "Failed to save device",
     "failed_delete": "Failed to delete device",
     "import": {

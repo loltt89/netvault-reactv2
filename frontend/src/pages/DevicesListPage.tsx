@@ -129,6 +129,10 @@ const DevicesListPage: React.FC = () => {
     backup_enabled: true,
   });
 
+  // Track if password field was modified (for router-style password handling)
+  const [passwordTouched, setPasswordTouched] = useState(false);
+  const [enablePasswordTouched, setEnablePasswordTouched] = useState(false);
+
   useEffect(() => {
     loadVendors();
     loadDeviceTypes();
@@ -328,6 +332,8 @@ const DevicesListPage: React.FC = () => {
       criticality: 'medium',
       backup_enabled: true,
     });
+    setPasswordTouched(false);
+    setEnablePasswordTouched(false);
     setShowModal(true);
   };
 
@@ -348,6 +354,8 @@ const DevicesListPage: React.FC = () => {
       criticality: device.criticality,
       backup_enabled: device.backup_enabled,
     });
+    setPasswordTouched(false);
+    setEnablePasswordTouched(false);
     setShowModal(true);
   };
 
@@ -439,21 +447,23 @@ const DevicesListPage: React.FC = () => {
         backup_enabled: formData.backup_enabled,
       };
 
-      if (formData.password) {
-        payload.password = formData.password;
-      }
-
-      if (formData.enable_password) {
-        payload.enable_password = formData.enable_password;
-      }
-
       if (editingDevice) {
+        // Router-style password handling for edit mode:
+        // - If password field was touched (user interacted with it), send the value (can be empty to clear)
+        // - If password field was NOT touched, don't send it (keep existing password)
+        if (passwordTouched) {
+          payload.password = formData.password; // Can be empty string to clear password
+        }
+        if (enablePasswordTouched) {
+          payload.enable_password = formData.enable_password;
+        }
         await apiService.devices.update(editingDevice.id, payload);
         alert(t('devices.device_updated'));
       } else {
-        if (!formData.password) {
-          alert(t('devices.password_required'));
-          return;
+        // For new devices, always send password (can be empty)
+        payload.password = formData.password;
+        if (formData.enable_password) {
+          payload.enable_password = formData.enable_password;
         }
         await apiService.devices.create(payload);
         alert(t('devices.device_created'));
@@ -1016,14 +1026,24 @@ const DevicesListPage: React.FC = () => {
 
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Password {!editingDevice && '*'}</label>
+                    <label>Password</label>
                     <input
                       type="password"
                       value={formData.password}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      required={!editingDevice}
-                      placeholder={editingDevice ? 'Leave empty to keep current' : ''}
+                      onChange={(e) => {
+                        setFormData({ ...formData, password: e.target.value });
+                        if (editingDevice) setPasswordTouched(true);
+                      }}
+                      onFocus={() => { if (editingDevice) setPasswordTouched(true); }}
+                      placeholder={editingDevice ? '*****' : t('devices.password_optional')}
                     />
+                    {editingDevice && (
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                        {passwordTouched
+                          ? (formData.password ? t('devices.password_will_change') : t('devices.password_will_clear'))
+                          : t('devices.password_unchanged')}
+                      </div>
+                    )}
                   </div>
 
                   <div className="form-group">
@@ -1031,8 +1051,12 @@ const DevicesListPage: React.FC = () => {
                     <input
                       type="password"
                       value={formData.enable_password}
-                      onChange={(e) => setFormData({ ...formData, enable_password: e.target.value })}
-                      placeholder="For Cisco devices"
+                      onChange={(e) => {
+                        setFormData({ ...formData, enable_password: e.target.value });
+                        if (editingDevice) setEnablePasswordTouched(true);
+                      }}
+                      onFocus={() => { if (editingDevice) setEnablePasswordTouched(true); }}
+                      placeholder={editingDevice ? '*****' : t('devices.enable_password_optional')}
                     />
                   </div>
                 </div>
