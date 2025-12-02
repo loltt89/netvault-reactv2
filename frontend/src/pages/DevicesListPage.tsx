@@ -99,6 +99,9 @@ const DevicesListPage: React.FC = () => {
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Track if mousedown started on modal overlay (for proper close behavior)
+  const mouseDownOnOverlay = useRef(false);
+
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [filterVendor, setFilterVendor] = useState('');
@@ -903,8 +906,12 @@ const DevicesListPage: React.FC = () => {
 
       {/* Add/Edit Device Modal - Same as before */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="modal-overlay"
+          onMouseDown={() => { mouseDownOnOverlay.current = true; }}
+          onClick={() => { if (mouseDownOnOverlay.current) setShowModal(false); }}
+        >
+          <div className="modal-content" onMouseDown={() => { mouseDownOnOverlay.current = false; }}>
             <div className="modal-header">
               <h2>{editingDevice ? t('devices.edit_device') : t('devices.add_device')}</h2>
               <button onClick={() => setShowModal(false)} className="btn-close">
@@ -1120,8 +1127,12 @@ const DevicesListPage: React.FC = () => {
 
       {/* Import CSV Modal */}
       {showImportModal && (
-        <div className="modal-overlay" onClick={() => setShowImportModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '800px', maxHeight: '80vh', overflow: 'auto' }}>
+        <div
+          className="modal-overlay"
+          onMouseDown={() => { mouseDownOnOverlay.current = true; }}
+          onClick={() => { if (mouseDownOnOverlay.current) setShowImportModal(false); }}
+        >
+          <div className="modal-content" onMouseDown={() => { mouseDownOnOverlay.current = false; }} style={{ maxWidth: '800px', maxHeight: '80vh', overflow: 'auto' }}>
             <div className="modal-header">
               <h2>{t('devices.import.title')}</h2>
               <button onClick={() => setShowImportModal(false)} className="close-btn">✕</button>
