@@ -24,8 +24,8 @@ CARRIAGE_RETURN_PATTERN = re.compile(r'\r')
 MORE_PAGING_PATTERN = re.compile(r'--More--|-- More --|<--- More --->')
 MIKROTIK_PROMPT_PATTERN = re.compile(r'^\[.*?\]\s*[>\/]')
 FORTINET_PROMPT_PATTERN = re.compile(r'^[A-Z0-9]+\s+\(.*\)\s+[#>]')
-# Matches prompt with or without command (e.g., "Router#" or "Router#show run")
-DEVICE_PROMPT_PATTERN = re.compile(r'^[^\s#>]+[#>].*$')
+# Matches prompt with or without command (e.g., "Router#", "Router#show run", "FortiGate # cmd")
+DEVICE_PROMPT_PATTERN = re.compile(r'^[^\s#>]+\s*[#>].*$')
 
 
 class DeviceConnectionError(Exception):
@@ -117,36 +117,78 @@ def tcp_ping(host: str, port: int, timeout: int = 2) -> bool:
 
 def clean_device_output(output: str, vendor: str = '', command: str = '') -> str:
     """Clean command output from prompts and control characters"""
+    # First, clean control characters
+    output = ANSI_ESCAPE_PATTERN.sub('', output)
+    output = CARRIAGE_RETURN_PATTERN.sub('', output)
+    output = MORE_PAGING_PATTERN.sub('', output)
+
+    vendor = vendor.lower()
+
+    # Try to find config start/end markers by vendor
+    config_start_markers = {
+        'cisco': ['Building configuration', 'Current configuration', '!', 'version '],
+        'fortinet': ['#config-version=', 'config system global', 'config '],
+        'huawei': ['#', 'sysname ', 'return'],
+        'juniper': ['## Last commit', 'version ', 'system {'],
+        'mikrotik': ['# ', '/'],
+        'extreme': ['#', 'Module '],
+        'arista': ['! Command:', '! device:'],
+        'hp': ['Running configuration', ';'],
+        'aruba': ['Running configuration', 'version'],
+    }
+
+    config_end_markers = {
+        'cisco': ['end', 'exit'],
+        'fortinet': [],  # FortiGate config goes to the end
+        'huawei': ['return', '#'],
+        'juniper': [],
+        'mikrotik': [],
+        'extreme': [],
+        'arista': ['end'],
+        'hp': [],
+        'aruba': [],
+    }
+
     lines = output.split('\n')
+
+    # Find config start
+    start_idx = 0
+    start_markers = config_start_markers.get(vendor, ['!', '#', 'version', 'config'])
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        for marker in start_markers:
+            if stripped.startswith(marker) or marker in stripped:
+                start_idx = i
+                break
+        if start_idx > 0:
+            break
+
+    # Find config end (search from the end)
+    end_idx = len(lines)
+    end_markers = config_end_markers.get(vendor, ['end', 'exit'])
+    if end_markers:
+        for i in range(len(lines) - 1, start_idx, -1):
+            stripped = lines[i].strip().lower()
+            if stripped in [m.lower() for m in end_markers]:
+                end_idx = i + 1
+                break
+
+    # Extract config section
+    config_lines = lines[start_idx:end_idx]
+
+    # Final cleanup - remove any remaining prompt lines
     cleaned_lines = []
-
-    for line in lines:
-        line = ANSI_ESCAPE_PATTERN.sub('', line)
-        line = CARRIAGE_RETURN_PATTERN.sub('', line)
-        line = MORE_PAGING_PATTERN.sub('', line)
-
+    for line in config_lines:
         stripped = line.strip()
         if not stripped:
             continue
 
-        if vendor == 'mikrotik':
-            if MIKROTIK_PROMPT_PATTERN.match(stripped):
-                continue
-            cleaned_lines.append(line.rstrip())
-            continue
-
-        if vendor == 'fortinet':
-            if 'config system console' in stripped.lower():
-                continue
-            if stripped.lower() in ['set output standard', 'end']:
-                continue
-            if FORTINET_PROMPT_PATTERN.match(stripped):
-                continue
-
-        if command and command in stripped:
-            continue
-
+        # Skip obvious prompt lines (hostname# or hostname>)
         if DEVICE_PROMPT_PATTERN.match(stripped):
+            continue
+
+        # Skip command echo lines
+        if command and stripped.endswith(command):
             continue
 
         cleaned_lines.append(line.rstrip())
