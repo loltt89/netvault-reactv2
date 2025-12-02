@@ -275,8 +275,14 @@ class SSHConnection:
             # Fallback to modern binary on KEX/algorithm errors (only if not already using modern)
             if not parsed.get('success') and not use_modern:
                 error_msg = parsed.get('error', '').lower()
-                if 'kex error' in error_msg or 'no match for method' in error_msg:
-                    logger.info(f"KEX error with legacy SSH, trying modern binary for {self.host}")
+                # Fallback triggers:
+                # - 'kex error' / 'no match for method' - explicit KEX mismatch
+                # - 'connection failed: ' with empty details - legacy libssh can't negotiate algorithms
+                # - 'no hmac algorithm' / 'no cipher algorithm' - unsupported MAC/cipher in legacy
+                if ('kex error' in error_msg or 'no match for method' in error_msg or
+                    error_msg == 'connection failed: ' or
+                    'no hmac algorithm' in error_msg or 'no cipher algorithm' in error_msg):
+                    logger.info(f"KEX/algorithm error with legacy SSH, trying modern binary for {self.host}")
                     return self._run_ssh(mode, commands, idle_ms, use_modern=True)
 
             return parsed

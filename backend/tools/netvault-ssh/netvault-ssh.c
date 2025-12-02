@@ -360,14 +360,29 @@ int main(int argc, char *argv[]) {
     int strict = 0;
     ssh_options_set(session, SSH_OPTIONS_STRICTHOSTKEYCHECK, &strict);
 
+    // Set KEX algorithms (must match what's compiled into libssh)
+    ssh_options_set(session, SSH_OPTIONS_KEY_EXCHANGE,
+        "curve25519-sha256@libssh.org,ecdh-sha2-nistp256,"
+        "diffie-hellman-group14-sha1,diffie-hellman-group1-sha1");
+
     // Allow legacy algorithms for compatibility with older devices
-    // This includes ssh-rsa which some devices like Cisco ASA still use
     ssh_options_set(session, SSH_OPTIONS_HOSTKEYS,
         "ssh-ed25519,ecdsa-sha2-nistp521,ecdsa-sha2-nistp384,ecdsa-sha2-nistp256,"
-        "rsa-sha2-512,rsa-sha2-256,ssh-rsa");
-    ssh_options_set(session, SSH_OPTIONS_PUBLICKEY_ACCEPTED_TYPES,
-        "ssh-ed25519,ecdsa-sha2-nistp521,ecdsa-sha2-nistp384,ecdsa-sha2-nistp256,"
-        "rsa-sha2-512,rsa-sha2-256,ssh-rsa");
+        "rsa-sha2-512,rsa-sha2-256,ssh-rsa,ssh-dss");
+
+    // Allow legacy ciphers and MACs for very old devices
+    ssh_options_set(session, SSH_OPTIONS_CIPHERS_C_S,
+        "aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,"
+        "aes256-cbc,aes192-cbc,aes128-cbc,3des-cbc");
+    ssh_options_set(session, SSH_OPTIONS_CIPHERS_S_C,
+        "aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,"
+        "aes256-cbc,aes192-cbc,aes128-cbc,3des-cbc");
+    ssh_options_set(session, SSH_OPTIONS_HMAC_C_S,
+        "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,"
+        "hmac-sha2-256,hmac-sha2-512,hmac-sha1,hmac-md5");
+    ssh_options_set(session, SSH_OPTIONS_HMAC_S_C,
+        "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,"
+        "hmac-sha2-256,hmac-sha2-512,hmac-sha1,hmac-md5");
 
     // Connect
     int rc = ssh_connect(session);
