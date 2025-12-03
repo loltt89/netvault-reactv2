@@ -41,3 +41,4 @@ backend/staticfiles/
 
 # Claude architecture doc (not for git)
 CLAUDE_ARCHITECTURE.md
+netvault_test_devices.csv
