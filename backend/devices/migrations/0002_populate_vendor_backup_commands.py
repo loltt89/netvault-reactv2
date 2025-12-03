@@ -94,6 +94,11 @@ def populate_vendor_commands(apps, schema_editor):
             'backup': 'show configuration',
             'enable_mode': False
         },
+        'a10-networks': {
+            'setup': ['terminal paging off'],
+            'backup': 'show running-config',
+            'enable_mode': True
+        },
     }
 
     for slug, commands in vendor_commands.items():
