@@ -1,4 +1,4 @@
 name,ip_address,port,protocol,vendor_slug,username,password,enable_password,backup_enabled
 Juniper_vSRX,192.168.100.100,22,ssh,juniper-junos,root,Zxcvasdf12!@,,true
 Cumulus_Linux,192.168.100.102,22,ssh,cumulus,cumulus,Zxcvasdf12!@,,true
-CheckPoint_Gaia,192.168.100.101,22,ssh,checkpoint-gaia,admin,admin,,true
+CheckPoint_Gaia,192.168.100.101,22,ssh,checkpoint-gaia,admin,Zxcvasdf12!@,,true
