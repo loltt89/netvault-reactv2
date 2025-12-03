@@ -549,6 +549,32 @@ class Command(BaseCommand):
                     'config_end': [],
                 }
             },
+            # ===== SONiC (Microsoft/Azure) =====
+            {
+                'name': 'SONiC',
+                'slug': 'sonic',
+                'description': 'SONiC (Software for Open Networking in the Cloud) - Microsoft/Azure open source switch OS',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': 'show runningconfiguration all',
+                    'enable_mode': False,
+                    'config_start': ['{', '"DEVICE_METADATA"', '"PORT"', '"INTERFACE"'],
+                    'config_end': ['}'],
+                }
+            },
+            # ===== Ruijie =====
+            {
+                'name': 'Ruijie',
+                'slug': 'ruijie',
+                'description': 'Ruijie Networks - Chinese vendor with Cisco-like CLI',
+                'backup_commands': {
+                    'setup': ['terminal length 0'],
+                    'backup': 'show running-config',
+                    'enable_mode': True,
+                    'config_start': ['!', 'Building configuration', 'Current configuration', 'version '],
+                    'config_end': ['end'],
+                }
+            },
             {
                 'name': 'Generic',
                 'slug': 'generic',
