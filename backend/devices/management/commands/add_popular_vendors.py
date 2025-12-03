@@ -549,6 +549,19 @@ class Command(BaseCommand):
                     'config_end': [],
                 }
             },
+            # ===== Cumulus Linux (NVIDIA) =====
+            {
+                'name': 'Cumulus Linux',
+                'slug': 'cumulus',
+                'description': 'Cumulus Linux - NVIDIA open network operating system',
+                'backup_commands': {
+                    'setup': [],
+                    'backup': 'net show configuration commands',
+                    'enable_mode': False,
+                    'config_start': ['net add ', 'net del ', '#'],
+                    'config_end': [],
+                }
+            },
             # ===== SONiC (Microsoft/Azure) =====
             {
                 'name': 'SONiC',
