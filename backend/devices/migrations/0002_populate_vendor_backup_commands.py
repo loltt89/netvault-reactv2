@@ -30,7 +30,7 @@ def populate_vendor_commands(apps, schema_editor):
             'enable_mode': True
         },
         'juniper': {
-            'setup': ['set cli screen-length 0'],
+            'setup': ['cli', 'set cli screen-length 0'],
             'backup': 'show configuration',
             'enable_mode': False
         },
