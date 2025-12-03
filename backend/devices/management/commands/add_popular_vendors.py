@@ -553,12 +553,12 @@ class Command(BaseCommand):
             {
                 'name': 'Cumulus Linux',
                 'slug': 'cumulus',
-                'description': 'Cumulus Linux - NVIDIA open network operating system',
+                'description': 'Cumulus Linux - NVIDIA open network operating system (NVUE CLI)',
                 'backup_commands': {
                     'setup': [],
-                    'backup': 'net show configuration commands',
+                    'backup': 'nv config show',
                     'enable_mode': False,
-                    'config_start': ['net add ', 'net del ', '#'],
+                    'config_start': ['- set:', 'set:', 'interface:', 'router:', 'system:'],
                     'config_end': [],
                 }
             },
