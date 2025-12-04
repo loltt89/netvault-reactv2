@@ -89,9 +89,9 @@ class Command(BaseCommand):
             },
             # ===== HP / Aruba =====
             {
-                'name': 'HP ProCurve',
+                'name': 'HP ProCurve / Aruba CX',
                 'slug': 'hp-procurve',
-                'description': 'HP ProCurve switches',
+                'description': 'HP ProCurve and Aruba CX (AOS-CX) switches',
                 'backup_commands': {
                     'setup': ['no page'],
                     'backup': 'show running-config',
