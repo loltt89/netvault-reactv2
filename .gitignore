@@ -42,3 +42,10 @@ backend/staticfiles/
 # Claude architecture doc (not for git)
 CLAUDE_ARCHITECTURE.md
 netvault_test_devices.csv
+pnetlab_devices.csv
+*.csv.bak
+
+# Coverage artifacts
+.coverage
+backend/.coverage
+htmlcov/
