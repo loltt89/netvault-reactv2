@@ -5,12 +5,14 @@
 
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import './LoginPage.css';
 
 const LoginPage: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login } = useAuth();
@@ -32,8 +34,9 @@ const LoginPage: React.FC = () => {
     // Check for SSO errors in URL
     const ssoError = searchParams.get('error');
     if (ssoError) {
-      setError(`SSO Error: ${searchParams.get('message') || ssoError}`);
+      setError(`${t('auth.sso_error')}: ${searchParams.get('message') || ssoError}`);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
   const checkSsoStatus = async () => {
@@ -74,7 +77,7 @@ const LoginPage: React.FC = () => {
 
       if (err.twoFactorRequired) {
         setRequire2FA(true);
-        setError('Please enter your 2FA code');
+        setError(t('auth.two_factor_required'));
       } else if (err.response?.data) {
         const errors = err.response.data;
         if (typeof errors === 'string') {
@@ -84,10 +87,10 @@ const LoginPage: React.FC = () => {
         } else if (errors.non_field_errors) {
           setError(errors.non_field_errors[0]);
         } else {
-          setError('Login failed. Please check your credentials.');
+          setError(t('auth.invalid_credentials'));
         }
       } else {
-        setError('An error occurred. Please try again.');
+        setError(t('auth.login_error_generic'));
       }
     } finally {
       setLoading(false);
@@ -98,13 +101,13 @@ const LoginPage: React.FC = () => {
     <div className="login-container">
       <div className="login-card">
         <div className="login-header">
-          <h1>NetVault</h1>
-          <p>Network Device Configuration Backup System</p>
+          <h1>{t('app.name')}</h1>
+          <p>{t('app.title')}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label htmlFor="email">Email</label>
+            <label htmlFor="email">{t('auth.email')}</label>
             <input
               type="email"
               id="email"
@@ -113,13 +116,13 @@ const LoginPage: React.FC = () => {
               onChange={handleChange}
               required
               disabled={loading}
-              placeholder="Enter your email"
+              placeholder={t('auth.enter_email')}
               autoComplete="email"
             />
           </div>
 
           <div className="form-group">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">{t('auth.password')}</label>
             <input
               type="password"
               id="password"
@@ -128,14 +131,14 @@ const LoginPage: React.FC = () => {
               onChange={handleChange}
               required
               disabled={loading}
-              placeholder="Enter your password"
+              placeholder={t('auth.enter_password')}
               autoComplete="current-password"
             />
           </div>
 
           {require2FA && (
             <div className="form-group">
-              <label htmlFor="twoFactorToken">2FA Code</label>
+              <label htmlFor="twoFactorToken">{t('auth.two_factor_code')}</label>
               <input
                 type="text"
                 id="twoFactorToken"
@@ -144,7 +147,7 @@ const LoginPage: React.FC = () => {
                 onChange={handleChange}
                 required
                 disabled={loading}
-                placeholder="Enter 6-digit code"
+                placeholder={t('auth.enter_2fa_code')}
                 maxLength={6}
                 pattern="[0-9]{6}"
               />
@@ -162,13 +165,13 @@ const LoginPage: React.FC = () => {
             className="login-button"
             disabled={loading}
           >
-            {loading ? 'Logging in...' : 'Login'}
+            {loading ? t('auth.logging_in') : t('auth.login')}
           </button>
 
           {ssoEnabled && (
             <>
               <div className="login-divider">
-                <span>or</span>
+                <span>{t('auth.or')}</span>
               </div>
               <button
                 type="button"
@@ -176,7 +179,7 @@ const LoginPage: React.FC = () => {
                 onClick={handleSsoLogin}
                 disabled={loading}
               >
-                🔐 Login with SSO
+                🔐 {t('auth.login_with_sso')}
               </button>
             </>
           )}
@@ -184,7 +187,7 @@ const LoginPage: React.FC = () => {
 
         <div className="login-footer">
           <p>
-            Don't have an account? <a href="/register">Register</a>
+            {t('auth.no_account')} <a href="/register">{t('auth.register')}</a>
           </p>
         </div>
       </div>

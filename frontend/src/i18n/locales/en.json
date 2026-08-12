@@ -12,7 +12,19 @@
     "forgot_password": "Forgot password?",
     "login_success": "Login successful",
     "login_failed": "Login failed",
-    "invalid_credentials": "Invalid email or password"
+    "invalid_credentials": "Invalid email or password",
+    "enter_email": "Enter your email",
+    "enter_password": "Enter your password",
+    "logging_in": "Logging in...",
+    "two_factor_code": "2FA Code",
+    "enter_2fa_code": "Enter 6-digit code",
+    "two_factor_required": "Please enter your 2FA code",
+    "or": "or",
+    "login_with_sso": "Login with SSO",
+    "no_account": "Don't have an account?",
+    "register": "Register",
+    "login_error_generic": "An error occurred. Please try again.",
+    "sso_error": "SSO Error"
   },
   "dashboard": {
     "title": "Dashboard",
@@ -469,7 +481,7 @@
     },
     "vendors": {
       "title": "Backup Commands Configuration:",
-      "description": "Configure backup commands for each vendor. Commands are used when backing up device configurations.",
+      "description": "Description",
       "format": "Format:",
       "format_setup": "• setup: Array of commands to run before backup (e.g., disable paging)",
       "format_backup": "• backup: Main command to get configuration",
@@ -482,7 +494,6 @@
       "vendor_name": "Vendor Name",
       "slug": "Slug",
       "slug_help": "Unique identifier, lowercase letters, numbers, hyphens only",
-      "description": "Description",
       "invalid_json": "Invalid JSON format",
       "invalid_json_commands": "Invalid JSON format for backup commands",
       "updated": "Vendor backup commands updated successfully!",
@@ -662,5 +673,17 @@
     "weeks": "weeks",
     "months": "months",
     "deleting": "Deleting..."
+  },
+  "config_viewer": {
+    "default_title": "Configuration",
+    "search": "Search (Ctrl+F)",
+    "enable_word_wrap": "Enable Word Wrap",
+    "disable_word_wrap": "Disable Word Wrap",
+    "copy": "Copy to clipboard",
+    "copied": "Configuration copied to clipboard!",
+    "download": "Download",
+    "save": "Save",
+    "save_changes": "Save changes",
+    "unsaved_changes": "Configuration has unsaved changes"
   }
 }

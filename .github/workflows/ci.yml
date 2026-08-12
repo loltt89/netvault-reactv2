@@ -124,6 +124,10 @@ jobs:
         working-directory: ./frontend
         run: npx tsc --noEmit
 
+      - name: Check locale files are in sync
+        working-directory: ./frontend
+        run: npm run check:i18n
+
       - name: Build frontend
         working-directory: ./frontend
         run: npm run build

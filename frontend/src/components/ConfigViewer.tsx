@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import Editor from '@monaco-editor/react';
+import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import { useToast } from '../contexts/ToastContext';
 import logger from '../utils/logger';
@@ -18,8 +19,9 @@ const ConfigViewer: React.FC<ConfigViewerProps> = ({
   language = 'plaintext',
   readOnly = true,
   onSave,
-  title = 'Configuration'
+  title
 }) => {
+  const { t } = useTranslation();
   const { theme } = useTheme();
   const toast = useToast();
   const [localConfig, setLocalConfig] = useState(config);
@@ -65,7 +67,7 @@ const ConfigViewer: React.FC<ConfigViewerProps> = ({
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(localConfig);
-      toast.success('Configuration copied to clipboard!');
+      toast.success(t('config_viewer.copied'));
     } catch (err) {
       logger.error('Failed to copy:', err);
     }
@@ -94,23 +96,23 @@ const ConfigViewer: React.FC<ConfigViewerProps> = ({
   return (
     <div className="config-viewer">
       <div className="config-viewer-header">
-        <h3>{title}</h3>
+        <h3>{title || t('config_viewer.default_title')}</h3>
         <div className="config-viewer-actions">
-          <button onClick={handleSearch} className="btn-icon" title="Search (Ctrl+F)">
+          <button onClick={handleSearch} className="btn-icon" title={t('config_viewer.search')}>
             🔍
           </button>
           <button
             onClick={toggleWordWrap}
             className="btn-icon"
-            title={wordWrap === 'on' ? 'Disable Word Wrap' : 'Enable Word Wrap'}
+            title={wordWrap === 'on' ? t('config_viewer.disable_word_wrap') : t('config_viewer.enable_word_wrap')}
             style={{ fontWeight: wordWrap === 'on' ? 'bold' : 'normal' }}
           >
             ⤸
           </button>
-          <button onClick={handleCopy} className="btn-icon" title="Copy to clipboard">
+          <button onClick={handleCopy} className="btn-icon" title={t('config_viewer.copy')}>
             📋
           </button>
-          <button onClick={handleDownload} className="btn-icon" title="Download">
+          <button onClick={handleDownload} className="btn-icon" title={t('config_viewer.download')}>
             ⬇️
           </button>
           {!readOnly && onSave && (
@@ -118,9 +120,9 @@ const ConfigViewer: React.FC<ConfigViewerProps> = ({
               onClick={handleSave}
               className="btn-primary"
               disabled={!isModified}
-              title="Save changes"
+              title={t('config_viewer.save_changes')}
             >
-              💾 Save
+              💾 {t('config_viewer.save')}
             </button>
           )}
         </div>
@@ -159,7 +161,7 @@ const ConfigViewer: React.FC<ConfigViewerProps> = ({
       </div>
       {isModified && (
         <div className="config-viewer-status">
-          ⚠️ Configuration has unsaved changes
+          ⚠️ {t('config_viewer.unsaved_changes')}
         </div>
       )}
     </div>
