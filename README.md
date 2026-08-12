@@ -211,11 +211,13 @@ Backend API: http://localhost:8000/api/v1/
 ```
 netvault-react/
 ├── backend/
-│   ├── accounts/           # Пользователи и аутентификация
-│   ├── devices/            # Управление устройствами
-│   ├── backups/            # Система резервного копирования
-│   ├── notifications/      # Уведомления
-│   ├── netvault/           # Главные настройки Django
+│   ├── accounts/           # Пользователи, аутентификация, SAML/LDAP
+│   ├── devices/            # Устройства, SSH/Telnet, SSRF/командные guard'ы
+│   ├── backups/            # Резервное копирование, retention, Celery-задачи
+│   ├── notifications/      # Email/Telegram уведомления
+│   ├── core/                # Общая инфраструктура: SystemSettings, dashboard,
+│   │                         # health checks, шифрование, distributed locks
+│   ├── netvault/           # Django-проект: settings.py, urls.py, celery.py, asgi/wsgi
 │   ├── manage.py
 │   ├── requirements.txt
 │   └── .env
@@ -285,22 +287,103 @@ npm test
 
 ## Production Deployment
 
-### Backend (systemd service)
+`install.sh` делает всё это автоматически и это рекомендуемый способ (см.
+"Быстрая установка" выше) — раздел ниже описывает, что именно он настраивает,
+на случай ручной установки или отладки конкретного сервиса.
 
-Создайте файл `/etc/systemd/system/netvault.service`:
+### Backend (systemd services)
 
+Приложение использует **ASGI (Daphne)**, а не WSGI/gunicorn — это обязательно,
+поскольку real-time логи бэкапов идут через Django Channels по WebSocket
+(`/ws/`), а WSGI-сервер их не обслужит. Помимо самого backend'а нужны ещё три
+сервиса — без Celery worker/beat запланированные бэкапы просто никогда не
+выполнятся.
+
+`/etc/systemd/system/netvault-backend.service`:
 ```ini
 [Unit]
-Description=NetVault Django Application
-After=network.target mariadb.service
+Description=NetVault Django Backend (ASGI with Daphne)
+After=network.target redis.service mariadb.service
 
 [Service]
-Type=notify
+Type=simple
 User=www-data
 Group=www-data
-WorkingDirectory=/opt/netvault/backend
-Environment="PATH=/opt/netvault/backend/venv/bin"
-ExecStart=/opt/netvault/backend/venv/bin/gunicorn netvault.wsgi:application --bind 0.0.0.0:8000 --workers 4
+WorkingDirectory=/opt/netvault
+Environment="PATH=/opt/netvault/venv/bin"
+ExecStart=/opt/netvault/venv/bin/daphne -b 0.0.0.0 -p 8000 netvault.asgi:application
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/systemd/system/netvault-celery-worker.service`:
+```ini
+[Unit]
+Description=NetVault Celery Worker
+After=network.target redis.service mariadb.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/netvault
+Environment="PATH=/opt/netvault/venv/bin"
+ExecStart=/opt/netvault/venv/bin/celery -A netvault worker --loglevel=info --concurrency=10
+ExecStop=/bin/kill -TERM $MAINPID
+TimeoutStopSec=300
+KillMode=mixed
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/systemd/system/netvault-celery-beat.service` (runs scheduled backups,
+retention policies, and stale-backup cleanup — see `netvault/celery.py`
+for the full schedule):
+```ini
+[Unit]
+Description=NetVault Celery Beat (Scheduler)
+After=network.target redis.service mariadb.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/netvault
+Environment="PATH=/opt/netvault/venv/bin"
+ExecStart=/opt/netvault/venv/bin/celery -A netvault beat --loglevel=info --scheduler django_celery_beat.schedulers:DatabaseScheduler
+ExecStop=/bin/kill -TERM $MAINPID
+TimeoutStopSec=30
+KillMode=mixed
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+`/etc/systemd/system/netvault-flower.service` (optional — Celery task
+monitoring UI, proxied at `/flower/` behind the same admin IP whitelist as
+`/admin/`):
+```ini
+[Unit]
+Description=NetVault Flower (Celery Monitoring)
+After=network.target redis.service netvault-celery-worker.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/netvault
+Environment="PATH=/opt/netvault/venv/bin"
+ExecStart=/opt/netvault/venv/bin/celery -A netvault flower --port=5555 --address=127.0.0.1
+Restart=always
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
@@ -308,37 +391,59 @@ WantedBy=multi-user.target
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable netvault
-sudo systemctl start netvault
+sudo systemctl enable --now netvault-backend netvault-celery-worker netvault-celery-beat netvault-flower
 ```
 
-### Frontend (nginx)
+### Frontend + nginx
 
 ```bash
 cd frontend
 npm run build
 
-# Копирование в nginx директорию
-sudo cp -r build/* /var/www/netvault/
+# install.sh serves directly from frontend_build — no separate /var/www copy needed
+sudo cp -r build/* /opt/netvault/frontend_build/
 ```
 
-Конфигурация nginx:
+Nginx (trimmed to the essentials — `install.sh` also adds gzip, static asset
+caching, security headers, and an IP whitelist on `/admin/` and `/flower/`):
 
 ```nginx
 server {
     listen 80;
     server_name your-domain.com;
 
-    location / {
-        root /var/www/netvault;
-        try_files $uri $uri/ /index.html;
-    }
+    root /opt/netvault/frontend_build;
+    index index.html;
 
     location /api/ {
-        proxy_pass http://localhost:8000;
+        proxy_pass http://127.0.0.1:8000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Real-time backup logs — needs the WebSocket upgrade headers, a plain
+    # proxy_pass like /api/ above is not enough for this location.
+    location /ws/ {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_read_timeout 86400;
+    }
+
+    location /static/ {
+        proxy_pass http://127.0.0.1:8000;
+    }
+
+    location /media/ {
+        alias /opt/netvault/media/;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
     }
 }
 ```
