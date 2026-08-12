@@ -1,9 +1,10 @@
+import ipaddress
+import re
+
 from rest_framework import serializers
 from .models import Vendor, DeviceType, Device
+from .connection import _never_a_device
 from core.utils import validate_csv_safe
-
-
-import re
 
 # Pattern for validating network commands (whitelist approach)
 SAFE_COMMAND_PATTERN = re.compile(r'^[a-zA-Z0-9\s\-_.:/@#|"\'=]+$')
@@ -223,6 +224,20 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+    def validate_ip_address(self, value):
+        """
+        Reject IP ranges that can never legitimately be a network device —
+        same check devices/connection.py's validate_target_host runs before
+        actually connecting (see _never_a_device's docstring for why it's
+        shared rather than duplicated). This is the fail-fast half of that
+        defense: catch it here with an immediate form error instead of only
+        discovering it the first time someone clicks "Test connection".
+        """
+        reason = _never_a_device(ipaddress.ip_address(value))
+        if reason:
+            raise serializers.ValidationError(f'{value} cannot be used as a device address: {reason}.')
+        return value
 
     def _validate_and_sanitize_data(self, validated_data):
         """

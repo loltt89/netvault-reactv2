@@ -1,7 +1,7 @@
 """
 Tests for devices app - Device, Vendor, DeviceType models
 """
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from rest_framework.test import APITestCase, APIClient
@@ -352,6 +352,26 @@ class DeviceAPITestCase(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(response.data['name'], 'New-Device')
+
+    def test_create_device_metadata_ip_rejected(self):
+        """SSRF fix, fail-fast half: creating a device pointed at the cloud
+        metadata range must be rejected at the API layer, not just at
+        connection time."""
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.post('/api/v1/devices/devices/', {
+            'name': 'Metadata-Device',
+            'ip_address': '169.254.169.254',
+            'vendor': self.vendor.id,
+            'device_type': self.device_type.id,
+            'username': 'admin',
+            'password': 'secret123',
+            'protocol': 'ssh',
+            'port': 22
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('ip_address', response.data)
 
     def test_create_device_viewer_forbidden(self):
         """Test creating device as viewer is forbidden"""
@@ -1486,6 +1506,56 @@ class TargetHostValidationTestCase(TestCase):
         with self.assertRaises(DeviceConnectionError) as ctx:
             validate_target_host('this-host-does-not-exist-12345.invalid')
         self.assertIn('resolve', str(ctx.exception).lower())
+
+    def test_validate_link_local_blocked_even_with_empty_allowlist(self):
+        """Cloud metadata (169.254.169.254) must be unreachable regardless
+        of ALLOWED_PRIVATE_NETWORKS — this is the SSRF-to-metadata fix."""
+        from devices.connection import validate_target_host, DeviceConnectionError
+
+        with self.assertRaises(DeviceConnectionError) as ctx:
+            validate_target_host('169.254.169.254')
+        self.assertIn('link-local', str(ctx.exception).lower())
+
+    def test_validate_link_local_blocked_even_with_allowlist_configured(self):
+        """A configured ALLOWED_PRIVATE_NETWORKS must not be able to
+        accidentally re-open the metadata range — it's not gated by that
+        setting at all, by design."""
+        import ipaddress
+        from devices.connection import validate_target_host, DeviceConnectionError
+
+        with override_settings(ALLOWED_PRIVATE_NETWORKS=[ipaddress.ip_network('0.0.0.0/0')]):
+            with self.assertRaises(DeviceConnectionError):
+                validate_target_host('169.254.169.254')
+
+    def test_validate_multicast_blocked(self):
+        from devices.connection import validate_target_host, DeviceConnectionError
+
+        with self.assertRaises(DeviceConnectionError) as ctx:
+            validate_target_host('224.0.0.1')
+        self.assertIn('multicast', str(ctx.exception).lower())
+
+    def test_validate_unspecified_blocked(self):
+        from devices.connection import validate_target_host, DeviceConnectionError
+
+        with self.assertRaises(DeviceConnectionError) as ctx:
+            validate_target_host('0.0.0.0')
+        self.assertIn('unspecified', str(ctx.exception).lower())
+
+    def test_validate_private_ip_allowed_by_default(self):
+        """The core use case — RFC1918 device addresses — must still work
+        with no ALLOWED_PRIVATE_NETWORKS configured."""
+        from devices.connection import validate_target_host
+
+        self.assertEqual(validate_target_host('10.0.0.1'), '10.0.0.1')
+
+    def test_validate_private_ip_restricted_by_allowlist(self):
+        import ipaddress
+        from devices.connection import validate_target_host, DeviceConnectionError
+
+        with override_settings(ALLOWED_PRIVATE_NETWORKS=[ipaddress.ip_network('10.0.0.0/8')]):
+            self.assertEqual(validate_target_host('10.1.2.3'), '10.1.2.3')
+            with self.assertRaises(DeviceConnectionError):
+                validate_target_host('192.168.1.1')
 
 
 class TCPPingTestCase(TestCase):

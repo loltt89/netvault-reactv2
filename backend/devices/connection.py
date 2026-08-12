@@ -165,6 +165,43 @@ if PARAMIKO_AVAILABLE:
             )
 
 
+def _never_a_device(ip) -> Optional[str]:
+    """
+    Categorize IP ranges that can never legitimately be a network device
+    NetVault is asked to SSH/Telnet into — independent of ALLOWED_PRIVATE_NETWORKS
+    configuration, independent of whether the address happens to be "private".
+
+    This exists as its own function (rather than being inlined into
+    validate_target_host) so devices/serializers.py can run the exact same
+    check at device-creation time, for fast feedback, without duplicating
+    the range list and risking the two silently drifting apart. The
+    connection-time check in validate_target_host is still what actually
+    protects against SSRF — this is belt-and-suspenders.
+
+    Returns a human-readable reason string if the IP should be rejected,
+    None if this function has no objection (ALLOWED_PRIVATE_NETWORKS may
+    still reject it in validate_target_host).
+    """
+    if ip.is_loopback:
+        return "loopback addresses are forbidden"
+    if ip.is_link_local:
+        # 169.254.0.0/16 and fe80::/10 — this is the range cloud metadata
+        # services live in (169.254.169.254 on AWS/GCP/Azure/OCI). Python's
+        # ipaddress module already marks link-local as is_private, so with
+        # ALLOWED_PRIVATE_NETWORKS left at its empty ("allow all private")
+        # default, this range was reachable by default before this check —
+        # a textbook SSRF-to-cloud-metadata primitive for any operator who
+        # can add a device. No legitimate network device lives here.
+        return "link-local addresses are forbidden (this range includes cloud metadata endpoints)"
+    if ip.is_multicast:
+        return "multicast addresses are forbidden"
+    if ip.is_unspecified:
+        return "the unspecified address is forbidden"
+    if ip.is_reserved:
+        return "reserved addresses are forbidden"
+    return None
+
+
 def validate_target_host(host: str) -> str:
     """
     Validate target host to prevent SSRF attacks
@@ -181,10 +218,9 @@ def validate_target_host(host: str) -> str:
         except socket.gaierror:
             raise DeviceConnectionError(f"Cannot resolve hostname: {host}")
 
-    if ip.is_loopback:
-        raise DeviceConnectionError(
-            f"Connection to loopback address {resolved_ip} is forbidden for security reasons."
-        )
+    reason = _never_a_device(ip)
+    if reason:
+        raise DeviceConnectionError(f"Connection to {resolved_ip} is forbidden: {reason}.")
 
     if ip.is_private and settings.ALLOWED_PRIVATE_NETWORKS:
         if not any(ip in network for network in settings.ALLOWED_PRIVATE_NETWORKS):

@@ -325,7 +325,19 @@ BACKUP_PARALLEL_WORKERS = int(os.getenv('BACKUP_PARALLEL_WORKERS', '5'))
 ALLOW_PUBLIC_REGISTRATION = os.getenv('ALLOW_PUBLIC_REGISTRATION', 'False') == 'True'
 
 # SSRF Protection - Allowed Private Network Ranges
-# Leave empty to allow all private IPs (default for backward compatibility)
+#
+# NetVault's entire purpose is SSHing into devices on private LANs, so
+# "allow all private IPs" is the correct default for this setting — unlike
+# most apps, private-range connections ARE the legitimate use case here.
+# Leaving this empty does NOT mean unrestricted, though: devices/connection.py's
+# validate_target_host() unconditionally rejects loopback, link-local
+# (includes 169.254.169.254 cloud metadata), multicast, unspecified, and
+# reserved addresses regardless of this setting — those are never a real
+# device, in any deployment, so there's no legitimate reason to make them
+# configurable. This setting exists for operators who want to further
+# scope "private" down to their own known device subnets (e.g. to stop an
+# operator-role user from pointing a "device" at other internal
+# private-range infrastructure that isn't a network device at all).
 # Format: comma-separated CIDR notation, e.g., "192.168.0.0/16,10.10.0.0/16"
 ALLOWED_PRIVATE_NETWORKS = os.getenv('ALLOWED_PRIVATE_NETWORKS', '').strip()
 if ALLOWED_PRIVATE_NETWORKS:
