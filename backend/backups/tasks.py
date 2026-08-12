@@ -8,7 +8,7 @@ from django.db.models import F
 from datetime import timedelta
 from devices.models import Device
 from devices.connection import backup_device_config
-from .models import Backup, BackupSchedule
+from .models import Backup, BackupSchedule, BackupRetentionPolicy
 from core.redis_lock import DeviceLock
 import logging
 
@@ -412,6 +412,119 @@ def cleanup_old_backups(retention_days: int = None):
     logger.info(f"Deleted {count} old backups")
 
     return {'success': True, 'deleted_count': count}
+
+
+def _backups_outside_retention(backups, keep_last_n, keep_daily, keep_weekly, keep_monthly):
+    """
+    Grandfather-father-son retention: given a device's successful backups
+    ordered newest-first, return the ones that fall outside the policy's
+    keep rules (i.e. the ones to delete).
+
+    - The most recent `keep_last_n` are always kept, regardless of age.
+    - Of what's left, keep at most one per calendar day for the next
+      `keep_daily` days.
+    - Then at most one per ISO week for the next `keep_weekly` weeks.
+    - Then at most one per calendar month for the next `keep_monthly`
+      months.
+    - Anything older than every bucket above is deleted.
+    """
+    backups = list(backups)
+    keep_ids = {b.id for b in backups[:keep_last_n]}
+
+    now = timezone.now()
+    daily_cutoff = now - timedelta(days=keep_daily)
+    weekly_cutoff = daily_cutoff - timedelta(weeks=keep_weekly)
+    # Months don't have a fixed length — 31-day buckets slightly
+    # overestimate a month, which only errs toward keeping one extra
+    # backup at the boundary, never toward deleting one that should
+    # have been kept.
+    monthly_cutoff = weekly_cutoff - timedelta(days=keep_monthly * 31)
+
+    seen_days, seen_weeks, seen_months = set(), set(), set()
+
+    for backup in backups[keep_last_n:]:
+        ts = backup.created_at
+        if ts >= daily_cutoff:
+            bucket, seen = ts.date(), seen_days
+        elif ts >= weekly_cutoff:
+            iso = ts.isocalendar()
+            bucket, seen = (iso[0], iso[1]), seen_weeks
+        elif ts >= monthly_cutoff:
+            bucket, seen = (ts.year, ts.month), seen_months
+        else:
+            continue  # older than every bucket — falls through to delete
+
+        if bucket not in seen:
+            seen.add(bucket)
+            keep_ids.add(backup.id)
+
+    return [b for b in backups if b.id not in keep_ids]
+
+
+def apply_retention_policy(policy, dry_run=False):
+    """
+    Apply a BackupRetentionPolicy's keep_last_n/keep_daily/keep_weekly/
+    keep_monthly rules, per device, deleting whatever falls outside them.
+
+    Only `status='success'` backups are subject to keep/delete decisions —
+    failed/partial/pending/running rows aren't real config snapshots to
+    retain and are left alone here (they're covered, if at all, by the
+    separate age-based cleanup_old_backups task).
+
+    policy.devices with no entries means the policy isn't scoped to
+    specific devices — treated as applying to every device, which is the
+    more useful default for a "default" retention policy than silently
+    matching nothing.
+
+    Returns a dict of what happened; deletion only actually occurs when
+    dry_run is False.
+    """
+    devices = policy.devices.all()
+    if not devices.exists():
+        devices = Device.objects.all()
+
+    total_deleted = 0
+    total_kept = 0
+
+    for device in devices:
+        backups = list(
+            Backup.objects.filter(device=device, status='success').order_by('-created_at')
+        )
+        to_delete = _backups_outside_retention(
+            backups, policy.keep_last_n, policy.keep_daily, policy.keep_weekly, policy.keep_monthly
+        )
+        total_kept += len(backups) - len(to_delete)
+        total_deleted += len(to_delete)
+
+        if not dry_run and to_delete:
+            Backup.objects.filter(id__in=[b.id for b in to_delete]).delete()
+
+    return {
+        'devices_processed': devices.count(),
+        'deleted_count': total_deleted,
+        'kept_count': total_kept,
+    }
+
+
+@shared_task
+def apply_all_retention_policies():
+    """
+    Periodic task: apply every active, auto_delete-enabled
+    BackupRetentionPolicy. Manually triggering a single policy (the
+    "Apply Now" button) goes through apply_retention_policy() directly
+    from the view instead — auto_delete only gates this unattended,
+    scheduled path, not an explicit admin action.
+    """
+    results = {}
+    for policy in BackupRetentionPolicy.objects.filter(is_active=True, auto_delete=True):
+        result = apply_retention_policy(policy, dry_run=False)
+        results[policy.name] = result
+        logger.info(
+            f"Retention policy '{policy.name}' auto-applied: deleted {result['deleted_count']}, "
+            f"kept {result['kept_count']} across {result['devices_processed']} device(s)"
+        )
+
+    return {'success': True, 'policies_applied': len(results), 'results': results}
 
 
 @shared_task

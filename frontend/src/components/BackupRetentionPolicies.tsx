@@ -115,11 +115,16 @@ const BackupRetentionPoliciesComponent: React.FC = () => {
 
   const handleApplyNow = async (policy: RetentionPolicy) => {
     try {
-      await apiService.retentionPolicies.applyNow(policy.id);
-      toast.success(t('retention.policy_applied'));
+      const result = await apiService.retentionPolicies.applyNow(policy.id);
+      toast.success(t('retention.policy_applied_detail', {
+        deleted: result.deleted_count,
+        kept: result.kept_count,
+        devices: result.devices_processed,
+      }));
+      loadPolicies();
     } catch (error) {
       logger.error('Error applying retention policy:', error);
-      toast.error(t('retention.failed_apply'));
+      toast.error(extractErrorMessage(error, t('retention.failed_apply')));
     }
   };
 

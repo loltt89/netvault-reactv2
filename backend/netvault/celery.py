@@ -26,6 +26,10 @@ app.conf.beat_schedule = {
         'task': 'backups.tasks.cleanup_old_backups',
         'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM
     },
+    'apply-retention-policies': {
+        'task': 'backups.tasks.apply_all_retention_policies',
+        'schedule': crontab(hour=3, minute=0),  # Daily at 3 AM, after the cleanup above
+    },
 }
 
 app.conf.timezone = 'UTC'

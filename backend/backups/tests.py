@@ -625,6 +625,199 @@ class BackupRetentionPolicyAPITestCase(APITestCase):
         })
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_200_OK])
 
+    def test_apply_now_requires_admin(self):
+        """apply_now actually deletes data now — must be admin-only, like
+        deleting an individual backup already is via CanManageBackups."""
+        User = get_user_model()
+        operator = User.objects.create_user(
+            email='ret_operator@example.com', username='retoperator',
+            password='TestPass123!', role='operator'
+        )
+        policy = BackupRetentionPolicy.objects.create(name='Op Policy', keep_last_n=5)
+
+        client = APIClient()
+        client.force_authenticate(user=operator)
+        response = client.post(f'/api/v1/backups/retention-policies/{policy.id}/apply_now/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_apply_now_actually_deletes(self):
+        """The fix: this used to be a stub that returned success without
+        doing anything. Now it must actually apply the policy's rules."""
+        vendor = Vendor.objects.create(name='Cisco', slug='cisco-apply-now')
+        device_type = DeviceType.objects.create(name='Router', slug='router-apply-now')
+        device = Device.objects.create(
+            name='ApplyNow-Device', ip_address='10.0.9.50', vendor=vendor,
+            device_type=device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin,
+        )
+
+        now = timezone.now()
+        for i in range(10):
+            b = Backup.objects.create(
+                device=device, status='success', success=True,
+                configuration_encrypted=encrypt_data('config'),
+                configuration_hash=f'hash{i}',
+            )
+            Backup.objects.filter(id=b.id).update(created_at=now - timedelta(days=i * 60))
+
+        policy = BackupRetentionPolicy.objects.create(
+            name='Apply-Now Policy', keep_last_n=2, keep_daily=0, keep_weekly=0, keep_monthly=0,
+        )
+
+        response = self.client.post(f'/api/v1/backups/retention-policies/{policy.id}/apply_now/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['deleted_count'], 8)
+        self.assertEqual(response.data['kept_count'], 2)
+        self.assertEqual(Backup.objects.filter(device=device).count(), 2)
+
+
+class RetentionPolicyApplicationTestCase(TestCase):
+    """Tests for the GFS retention algorithm itself
+    (_backups_outside_retention / apply_retention_policy) — the fix for
+    BackupRetentionPolicy.apply_now being a no-op stub that never read
+    keep_last_n/keep_daily/keep_weekly/keep_monthly at all.
+    """
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='gfs@example.com', username='gfsuser', password='TestPass123!'
+        )
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-gfs')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-gfs')
+        self.device = Device.objects.create(
+            name='GFS-Device', ip_address='10.0.9.60', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.user,
+        )
+
+    def _make_backup(self, days_ago, status='success'):
+        b = Backup.objects.create(
+            device=self.device, status=status, success=(status == 'success'),
+            configuration_encrypted=encrypt_data('config'),
+            configuration_hash=f'hash-{days_ago}-{status}',
+        )
+        Backup.objects.filter(id=b.id).update(created_at=timezone.now() - timedelta(days=days_ago))
+        return Backup.objects.get(id=b.id)
+
+    def test_keeps_last_n_regardless_of_age(self):
+        from backups.tasks import apply_retention_policy
+
+        for days in [0, 1, 400, 500]:
+            self._make_backup(days)
+
+        policy = BackupRetentionPolicy.objects.create(
+            name='LastN', keep_last_n=2, keep_daily=0, keep_weekly=0, keep_monthly=0,
+        )
+        result = apply_retention_policy(policy, dry_run=False)
+        self.assertEqual(result['deleted_count'], 2)
+        self.assertEqual(result['kept_count'], 2)
+        remaining_ages = sorted(
+            (timezone.now() - b.created_at).days for b in Backup.objects.filter(device=self.device)
+        )
+        self.assertEqual(remaining_ages, [0, 1])
+
+    def test_only_one_kept_per_day_in_daily_window(self):
+        from backups.tasks import apply_retention_policy
+
+        # Two backups on "day 10" (a few hours apart) inside the daily window.
+        self._make_backup(10)
+        b2 = self._make_backup(10)
+        Backup.objects.filter(id=b2.id).update(created_at=timezone.now() - timedelta(days=10, hours=5))
+
+        policy = BackupRetentionPolicy.objects.create(
+            name='Daily', keep_last_n=0, keep_daily=30, keep_weekly=0, keep_monthly=0,
+        )
+        result = apply_retention_policy(policy, dry_run=False)
+        self.assertEqual(result['kept_count'], 1)
+        self.assertEqual(result['deleted_count'], 1)
+
+    def test_backup_older_than_every_bucket_is_deleted(self):
+        from backups.tasks import apply_retention_policy
+
+        self._make_backup(days_ago=1000)  # far older than any keep window
+
+        policy = BackupRetentionPolicy.objects.create(
+            name='Short', keep_last_n=0, keep_daily=7, keep_weekly=4, keep_monthly=1,
+        )
+        result = apply_retention_policy(policy, dry_run=False)
+        self.assertEqual(result['deleted_count'], 1)
+        self.assertEqual(Backup.objects.count(), 0)
+
+    def test_dry_run_does_not_delete(self):
+        from backups.tasks import apply_retention_policy
+
+        self._make_backup(days_ago=1000)
+        policy = BackupRetentionPolicy.objects.create(
+            name='DryRun', keep_last_n=0, keep_daily=0, keep_weekly=0, keep_monthly=0,
+        )
+        result = apply_retention_policy(policy, dry_run=True)
+        self.assertEqual(result['deleted_count'], 1)  # reports what *would* be deleted
+        self.assertEqual(Backup.objects.count(), 1)  # but nothing actually removed
+
+    def test_only_successful_backups_are_subject_to_retention(self):
+        """Failed/partial/pending/running backups aren't config snapshots
+        to retain — they must be left alone by this, not silently deleted
+        as a side effect of a retention policy meant for successful ones."""
+        from backups.tasks import apply_retention_policy
+
+        self._make_backup(days_ago=1000, status='failed')
+        self._make_backup(days_ago=1000, status='partial')
+
+        policy = BackupRetentionPolicy.objects.create(
+            name='SuccessOnly', keep_last_n=0, keep_daily=0, keep_weekly=0, keep_monthly=0,
+        )
+        result = apply_retention_policy(policy, dry_run=False)
+        self.assertEqual(result['deleted_count'], 0)
+        self.assertEqual(Backup.objects.count(), 2)
+
+    def test_policy_with_no_devices_applies_to_all(self):
+        from backups.tasks import apply_retention_policy
+
+        self._make_backup(days_ago=1000)
+        other_device = Device.objects.create(
+            name='Other-GFS-Device', ip_address='10.0.9.61', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.user,
+        )
+        b = Backup.objects.create(
+            device=other_device, status='success', success=True,
+            configuration_encrypted=encrypt_data('config'), configuration_hash='other-hash',
+        )
+        Backup.objects.filter(id=b.id).update(created_at=timezone.now() - timedelta(days=1000))
+
+        policy = BackupRetentionPolicy.objects.create(
+            name='Global', keep_last_n=0, keep_daily=0, keep_weekly=0, keep_monthly=0,
+        )
+        self.assertEqual(policy.devices.count(), 0)  # unscoped
+
+        result = apply_retention_policy(policy, dry_run=False)
+        self.assertEqual(result['deleted_count'], 2)  # both devices' backups affected
+
+    def test_policy_scoped_to_specific_device_ignores_others(self):
+        from backups.tasks import apply_retention_policy
+
+        self._make_backup(days_ago=1000)
+        other_device = Device.objects.create(
+            name='Unscoped-Device', ip_address='10.0.9.62', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.user,
+        )
+        b = Backup.objects.create(
+            device=other_device, status='success', success=True,
+            configuration_encrypted=encrypt_data('config'), configuration_hash='unscoped-hash',
+        )
+        Backup.objects.filter(id=b.id).update(created_at=timezone.now() - timedelta(days=1000))
+
+        policy = BackupRetentionPolicy.objects.create(
+            name='Scoped', keep_last_n=0, keep_daily=0, keep_weekly=0, keep_monthly=0,
+        )
+        policy.devices.add(self.device)
+
+        result = apply_retention_policy(policy, dry_run=False)
+        self.assertEqual(result['deleted_count'], 1)  # only self.device's backup
+        self.assertEqual(Backup.objects.filter(device=other_device).count(), 1)  # untouched
+
 
 class BackupTasksTestCase(TestCase):
     """Tests for Celery backup tasks"""

@@ -5,7 +5,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Count, Sum, Q
 from django.utils import timezone
-from accounts.permissions import CanManageBackups, CanManageDevices
+from accounts.permissions import CanManageBackups, CanManageDevices, IsAdministrator
+from accounts.models import AuditLog
 
 logger = logging.getLogger(__name__)
 from .models import Backup, BackupSchedule, BackupRetentionPolicy
@@ -485,14 +486,42 @@ class BackupRetentionPolicyViewSet(viewsets.ModelViewSet):
     ordering = ['name']
     filterset_fields = ['is_active', 'auto_delete']
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdministrator])
     def apply_now(self, request, pk=None):
-        """Apply retention policy immediately"""
+        """
+        Apply retention policy immediately — deletes successful backups
+        that fall outside its keep_last_n/keep_daily/keep_weekly/
+        keep_monthly rules, right now, for every device the policy covers.
+        Admin-only: unlike backup_now/restore, this actually deletes data,
+        matching CanManageBackups' existing admin-only restriction on
+        deleting individual backups (view.action='destroy').
+        """
         policy = self.get_object()
+        from .tasks import apply_retention_policy
+        result = apply_retention_policy(policy, dry_run=False)
 
-        # TODO: Implement actual retention policy application
+        AuditLog.objects.create(
+            user=request.user,
+            action='delete',
+            resource_type='BackupRetentionPolicy',
+            resource_id=policy.id,
+            resource_name=policy.name,
+            description=(
+                f"Applied retention policy: deleted {result['deleted_count']}, "
+                f"kept {result['kept_count']} across {result['devices_processed']} device(s)"
+            ),
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        )
+        logger.info(
+            f"Retention policy '{policy.name}' applied by {request.user.email}: "
+            f"deleted {result['deleted_count']}, kept {result['kept_count']} "
+            f"across {result['devices_processed']} device(s)"
+        )
+
         return Response({
             'success': True,
-            'message': f'Retention policy "{policy.name}" applied - Feature coming soon',
+            'message': f'Retention policy "{policy.name}" applied.',
             'policy_id': policy.id,
-        }, status=status.HTTP_202_ACCEPTED)
+            **result,
+        }, status=status.HTTP_200_OK)
