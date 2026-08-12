@@ -1,8 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
-import { unwrapList } from '../utils/unwrapList';
+import { extractErrorMessage } from '../utils/extractErrorMessage';
+import { useListResource } from '../hooks/useListResource';
+import { useModalForm } from '../hooks/useModalForm';
 import '../styles/Devices.css';
 
 interface RetentionPolicy {
@@ -25,84 +27,42 @@ interface Device {
   name: string;
 }
 
+const DEFAULT_FORM_DATA = {
+  name: '',
+  description: '',
+  keep_last_n: 10,
+  keep_daily: 7,
+  keep_weekly: 4,
+  keep_monthly: 12,
+  is_active: true,
+  auto_delete: false,
+  devices: [] as number[]
+};
+
 const BackupRetentionPoliciesComponent: React.FC = () => {
   const { t } = useTranslation();
-  const [policies, setPolicies] = useState<RetentionPolicy[]>([]);
-  const [devices, setDevices] = useState<Device[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingPolicy, setEditingPolicy] = useState<RetentionPolicy | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    keep_last_n: 10,
-    keep_daily: 7,
-    keep_weekly: 4,
-    keep_monthly: 12,
-    is_active: true,
-    auto_delete: false,
-    devices: [] as number[]
-  });
 
-  useEffect(() => {
-    loadPolicies();
-    loadDevices();
-  }, []);
+  const { items: policies, loading, reload: loadPolicies } = useListResource<RetentionPolicy>(
+    () => apiService.retentionPolicies.list(),
+    () => alert(t('common.error') + ': ' + t('retention.failed_load'))
+  );
 
-  const loadPolicies = async () => {
-    try {
-      setLoading(true);
-      const data = await apiService.retentionPolicies.list();
-      setPolicies(unwrapList<RetentionPolicy>(data));
-    } catch (error) {
-      logger.error('Error loading retention policies:', error);
-      alert(t('common.error') + ': ' + t('retention.failed_load'));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const { items: devices } = useListResource<Device>(() => apiService.devices.list());
 
-  const loadDevices = async () => {
-    try {
-      const data = await apiService.devices.list();
-      const devicesList = unwrapList<Device>(data);
-      setDevices(devicesList);
-    } catch (error) {
-      logger.error('Error loading devices:', error);
-    }
-  };
-
-  const handleCreate = () => {
-    setEditingPolicy(null);
-    setFormData({
-      name: '',
-      description: '',
-      keep_last_n: 10,
-      keep_daily: 7,
-      keep_weekly: 4,
-      keep_monthly: 12,
-      is_active: true,
-      auto_delete: false,
-      devices: []
-    });
-    setShowModal(true);
-  };
-
-  const handleEdit = (policy: RetentionPolicy) => {
-    setEditingPolicy(policy);
-    setFormData({
-      name: policy.name,
-      description: policy.description,
-      keep_last_n: policy.keep_last_n,
-      keep_daily: policy.keep_daily,
-      keep_weekly: policy.keep_weekly,
-      keep_monthly: policy.keep_monthly,
-      is_active: policy.is_active,
-      auto_delete: policy.auto_delete,
-      devices: policy.devices || []
-    });
-    setShowModal(true);
-  };
+  const {
+    showModal, editing: editingPolicy, formData, setFormData, openCreate: handleCreate,
+    openEdit: handleEdit, close: closeModal,
+  } = useModalForm<RetentionPolicy, typeof DEFAULT_FORM_DATA>(DEFAULT_FORM_DATA, (policy) => ({
+    name: policy.name,
+    description: policy.description,
+    keep_last_n: policy.keep_last_n,
+    keep_daily: policy.keep_daily,
+    keep_weekly: policy.keep_weekly,
+    keep_monthly: policy.keep_monthly,
+    is_active: policy.is_active,
+    auto_delete: policy.auto_delete,
+    devices: policy.devices || []
+  }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,11 +88,11 @@ const BackupRetentionPoliciesComponent: React.FC = () => {
         alert(t('common.success') + ': ' + t('retention.policy_created'));
       }
 
-      setShowModal(false);
+      closeModal();
       loadPolicies();
     } catch (error: any) {
       logger.error('Error saving retention policy:', error);
-      alert(t('common.error') + ': ' + (error.response?.data?.detail || t('retention.failed_save')));
+      alert(t('common.error') + ': ' + extractErrorMessage(error, t('retention.failed_save')));
     }
   };
 
@@ -264,11 +224,11 @@ const BackupRetentionPoliciesComponent: React.FC = () => {
 
       {/* Create/Edit Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={() => closeModal()}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
             <div className="modal-header">
               <h2>{editingPolicy ? t('retention.edit') : t('retention.create')}</h2>
-              <button onClick={() => setShowModal(false)} className="btn-close">✕</button>
+              <button onClick={() => closeModal()} className="btn-close">✕</button>
             </div>
 
             <form onSubmit={handleSubmit}>
@@ -411,7 +371,7 @@ const BackupRetentionPoliciesComponent: React.FC = () => {
               </div>
 
               <div className="modal-footer">
-                <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">
+                <button type="button" onClick={() => closeModal()} className="btn-secondary">
                   {t('common.cancel')}
                 </button>
                 <button type="submit" className="btn-primary">

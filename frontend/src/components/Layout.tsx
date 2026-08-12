@@ -1,21 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { useTheme } from '../contexts/ThemeContext';
 import { useTranslation } from 'react-i18next';
 import UserProfileModal from './UserProfileModal';
 import TasksTable from './TasksTable';
+import { useTaskSocket } from '../hooks/useTaskSocket';
 import logger from '../utils/logger';
 import '../styles/Layout.css';
 
 interface LayoutProps {
   children: React.ReactNode;
-}
-
-interface LogEntry {
-  type: string;
-  text: string;
-  device_name: string;
 }
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
@@ -24,17 +18,13 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const [showProfileModal, setShowProfileModal] = useState(false);
-
-  // ===== Real-time Terminal State =====
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [showTerminal, setShowTerminal] = useState(false);
   const [isTasksPanelMinimized, setIsTasksPanelMinimized] = useState(true); // Start minimized
-  const [isConnected, setIsConnected] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const autoCloseTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const reconnectAttemptsRef = useRef(0);
-  const MAX_RECONNECT_ATTEMPTS = 5;
+
+  // Real-time backup-log WebSocket connection (reconnect/backoff logic lives
+  // in the hook — see hooks/useTaskSocket.ts). Only isConnected is rendered
+  // today (passed to TasksTable); logs/showTerminal are tracked by the hook
+  // for whenever the terminal UI they were meant to feed gets built.
+  const { isConnected } = useTaskSocket();
 
   const handleLogout = async () => {
     try {
@@ -49,124 +39,9 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
     return location.pathname === path ? 'active' : '';
   };
 
-  // ===== WebSocket Connection Logic =====
-  useEffect(() => {
-    if (!user) return;
-
-    let isUnmounting = false; // Flag to prevent reconnections during unmount
-
-    const connectWebSocket = () => {
-      if (isUnmounting) return; // Don't reconnect if unmounting
-
-      try {
-        // Determine WebSocket URL (token will be sent via cookie, not URL)
-        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        // Use actual hostname and port (same as current page, nginx will proxy)
-        const wsHost = window.location.host; // includes port if non-standard
-        const wsUrl = `${wsProtocol}//${wsHost}/ws/backup_logs/`;
-
-        // Create WebSocket connection
-        const ws = new WebSocket(wsUrl);
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-          logger.debug('WebSocket connected');
-          setIsConnected(true);
-          reconnectAttemptsRef.current = 0; // Reset reconnect attempts
-        };
-
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data) {
-              // Add new log with limit of 100
-              setLogs((prevLogs) => {
-                const newLogs = [...prevLogs, data];
-                return newLogs.slice(-100); // Keep only last 100 logs
-              });
-
-              // Show terminal when log arrives
-              setShowTerminal(true);
-
-              // Reset auto-close timer (close terminal 30 sec after last log)
-              if (autoCloseTimeoutRef.current) {
-                clearTimeout(autoCloseTimeoutRef.current);
-              }
-              autoCloseTimeoutRef.current = setTimeout(() => {
-                setShowTerminal(false);
-                setLogs([]); // Clear logs when auto-closing
-              }, 30000); // 30 seconds
-            }
-          } catch (error) {
-            logger.error('Error parsing WebSocket message:', error);
-          }
-        };
-
-        ws.onclose = (event) => {
-          logger.debug('WebSocket disconnected', event.code, event.reason);
-          setIsConnected(false);
-          wsRef.current = null;
-
-          // Don't reconnect if component is unmounting
-          if (isUnmounting) return;
-
-          // Attempt to reconnect (with exponential backoff)
-          if (reconnectAttemptsRef.current < MAX_RECONNECT_ATTEMPTS) {
-            const delay = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 30000);
-            logger.debug(`Reconnecting in ${delay}ms... (attempt ${reconnectAttemptsRef.current + 1}/${MAX_RECONNECT_ATTEMPTS})`);
-
-            reconnectTimeoutRef.current = setTimeout(() => {
-              reconnectAttemptsRef.current++;
-              connectWebSocket();
-            }, delay);
-          } else {
-            logger.error('Max WebSocket reconnection attempts reached');
-          }
-        };
-
-        ws.onerror = (error) => {
-          logger.error('WebSocket error:', error);
-        };
-      } catch (error) {
-        logger.error('Failed to establish WebSocket connection:', error);
-      }
-    };
-
-    // Connect on mount
-    connectWebSocket();
-
-    // Cleanup on unmount
-    return () => {
-      isUnmounting = true; // Set flag to prevent reconnections
-
-      // Clear all timeouts
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      if (autoCloseTimeoutRef.current) {
-        clearTimeout(autoCloseTimeoutRef.current);
-      }
-
-      // Close WebSocket if it exists and is open/connecting
-      if (wsRef.current) {
-        const ws = wsRef.current;
-        // Only close if WebSocket is in CONNECTING or OPEN state
-        if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
-          ws.close();
-        }
-        wsRef.current = null;
-      }
-    };
-  }, [user?.id]); // Only reconnect when user ID changes, not on every user object update
-
   // Handle tasks panel minimize/maximize toggle
   const handleToggleTasksPanel = () => {
     setIsTasksPanelMinimized(!isTasksPanelMinimized);
-  };
-
-  // Handle log clear
-  const handleClearLogs = () => {
-    setLogs([]);
   };
 
   return (

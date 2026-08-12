@@ -1,69 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
-import { unwrapList } from '../utils/unwrapList';
+import { extractErrorMessage } from '../utils/extractErrorMessage';
+import { useListResource } from '../hooks/useListResource';
+import { useModalForm } from '../hooks/useModalForm';
 import { BackupSchedule } from '../types';
 import '../styles/Devices.css';
 
+const DEFAULT_FORM_DATA = {
+  name: '',
+  description: '',
+  frequency: 'daily',
+  run_time: '02:00',
+  run_days: '',
+  is_active: true
+};
+
 const BackupSchedulesComponent: React.FC = () => {
   const { t } = useTranslation();
-  const [schedules, setSchedules] = useState<BackupSchedule[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
-  const [editingSchedule, setEditingSchedule] = useState<BackupSchedule | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    frequency: 'daily',
-    run_time: '02:00',
-    run_days: '',
-    is_active: true
-  });
 
-  useEffect(() => {
-    loadSchedules();
-  }, []);
+  const { items: schedules, loading, reload: loadSchedules } = useListResource<BackupSchedule>(
+    () => apiService.backupSchedules.list(),
+    () => alert(t('common.error') + ': ' + t('schedules.failed_load'))
+  );
 
-  const loadSchedules = async () => {
-    try {
-      setLoading(true);
-      const data = await apiService.backupSchedules.list();
-      setSchedules(unwrapList<BackupSchedule>(data));
-    } catch (error) {
-      logger.error('Error loading schedules:', error);
-      alert(t('common.error') + ': ' + t('schedules.failed_load'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-
-  const handleCreate = () => {
-    setEditingSchedule(null);
-    setFormData({
-      name: '',
-      description: '',
-      frequency: 'daily',
-      run_time: '02:00',
-      run_days: '',
-      is_active: true
-    });
-    setShowModal(true);
-  };
-
-  const handleEdit = (schedule: BackupSchedule) => {
-    setEditingSchedule(schedule);
-    setFormData({
-      name: schedule.name,
-      description: schedule.description,
-      frequency: schedule.frequency,
-      run_time: schedule.run_time || '02:00',
-      run_days: schedule.run_days || '',
-      is_active: schedule.is_active
-    });
-    setShowModal(true);
-  };
+  const {
+    showModal, editing: editingSchedule, formData, setFormData, openCreate: handleCreate,
+    openEdit: handleEdit, close: closeModal,
+  } = useModalForm<BackupSchedule, typeof DEFAULT_FORM_DATA>(DEFAULT_FORM_DATA, (schedule) => ({
+    name: schedule.name,
+    description: schedule.description,
+    frequency: schedule.frequency,
+    run_time: schedule.run_time || '02:00',
+    run_days: schedule.run_days || '',
+    is_active: schedule.is_active
+  }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,11 +68,11 @@ const BackupSchedulesComponent: React.FC = () => {
         alert(t('common.success') + ': ' + t('schedules.schedule_created'));
       }
 
-      setShowModal(false);
+      closeModal();
       loadSchedules();
     } catch (error: any) {
       logger.error('Error saving schedule:', error);
-      alert(t('common.error') + ': ' + (error.response?.data?.detail || t('schedules.failed_save')));
+      alert(t('common.error') + ': ' + extractErrorMessage(error, t('schedules.failed_save')));
     }
   };
 
@@ -280,11 +252,11 @@ const BackupSchedulesComponent: React.FC = () => {
 
       {/* Create/Edit Modal */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={() => closeModal()}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
             <div className="modal-header">
               <h2>{editingSchedule ? t('schedules.edit') : t('schedules.create')}</h2>
-              <button onClick={() => setShowModal(false)} className="btn-close">✕</button>
+              <button onClick={() => closeModal()} className="btn-close">✕</button>
             </div>
 
             <form onSubmit={handleSubmit}>
@@ -384,7 +356,7 @@ const BackupSchedulesComponent: React.FC = () => {
               </div>
 
               <div className="modal-footer">
-                <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">
+                <button type="button" onClick={() => closeModal()} className="btn-secondary">
                   {t('common.cancel')}
                 </button>
                 <button type="submit" className="btn-primary">

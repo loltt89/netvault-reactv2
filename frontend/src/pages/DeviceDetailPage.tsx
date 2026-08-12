@@ -7,6 +7,7 @@ import { getConfigLanguage } from '../utils/configLanguage';
 import logger from '../utils/logger';
 import { unwrapList } from '../utils/unwrapList';
 import { extractErrorMessage } from '../utils/extractErrorMessage';
+import { usePolling } from '../hooks/usePolling';
 import { DeviceDetail, Backup } from '../types';
 import '../styles/Devices.css';
 
@@ -24,19 +25,6 @@ const DeviceDetailPage: React.FC = () => {
   const [compareBackup1, setCompareBackup1] = useState<Backup | null>(null);
   const [compareBackup2, setCompareBackup2] = useState<Backup | null>(null);
   const [diffContent, setDiffContent] = useState<string>('');
-
-  // Ref to store interval ID for cleanup
-  const pollIntervalRef = React.useRef<NodeJS.Timeout | null>(null);
-
-  // Cleanup interval on unmount
-  useEffect(() => {
-    return () => {
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      }
-    };
-  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -85,29 +73,17 @@ const DeviceDetailPage: React.FC = () => {
     }
   };
 
+  // Reload backups every 2s for up to 30s after triggering a manual backup,
+  // to catch it landing without the user having to refresh.
+  const { start: startBackupPolling } = usePolling(loadDeviceBackups, 2000, { maxAttempts: 15 });
+
   const handleBackupNow = async () => {
     if (!device) return;
 
     try {
       // Queue backup task - WebSocket in Layout will show real-time progress
       await apiService.devices.backupNow(device.id);
-
-      // Clear any existing poll interval
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-
-      // Reload backups every 2 seconds for up to 30 seconds to catch the new backup
-      let attempts = 0;
-      const maxAttempts = 15;
-      pollIntervalRef.current = setInterval(async () => {
-        attempts++;
-        await loadDeviceBackups();
-        if (attempts >= maxAttempts && pollIntervalRef.current) {
-          clearInterval(pollIntervalRef.current);
-          pollIntervalRef.current = null;
-        }
-      }, 2000);
+      startBackupPolling();
     } catch (error: any) {
       logger.error('Error initiating backup:', error);
       alert(t('common.error') + ': ' + extractErrorMessage(error, 'Failed to queue backup task'));

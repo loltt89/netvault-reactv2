@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import { unwrapList } from '../utils/unwrapList';
+import { usePolling } from '../hooks/usePolling';
 import './TasksTable.css';
 
 // Deliberately local, not imported from ../types: this mirrors
@@ -64,7 +65,6 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-  const tasksRef = useRef<Task[]>([]);
 
   const fetchTasks = useCallback(async () => {
     try {
@@ -89,7 +89,6 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
       const response = await apiService.backups.list(params);
       const newTasks = unwrapList<Task>(response);
       setTasks(newTasks);
-      tasksRef.current = newTasks;
 
       // Handle pagination
       if (response.count) {
@@ -102,20 +101,15 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
     }
   }, [page, statusFilter, sortField, sortOrder]);
 
+  // Poll every 1s (60 req/min = 3.6% of rate limit) so new/updated tasks show
+  // up without a manual refresh. Restarts whenever fetchTasks' own
+  // dependencies (page/filter/sort) change, same as the old effect did.
+  const { start: startPolling } = usePolling(fetchTasks, 1000);
+
   useEffect(() => {
     fetchTasks();
-
-    // Auto-refresh: faster if there are running tasks, slower if all completed
-    const interval = setInterval(() => {
-      const hasRunningTasks = tasksRef.current.some(t => t.status === 'running' || t.status === 'pending');
-
-      // Always refresh, but with different intervals based on task status
-      // This ensures new tasks are picked up even when table is empty/completed
-      fetchTasks();
-    }, 1000); // Check every 1 second (60 req/min = 3.6% of rate limit)
-
-    return () => clearInterval(interval);
-  }, [fetchTasks]);
+    startPolling();
+  }, [fetchTasks, startPolling]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
