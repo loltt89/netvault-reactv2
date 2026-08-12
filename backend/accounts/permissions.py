@@ -39,63 +39,52 @@ class RoleBasedPermission(permissions.BasePermission):
         return request.method in allowed_methods
 
 
+def _has_role(request, *roles):
+    """
+    Shared "authenticated, and either a superuser or holding one of these
+    roles" check. Pulled out because IsAdministrator/IsOperatorOrAdmin/
+    IsAuditorOrAdmin previously each hand-wrote this exact boilerplate
+    with only the role list differing.
+    """
+    return bool(
+        request.user and request.user.is_authenticated and
+        (request.user.is_superuser or request.user.role in roles)
+    )
+
+
 class IsAdministrator(permissions.BasePermission):
     """Only administrators can access"""
 
     def has_permission(self, request, view):
-        return (
-            request.user and
-            request.user.is_authenticated and
-            (request.user.role == 'administrator' or request.user.is_superuser)
-        )
+        return _has_role(request, 'administrator')
 
 
 class IsOperatorOrAdmin(permissions.BasePermission):
     """Operators and administrators can access"""
 
     def has_permission(self, request, view):
-        return (
-            request.user and
-            request.user.is_authenticated and
-            (request.user.role in ['operator', 'administrator'] or request.user.is_superuser)
-        )
+        return _has_role(request, 'operator', 'administrator')
 
 
 class IsAuditorOrAdmin(permissions.BasePermission):
     """Auditors and administrators can access"""
 
     def has_permission(self, request, view):
-        return (
-            request.user and
-            request.user.is_authenticated and
-            (request.user.role in ['auditor', 'administrator'] or request.user.is_superuser)
-        )
+        return _has_role(request, 'auditor', 'administrator')
 
 
-class CanManageDevices(permissions.BasePermission):
+class CanManageDevices(RoleBasedPermission):
     """
     Permission for device management
     - Administrator: Full access
-    - Operator: Can create, read, update, backup
-    - Viewer: Read-only
+    - Operator: Can create, read, update, backup (no DELETE)
+    - Viewer / Auditor: Read-only
+
+    This is exactly RoleBasedPermission's ROLE_PERMISSIONS matrix — kept
+    as its own class so call sites read "CanManageDevices" rather than
+    the generic name, but there's no bespoke logic here anymore.
     """
-
-    def has_permission(self, request, view):
-        if not request.user or not request.user.is_authenticated:
-            return False
-
-        if request.user.is_superuser or request.user.role == 'administrator':
-            return True
-
-        if request.user.role == 'operator':
-            # Operators can't delete devices
-            return request.method in ['GET', 'POST', 'PUT', 'PATCH']
-
-        if request.user.role in ['viewer', 'auditor']:
-            # View-only access
-            return request.method == 'GET'
-
-        return False
+    pass
 
 
 class CanManageBackups(permissions.BasePermission):
