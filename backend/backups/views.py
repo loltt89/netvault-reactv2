@@ -136,7 +136,7 @@ class BackupViewSet(viewsets.ModelViewSet):
             backup2 = Backup.objects.get(id=compare_id)
         except Backup.DoesNotExist:
             return Response(
-                {'error': 'Backup not found'},
+                {'detail': 'Backup not found'},
                 status=status.HTTP_404_NOT_FOUND
             )
 
@@ -228,7 +228,7 @@ class BackupViewSet(viewsets.ModelViewSet):
 
         if not backup_ids:
             return Response(
-                {'error': 'No backup IDs provided'},
+                {'detail': 'No backup IDs provided'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -237,7 +237,7 @@ class BackupViewSet(viewsets.ModelViewSet):
         max_backups = settings.BACKUP_MAX_EXPORT_COUNT
         if len(backup_ids) > max_backups:
             return Response(
-                {'error': f'Too many backups requested (max {max_backups})'},
+                {'detail': f'Too many backups requested (max {max_backups})'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -246,7 +246,7 @@ class BackupViewSet(viewsets.ModelViewSet):
 
         if not backups.exists():
             return Response(
-                {'error': 'No valid backups found'},
+                {'detail': 'No valid backups found'},
                 status=status.HTTP_404_NOT_FOUND
             )
 
@@ -455,7 +455,7 @@ class BackupScheduleViewSet(viewsets.ModelViewSet):
 
         if not device_ids:
             return Response(
-                {'error': 'No devices found for this schedule'},
+                {'detail': 'No devices found for this schedule'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
