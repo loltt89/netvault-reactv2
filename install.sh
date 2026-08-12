@@ -349,7 +349,7 @@ setup_python_env() {
     ./venv/bin/pip install -r requirements.txt
 
     # Setup netvault-ssh binary for SSH v1/v2 support
-    print_status "Setting up netvault-ssh..."
+    print_message "$BLUE" "Setting up netvault-ssh..."
     if [ -x "tools/netvault-ssh/netvault-ssh" ] && [ -f "tools/netvault-ssh/lib/libssh.so.4.4.4" ]; then
         # Pre-compiled binary with custom libssh exists - just set permissions
         chmod +x tools/netvault-ssh/netvault-ssh
