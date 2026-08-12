@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useTheme, ThemeName } from '../contexts/ThemeContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { QRCodeSVG } from 'qrcode.react';
 import apiService from '../services/api.service';
@@ -43,7 +43,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
     { code: 'kk', name: 'Қазақша', flag: '🇰🇿' },
   ];
 
-  const themes: { name: ThemeName; label: string; preview: string[] }[] = [
+  const themes: { name: Theme; label: string; preview: string[] }[] = [
     {
       name: 'neumorphism',
       label: t('themes.neumorphism'),
@@ -85,13 +85,13 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
     }
   };
 
-  const handleThemeChange = async (themeName: ThemeName) => {
+  const handleThemeChange = async (themeName: Theme) => {
     try {
       setSelectedTheme(themeName);
       setTheme(themeName);
 
       if (updateProfile) {
-        await updateProfile({ theme: themeName as Theme });
+        await updateProfile({ theme: themeName });
       }
     } catch (error) {
       logger.error('Error updating theme preference:', error);

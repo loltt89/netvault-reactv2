@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { Device } from '../types';
 import '../styles/Devices.css';
 
 interface ImportPreviewRow {
@@ -12,25 +13,6 @@ interface ImportPreviewRow {
   errors: string[];
   warnings: string[];
   valid: boolean;
-}
-
-interface Device {
-  id: number;
-  name: string;
-  ip_address: string;
-  description: string;
-  vendor: number;
-  vendor_name: string;
-  device_type: number;
-  device_type_name: string;
-  protocol: string;
-  port: number;
-  username: string;
-  location: string;
-  criticality: string;
-  status: string;
-  backup_enabled: boolean;
-  last_backup: string | null;
 }
 
 interface Vendor {

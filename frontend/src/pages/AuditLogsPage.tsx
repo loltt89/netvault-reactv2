@@ -3,21 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { AuditLog } from '../types';
 import '../styles/Devices.css';
-
-interface AuditLog {
-  id: number;
-  user: string;
-  action: string;
-  resource_type: string;
-  resource_id: number | null;
-  resource_name: string;
-  description: string;
-  ip_address: string;
-  timestamp: string;
-  success: boolean;
-  error_message: string;
-}
 
 const AuditLogsPage: React.FC = () => {
   const { t } = useTranslation();
@@ -212,7 +199,7 @@ const AuditLogsPage: React.FC = () => {
                     {new Date(log.timestamp).toLocaleString()}
                   </td>
                   <td style={{ padding: '1rem' }}>
-                    <strong>{log.user || t('auditLogs.system')}</strong>
+                    <strong>{log.user_email || t('auditLogs.system')}</strong>
                   </td>
                   <td style={{ padding: '1rem' }}>
                     <span style={{ color: getActionColor(log.action) }}>

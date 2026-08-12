@@ -6,16 +6,8 @@ import {
 } from 'recharts';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { DashboardStats } from '../types';
 import '../styles/Dashboard.css';
-
-interface DashboardStats {
-  total_devices: number;
-  active_devices: number;
-  total_backups: number;
-  successful_backups: number;
-  failed_backups: number;
-  last_24h_backups: number;
-}
 
 interface BackupTrendData {
   date: string;

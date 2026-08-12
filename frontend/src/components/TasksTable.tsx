@@ -4,6 +4,12 @@ import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import './TasksTable.css';
 
+// Deliberately local, not imported from ../types: this mirrors
+// BackupDetailSerializer's nested device shape exactly (see
+// types/index.ts's BackupDetail/BackupDeviceRef comments) but this
+// component's own Task type below doesn't match either Backup or
+// BackupDetail field-for-field, so reusing those would be misleading
+// rather than accurate.
 interface Device {
   id: number;
   name: string;

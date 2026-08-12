@@ -26,7 +26,11 @@ export type UserRole = 'administrator' | 'operator' | 'viewer' | 'auditor';
 
 export type Language = 'en' | 'ru' | 'kk';
 
-export type Theme = 'light' | 'dark_blue' | 'teal_light' | 'deep_dark';
+// Keep in sync with the theme classes defined in styles/themes.css —
+// this is the single source of truth for theme names, shared by the
+// User model's `theme` field and ThemeContext's runtime theme state
+// (previously two separate, incompatible enums bridged by an unsafe cast).
+export type Theme = 'industrial' | 'neumorphism' | 'isometric' | 'glassmorphism' | 'blueprint';
 
 export interface LoginCredentials {
   email: string;
@@ -76,15 +80,23 @@ export interface AuditLog {
 export type AuditAction = 'login' | 'logout' | 'create' | 'update' | 'delete' | 'backup' | 'restore' | 'download' | 'view';
 
 // Device Types
+//
+// The backend has two genuinely different device shapes, not one — matches
+// backend/devices/serializers.py::DeviceSerializer (list) vs
+// ::DeviceDetailSerializer (detail), which nest vendor/device_type
+// differently on purpose. Modeled as two types rather than one loose union,
+// so each page gets the shape it actually receives instead of `as any`.
+
+// List view — backend/devices/serializers.py::DeviceSerializer
 export interface Device {
   id: number;
   name: string;
   ip_address: string;
   description: string;
-  vendor: Vendor | number;
-  vendor_name?: string;
-  device_type: DeviceType | number;
-  device_type_name?: string;
+  vendor: number;
+  vendor_name: string;
+  device_type: number;
+  device_type_name: string;
   protocol: Protocol;
   port: number;
   username: string;
@@ -99,6 +111,45 @@ export interface Device {
   backup_schedule: string;
   created_at: string;
   updated_at: string;
+}
+
+// Detail view — backend/devices/serializers.py::DeviceDetailSerializer
+// (nested vendor/device_type objects instead of id + *_name pair, plus
+// custom_commands/backup_count/created_by_email which the list view omits)
+export interface DeviceDetail {
+  id: number;
+  name: string;
+  ip_address: string;
+  description: string;
+  vendor: Vendor;
+  device_type: DeviceType;
+  protocol: Protocol;
+  port: number;
+  username: string;
+  location: string;
+  tags: string[];
+  criticality: Criticality;
+  status: DeviceStatus;
+  last_seen: string | null;
+  last_backup: string | null;
+  backup_status: string;
+  backup_count: number;
+  backup_enabled: boolean;
+  backup_schedule: string;
+  custom_commands: string[];
+  created_at: string;
+  updated_at: string;
+  created_by_email: string | null;
+}
+
+// The nested device reference backend/backups/serializers.py::BackupSerializer
+// embeds via get_device() — deliberately not the same as Device/DeviceDetail
+// above, it's its own smaller shape.
+export interface BackupDeviceRef {
+  id: number;
+  name: string;
+  ip_address: string;
+  vendor: { id: number; name: string; slug: string } | null;
 }
 
 export interface Vendor {
@@ -127,11 +178,13 @@ export type Criticality = 'low' | 'medium' | 'high' | 'critical';
 
 export type DeviceStatus = 'online' | 'offline' | 'unknown';
 
-// Backup Types
+// Backup Types — matches backend/backups/serializers.py::BackupSerializer.
+// `device` is a nested BackupDeviceRef (a SerializerMethodField on the
+// backend), not a flat id — and there's no `output_log`/`triggered_by` in
+// the list serializer's fields, only `triggered_by_email`.
 export interface Backup {
   id: number;
-  device: number;
-  device_name?: string;
+  device: BackupDeviceRef | null;
   status: BackupStatus;
   size_bytes: number;
   started_at: string | null;
@@ -139,9 +192,8 @@ export interface Backup {
   duration_seconds: number | null;
   success: boolean;
   error_message: string;
-  output_log: string;
   backup_type: BackupType;
-  triggered_by: number | null;
+  triggered_by_email: string | null;
   created_at: string;
   has_changes: boolean;
   changes_summary: string;
@@ -151,20 +203,56 @@ export type BackupStatus = 'pending' | 'running' | 'success' | 'failed' | 'parti
 
 export type BackupType = 'manual' | 'scheduled' | 'automatic';
 
+// Single-backup fetch — backend/backups/serializers.py::BackupDetailSerializer.
+// Note `device` here is the *list-view* Device shape (nested DeviceSerializer),
+// not BackupDeviceRef — the backend genuinely uses a bigger nested object on
+// this endpoint than it does in the backup list.
+export interface BackupDetail {
+  id: number;
+  device: Device | null;
+  status: BackupStatus;
+  backup_type: BackupType;
+  size_bytes: number;
+  configuration_hash: string;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_seconds: number | null;
+  success: boolean;
+  error_message: string;
+  output_log: string;
+  has_changes: boolean;
+  changes_summary: string;
+  triggered_by_email: string | null;
+  created_at: string;
+  configuration: string | null;
+}
+
+export type ScheduleFrequency = 'hourly' | 'daily' | 'weekly' | 'monthly';
+
+// Matches backend/backups/serializers.py::BackupScheduleSerializer exactly.
+// (Previously this described a `device: number` + `schedule_expression: string`
+// shape that never existed on the backend — the actual model has always used
+// frequency/run_time/run_days against a devices M2M. That shape had drifted
+// into a locally-redeclared type in BackupSchedules.tsx instead; reconciled
+// here so there's one definition again.)
 export interface BackupSchedule {
   id: number;
-  device: number;
   name: string;
   description: string;
-  schedule_expression: string;
+  frequency: ScheduleFrequency;
+  run_time: string | null;
+  run_days: string;
+  devices: number[];
+  devices_count: number;
   is_active: boolean;
-  created_at: string;
-  updated_at: string;
   last_run: string | null;
   next_run: string | null;
   total_runs: number;
   successful_runs: number;
   failed_runs: number;
+  created_at: string;
+  updated_at: string;
+  created_by_email: string | null;
 }
 
 export interface BackupDiff {
@@ -213,15 +301,16 @@ export interface Notification {
 
 export type NotificationStatus = 'pending' | 'sent' | 'failed';
 
-// Dashboard Types
+// Dashboard Types — matches backend/core/dashboard_views.py::dashboard_statistics
+// exactly (field names are active_devices/inactive_devices, not
+// online_devices/offline_devices, and there is no total_storage field).
 export interface DashboardStats {
   total_devices: number;
-  online_devices: number;
-  offline_devices: number;
+  active_devices: number;
+  inactive_devices: number;
   total_backups: number;
   successful_backups: number;
   failed_backups: number;
-  total_storage: number;
   last_24h_backups: number;
 }
 

@@ -28,20 +28,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
   /**
-   * Apply user preferences (theme and language) after user is loaded
+   * Apply language preference once the user loads. Theme preference is
+   * applied by ThemeProvider itself (it reads `user` via useAuth() — see
+   * ThemeContext.tsx) rather than through a window event bridge.
    */
   useEffect(() => {
-    if (user) {
-      // Apply language preference
-      if (user.preferred_language && user.preferred_language !== i18n.language) {
-        i18n.changeLanguage(user.preferred_language);
-      }
-
-      // Apply theme preference
-      if (user.theme) {
-        // Dispatch custom event to notify ThemeContext
-        window.dispatchEvent(new CustomEvent('userThemeChange', { detail: user.theme }));
-      }
+    if (user?.preferred_language && user.preferred_language !== i18n.language) {
+      i18n.changeLanguage(user.preferred_language);
     }
   }, [user]);
 

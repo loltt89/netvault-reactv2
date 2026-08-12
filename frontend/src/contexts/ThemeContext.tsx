@@ -1,11 +1,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { Theme, ThemeContextType } from '../types';
+import { useAuth } from './AuthContext';
 
-export type ThemeName = 'industrial' | 'neumorphism' | 'isometric' | 'glassmorphism' | 'blueprint';
-
-interface ThemeContextType {
-  theme: ThemeName;
-  setTheme: (theme: ThemeName) => void;
-}
+const DEFAULT_THEME: Theme = 'industrial';
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
@@ -22,10 +19,15 @@ interface ThemeProviderProps {
 }
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
-  const [theme, setThemeState] = useState<ThemeName>(() => {
+  const [theme, setThemeState] = useState<Theme>(() => {
     const saved = localStorage.getItem('theme');
-    return (saved as ThemeName) || 'industrial';
+    return (saved as Theme) || DEFAULT_THEME;
   });
+
+  // ThemeProvider is mounted inside AuthProvider (see index.tsx) specifically
+  // so it can read the user's saved preference directly via context — no
+  // window CustomEvent bridge needed between the two.
+  const { user } = useAuth();
 
   useEffect(() => {
     // Remove all theme classes
@@ -36,20 +38,18 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     localStorage.setItem('theme', theme);
   }, [theme]);
 
-  // Listen for user theme changes from AuthContext
+  // Sync to the authenticated user's saved theme preference once it loads
   useEffect(() => {
-    const handleUserThemeChange = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      if (customEvent.detail) {
-        setThemeState(customEvent.detail as ThemeName);
-      }
-    };
+    if (user?.theme && user.theme !== theme) {
+      setThemeState(user.theme);
+    }
+    // Only re-sync when the user (or their saved preference) changes —
+    // `theme` itself is intentionally excluded so a manual setTheme() call
+    // below isn't immediately overwritten by this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.theme]);
 
-    window.addEventListener('userThemeChange', handleUserThemeChange);
-    return () => window.removeEventListener('userThemeChange', handleUserThemeChange);
-  }, []);
-
-  const setTheme = (newTheme: ThemeName) => {
+  const setTheme = (newTheme: Theme) => {
     setThemeState(newTheme);
   };
 

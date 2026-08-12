@@ -4,19 +4,8 @@ import apiService from '../services/api.service';
 import ConfigViewer from '../components/ConfigViewer';
 import { getConfigLanguage } from '../utils/configLanguage';
 import logger from '../utils/logger';
+import { Backup } from '../types';
 import '../styles/Backups.css';
-
-interface Backup {
-  id: number;
-  device: any;
-  status: string;
-  created_at: string;
-  size_bytes: number;
-  duration_seconds: number;
-  success: boolean;
-  has_changes: boolean;
-  backup_type: string;
-}
 
 interface BackupGroup {
   group: string;
@@ -166,7 +155,7 @@ const BackupsPage: React.FC = () => {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${backup.device.name}_${backup.created_at}.txt`;
+      a.download = `${backup.device?.name || 'unknown-device'}_${backup.created_at}.txt`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -358,12 +347,12 @@ const BackupsPage: React.FC = () => {
           <button onClick={() => setShowViewer(false)} className="btn-back">
             ← {t('common.close')}
           </button>
-          <h1>{selectedBackup.device.name} - {new Date(selectedBackup.created_at).toLocaleString()}</h1>
+          <h1>{selectedBackup.device?.name || t('devices.unknown_device')} - {new Date(selectedBackup.created_at).toLocaleString()}</h1>
         </div>
         <ConfigViewer
           config={configContent}
-          language={getConfigLanguage(selectedBackup.device.vendor.slug)}
-          title={`${t('backups.view_config')} - ${selectedBackup.device.name}`}
+          language={getConfigLanguage(selectedBackup.device?.vendor?.slug || '')}
+          title={`${t('backups.view_config')} - ${selectedBackup.device?.name || t('devices.unknown_device')}`}
         />
       </div>
     );

@@ -2,22 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { BackupSchedule } from '../types';
 import '../styles/Devices.css';
-
-interface BackupSchedule {
-  id: number;
-  name: string;
-  description: string;
-  frequency: string;
-  run_time: string | null;
-  run_days: string;
-  is_active: boolean;
-  last_run: string | null;
-  next_run: string | null;
-  total_runs: number;
-  successful_runs: number;
-  failed_runs: number;
-}
 
 const BackupSchedulesComponent: React.FC = () => {
   const { t } = useTranslation();

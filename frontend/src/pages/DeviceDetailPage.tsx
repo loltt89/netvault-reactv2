@@ -5,39 +5,8 @@ import apiService from '../services/api.service';
 import ConfigViewer from '../components/ConfigViewer';
 import { getConfigLanguage } from '../utils/configLanguage';
 import logger from '../utils/logger';
+import { DeviceDetail, Backup } from '../types';
 import '../styles/Devices.css';
-
-interface DeviceDetail {
-  id: number;
-  name: string;
-  ip_address: string;
-  description: string;
-  vendor: any;
-  device_type: any;
-  protocol: string;
-  port: number;
-  username: string;
-  location: string;
-  criticality: string;
-  status: string;
-  backup_enabled: boolean;
-  last_backup: string | null;
-  backup_count: number;
-  created_at: string;
-}
-
-interface Backup {
-  id: number;
-  device: any;
-  status: string;
-  created_at: string;
-  size_bytes: number;
-  duration_seconds: number;
-  success: boolean;
-  has_changes: boolean;
-  backup_type: string;
-  changes_summary: string;
-}
 
 const DeviceDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();

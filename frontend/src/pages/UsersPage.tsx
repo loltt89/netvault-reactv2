@@ -3,21 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { User } from '../types';
 import '../styles/Devices.css';
-
-interface User {
-  id: number;
-  email: string;
-  username: string;
-  first_name: string;
-  last_name: string;
-  role: string;
-  is_active: boolean;
-  is_ldap_user: boolean;
-  two_factor_enabled: boolean;
-  date_joined: string;
-  last_login: string | null;
-}
 
 const UsersPage: React.FC = () => {
   const { t } = useTranslation();
