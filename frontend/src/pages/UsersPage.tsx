@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { unwrapList } from '../utils/unwrapList';
 import { User } from '../types';
 import '../styles/Devices.css';
 
@@ -36,8 +37,7 @@ const UsersPage: React.FC = () => {
     try {
       setLoading(true);
       const data = await apiService.users.list();
-      // Handle both paginated and non-paginated responses
-      setUsers(Array.isArray(data) ? data : data.results || []);
+      setUsers(unwrapList<User>(data));
     } catch (error) {
       logger.error('Error loading users:', error);
       alert(t('common.error') + ': ' + t('users.failed_load'));

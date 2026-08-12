@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { unwrapList } from '../utils/unwrapList';
 import { BackupSchedule } from '../types';
 import '../styles/Devices.css';
 
@@ -28,7 +29,7 @@ const BackupSchedulesComponent: React.FC = () => {
     try {
       setLoading(true);
       const data = await apiService.backupSchedules.list();
-      setSchedules(Array.isArray(data) ? data : data.results || []);
+      setSchedules(unwrapList<BackupSchedule>(data));
     } catch (error) {
       logger.error('Error loading schedules:', error);
       alert(t('common.error') + ': ' + t('schedules.failed_load'));

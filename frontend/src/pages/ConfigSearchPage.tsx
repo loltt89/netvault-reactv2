@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import apiService from '../services/api.service';
+import { extractErrorMessage } from '../utils/extractErrorMessage';
 import '../styles/ConfigSearch.css';
 
 interface SearchMatch {
@@ -59,7 +60,7 @@ const ConfigSearchPage: React.FC = () => {
       setResults(data);
       setExpandedDevices(new Set());
     } catch (err: any) {
-      setError(err.response?.data?.error || t('config_search.search_error'));
+      setError(extractErrorMessage(err, t('config_search.search_error')));
     } finally {
       setLoading(false);
     }

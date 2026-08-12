@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { extractErrorMessage } from '../utils/extractErrorMessage';
+import { unwrapList } from '../utils/unwrapList';
+import { Vendor, DeviceType } from '../types';
 
 interface SystemSettings {
   email: {
@@ -201,7 +204,7 @@ const SystemSettings: React.FC = () => {
       const result = await apiService.systemSettings.testEmail(testEmail);
       alert(result.message);
     } catch (error: any) {
-      alert(error.response?.data?.error || t('systemSettings.email.failed_test'));
+      alert(extractErrorMessage(error, t('systemSettings.email.failed_test')));
     }
   };
 
@@ -227,7 +230,7 @@ const SystemSettings: React.FC = () => {
       );
       alert(result.message);
     } catch (error: any) {
-      alert(error.response?.data?.error || t('systemSettings.telegram.failed_test'));
+      alert(extractErrorMessage(error, t('systemSettings.telegram.failed_test')));
     }
   };
 
@@ -290,7 +293,7 @@ const SystemSettings: React.FC = () => {
   const loadVendors = async () => {
     try {
       const response = await apiService.vendors.list();
-      const vendorsList = Array.isArray(response) ? response : response.results || [];
+      const vendorsList = unwrapList<Vendor>(response);
       setVendors(vendorsList);
     } catch (error) {
       logger.error('Error loading vendors:', error);
@@ -392,7 +395,7 @@ const SystemSettings: React.FC = () => {
   const loadDeviceTypes = async () => {
     try {
       const response = await apiService.deviceTypes.list();
-      const typesList = Array.isArray(response) ? response : response.results || [];
+      const typesList = unwrapList<DeviceType>(response);
       setDeviceTypes(typesList);
     } catch (error) {
       logger.error('Error loading device types:', error);
@@ -415,7 +418,7 @@ const SystemSettings: React.FC = () => {
       alert(t('systemSettings.saml.saved'));
     } catch (error: any) {
       logger.error('Error saving SAML settings:', error);
-      alert(error.response?.data?.error || t('systemSettings.saml.failed'));
+      alert(extractErrorMessage(error, t('systemSettings.saml.failed')));
     } finally {
       setSaving(false);
     }

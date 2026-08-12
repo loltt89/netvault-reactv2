@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { unwrapList } from '../utils/unwrapList';
 import '../styles/Devices.css';
 
 interface RetentionPolicy {
@@ -52,7 +53,7 @@ const BackupRetentionPoliciesComponent: React.FC = () => {
     try {
       setLoading(true);
       const data = await apiService.retentionPolicies.list();
-      setPolicies(Array.isArray(data) ? data : data.results || []);
+      setPolicies(unwrapList<RetentionPolicy>(data));
     } catch (error) {
       logger.error('Error loading retention policies:', error);
       alert(t('common.error') + ': ' + t('retention.failed_load'));
@@ -64,7 +65,7 @@ const BackupRetentionPoliciesComponent: React.FC = () => {
   const loadDevices = async () => {
     try {
       const data = await apiService.devices.list();
-      const devicesList = Array.isArray(data) ? data : data.results || [];
+      const devicesList = unwrapList<Device>(data);
       setDevices(devicesList);
     } catch (error) {
       logger.error('Error loading devices:', error);

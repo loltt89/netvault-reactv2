@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { extractErrorMessage } from '../utils/extractErrorMessage';
+import { unwrapList } from '../utils/unwrapList';
 import { Device } from '../types';
 import '../styles/Devices.css';
 
@@ -173,7 +175,7 @@ const DevicesListPage: React.FC = () => {
   const loadVendors = async () => {
     try {
       const response = await apiService.vendors.list();
-      const vendorsList = Array.isArray(response) ? response : response.results || [];
+      const vendorsList = unwrapList<Vendor>(response);
       setVendors(vendorsList);
     } catch (error) {
       logger.error('Error loading vendors:', error);
@@ -183,7 +185,7 @@ const DevicesListPage: React.FC = () => {
   const loadDeviceTypes = async () => {
     try {
       const response = await apiService.deviceTypes.list();
-      const typesList = Array.isArray(response) ? response : response.results || [];
+      const typesList = unwrapList<DeviceType>(response);
       setDeviceTypes(typesList);
     } catch (error) {
       logger.error('Error loading device types:', error);
@@ -357,7 +359,7 @@ const DevicesListPage: React.FC = () => {
       const preview = await apiService.devices.csvPreview(file);
       setImportPreview(preview);
     } catch (error: any) {
-      alert(error.response?.data?.error || t('devices.import.preview_error'));
+      alert(extractErrorMessage(error, t('devices.import.preview_error')));
     } finally {
       setImportLoading(false);
     }
@@ -374,7 +376,7 @@ const DevicesListPage: React.FC = () => {
         loadDevices();
       }
     } catch (error: any) {
-      alert(error.response?.data?.error || t('devices.import.import_error'));
+      alert(extractErrorMessage(error, t('devices.import.import_error')));
     } finally {
       setImportLoading(false);
     }
@@ -526,7 +528,7 @@ const DevicesListPage: React.FC = () => {
       // No alert - logs will appear in TaskTerminal
     } catch (error: any) {
       logger.error('Error initiating backup:', error);
-      alert(t('common.error') + ': ' + (error.response?.data?.error || 'Failed to queue backup task'));
+      alert(t('common.error') + ': ' + extractErrorMessage(error, 'Failed to queue backup task'));
     }
   };
 

@@ -5,6 +5,8 @@ import apiService from '../services/api.service';
 import ConfigViewer from '../components/ConfigViewer';
 import { getConfigLanguage } from '../utils/configLanguage';
 import logger from '../utils/logger';
+import { unwrapList } from '../utils/unwrapList';
+import { extractErrorMessage } from '../utils/extractErrorMessage';
 import { DeviceDetail, Backup } from '../types';
 import '../styles/Devices.css';
 
@@ -49,7 +51,7 @@ const DeviceDetailPage: React.FC = () => {
             setDevice(deviceData);
             // Load backups separately
             const response = await apiService.backups.list({ device: id, ordering: '-created_at' });
-            const backupsList = Array.isArray(response) ? response : response.results || [];
+            const backupsList = unwrapList<Backup>(response);
             if (isMounted) setBackups(backupsList);
           }
         } catch (error) {
@@ -76,7 +78,7 @@ const DeviceDetailPage: React.FC = () => {
         device: id,
         ordering: '-created_at'
       });
-      const backupsList = Array.isArray(response) ? response : response.results || [];
+      const backupsList = unwrapList<Backup>(response);
       setBackups(backupsList);
     } catch (error) {
       logger.error('Error loading backups:', error);
@@ -108,7 +110,7 @@ const DeviceDetailPage: React.FC = () => {
       }, 2000);
     } catch (error: any) {
       logger.error('Error initiating backup:', error);
-      alert(t('common.error') + ': ' + (error.response?.data?.error || 'Failed to queue backup task'));
+      alert(t('common.error') + ': ' + extractErrorMessage(error, 'Failed to queue backup task'));
     }
   };
 

@@ -80,7 +80,7 @@ def get_system_settings(request):
     except Exception as e:
         logger.error(f"Failed to get system settings: {e}")
         return Response(
-            {'error': f'Failed to get settings: {str(e)}'},
+            {'detail': f'Failed to get settings: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -160,7 +160,7 @@ def update_system_settings(request):
                 retention = int(backup['retention_days'])
                 if retention < 1:
                     return Response(
-                        {'error': 'Retention days must be at least 1'},
+                        {'detail': 'Retention days must be at least 1'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 sys_settings.backup_retention_days = retention
@@ -168,7 +168,7 @@ def update_system_settings(request):
                 workers = int(backup['parallel_workers'])
                 if workers < 1 or workers > 50:
                     return Response(
-                        {'error': 'Parallel workers must be between 1 and 50'},
+                        {'detail': 'Parallel workers must be between 1 and 50'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 sys_settings.backup_parallel_workers = workers
@@ -180,7 +180,7 @@ def update_system_settings(request):
                 lifetime = int(jwt['access_token_lifetime'])
                 if lifetime < 5 or lifetime > 1440:
                     return Response(
-                        {'error': 'Access token lifetime must be between 5 and 1440 minutes'},
+                        {'detail': 'Access token lifetime must be between 5 and 1440 minutes'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 sys_settings.jwt_access_token_lifetime = lifetime
@@ -188,7 +188,7 @@ def update_system_settings(request):
                 lifetime = int(jwt['refresh_token_lifetime'])
                 if lifetime < 60 or lifetime > 43200:
                     return Response(
-                        {'error': 'Refresh token lifetime must be between 60 and 43200 minutes'},
+                        {'detail': 'Refresh token lifetime must be between 60 and 43200 minutes'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
                 sys_settings.jwt_refresh_token_lifetime = lifetime
@@ -205,13 +205,13 @@ def update_system_settings(request):
 
     except ValueError as e:
         return Response(
-            {'error': f'Invalid value: {str(e)}'},
+            {'detail': f'Invalid value: {str(e)}'},
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
         logger.error(f"Failed to update system settings: {e}")
         return Response(
-            {'error': f'Failed to update settings: {str(e)}'},
+            {'detail': f'Failed to update settings: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -240,14 +240,14 @@ def test_email_settings(request):
             })
         else:
             return Response(
-                {'error': 'Failed to send test email. Check email settings and logs.'},
+                {'detail': 'Failed to send test email. Check email settings and logs.'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     except Exception as e:
         logger.error(f"Test email failed: {e}")
         return Response(
-            {'error': f'Failed to send test email: {str(e)}'},
+            {'detail': f'Failed to send test email: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -272,7 +272,7 @@ def test_telegram_settings(request):
 
         if not bot_token or not chat_id:
             return Response(
-                {'error': 'Bot token and chat ID are required'},
+                {'detail': 'Bot token and chat ID are required'},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -289,13 +289,13 @@ def test_telegram_settings(request):
             })
         else:
             return Response(
-                {'error': f'Telegram API error: {response.text}'},
+                {'detail': f'Telegram API error: {response.text}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     except Exception as e:
         logger.error(f"Test Telegram failed: {e}")
         return Response(
-            {'error': f'Failed to send test message: {str(e)}'},
+            {'detail': f'Failed to send test message: {str(e)}'},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

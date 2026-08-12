@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { QRCodeSVG } from 'qrcode.react';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { extractErrorMessage } from '../utils/extractErrorMessage';
 import { Language, Theme } from '../types';
 import '../styles/UserProfileModal.css';
 
@@ -165,7 +166,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
       setConfirmPassword('');
     } catch (error: any) {
       logger.error('Error changing password:', error);
-      alert(error.response?.data?.error || t('profile.failed_change_password'));
+      alert(extractErrorMessage(error, t('profile.failed_change_password')));
     }
   };
 

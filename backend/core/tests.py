@@ -607,7 +607,7 @@ class SystemSettingsAPITestCase(APITestCase):
         }, format='json')
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('error', response.data)
+        self.assertIn('detail', response.data)
 
     def test_update_settings_backup_invalid_workers(self):
         """Test backup settings validation - invalid workers"""

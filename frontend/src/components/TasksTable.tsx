@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { unwrapList } from '../utils/unwrapList';
 import './TasksTable.css';
 
 // Deliberately local, not imported from ../types: this mirrors
@@ -86,7 +87,7 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
       }
 
       const response = await apiService.backups.list(params);
-      const newTasks = response.results || response;
+      const newTasks = unwrapList<Task>(response);
       setTasks(newTasks);
       tasksRef.current = newTasks;
 

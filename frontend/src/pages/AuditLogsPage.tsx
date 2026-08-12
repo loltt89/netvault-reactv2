@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { unwrapList } from '../utils/unwrapList';
 import { AuditLog } from '../types';
 import '../styles/Devices.css';
 
@@ -26,8 +27,7 @@ const AuditLogsPage: React.FC = () => {
     try {
       setLoading(true);
       const data = await apiService.auditLogs.list(currentFilters);
-      // Handle both paginated and non-paginated responses
-      setLogs(Array.isArray(data) ? data : data.results || []);
+      setLogs(unwrapList<AuditLog>(data));
     } catch (error) {
       logger.error('Error loading audit logs:', error);
       alert(t('common.error') + ': ' + t('auditLogs.failed_load'));
