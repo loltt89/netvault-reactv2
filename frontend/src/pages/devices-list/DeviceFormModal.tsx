@@ -118,10 +118,16 @@ const DeviceFormModal: React.FC<DeviceFormModalProps> = ({
       if (editingDevice) {
         // Router-style password handling for edit mode:
         // - If password is '*****' (unchanged placeholder), don't send it
-        // - If password was cleared (empty), send empty to clear password
-        // - If password was changed to something else, send new password
+        // - If password was changed to something else, send the new value
+        // - If the field was focused (clearing the placeholder) but left
+        //   empty, we still send '' — the backend now treats an empty
+        //   string as "leave unchanged" for both fields, not "clear the
+        //   credential" (see DeviceCreateSerializer.update): an accidental
+        //   Tab-through blanks the placeholder via onFocus below just as
+        //   easily as a deliberate edit does, so '' alone is never treated
+        //   as an explicit clear request.
         if (formData.password !== '*****') {
-          payload.password = formData.password; // Can be empty string to clear password
+          payload.password = formData.password;
         }
         if (formData.enable_password !== '*****') {
           payload.enable_password = formData.enable_password;
@@ -288,7 +294,7 @@ const DeviceFormModal: React.FC<DeviceFormModalProps> = ({
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
                     {formData.password === '*****'
                       ? t('devices.password_unchanged')
-                      : (formData.password ? t('devices.password_will_change') : t('devices.password_will_clear'))}
+                      : (formData.password ? t('devices.password_will_change') : t('devices.password_kept_if_empty'))}
                   </div>
                 )}
               </div>
@@ -313,7 +319,7 @@ const DeviceFormModal: React.FC<DeviceFormModalProps> = ({
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
                     {formData.enable_password === '*****'
                       ? t('devices.password_unchanged')
-                      : (formData.enable_password ? t('devices.password_will_change') : t('devices.password_will_clear'))}
+                      : (formData.enable_password ? t('devices.password_will_change') : t('devices.password_kept_if_empty'))}
                   </div>
                 )}
               </div>

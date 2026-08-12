@@ -235,13 +235,25 @@ def validate_backup_config(config: str) -> Tuple[bool, str]:
     """
     Validate backup configuration content
     """
+    # CLI/device error signatures — a config line matching any of these
+    # (and not itself a masked-password config setting, see below) means
+    # what we fetched is an authentication/authorization/syntax error
+    # message, not a real config, and the "backup" must be rejected.
+    #
+    # 'privilege level' and 'enable password' are deliberately NOT in this
+    # list, even though an earlier version of it included them: both are
+    # legitimate, extremely common Cisco IOS/ASA config directives
+    # (`username admin privilege 15 ...`, `enable password ...` /
+    # `enable secret ...`), not error signatures — enforcing them here
+    # would reject real, successful backups on the majority of Cisco
+    # devices that actually use enable passwords or privilege levels.
     ERROR_PATTERNS = [
         'access denied', 'permission denied', 'authorization failed',
         'authentication failed', 'invalid command', 'command not found',
         'unknown command', '% invalid', 'error:', 'login incorrect',
-        'not authorized', 'privilege level', 'insufficient privilege',
+        'not authorized', 'insufficient privilege',
         'bad command', 'incomplete command', 'command authorization failed',
-        'invalid password', 'password required', 'enable password'
+        'invalid password', 'password required',
     ]
 
     if not config or not config.strip():
@@ -250,17 +262,23 @@ def validate_backup_config(config: str) -> Tuple[bool, str]:
     # Check entire config for error patterns (not just first lines)
     config_lower = config.lower()
     for pattern in ERROR_PATTERNS:
-        if pattern in config_lower:
-            # Make sure it's an error, not part of config (e.g., "enable password" in ASA config is ok)
-            # Check if error appears without being part of a config line
-            lines_with_pattern = [l for l in config.split('\n') if pattern in l.lower()]
-            for line in lines_with_pattern:
-                # Skip config lines that contain passwords as settings
-                if line.strip().startswith(('enable password', 'password', 'username')) and '***' in line:
-                    continue
-                # Real errors
-                if 'invalid password' in line.lower() or 'access denied' in line.lower():
-                    return False, f"Error detected: '{line.strip()[:100]}'"
+        if pattern not in config_lower:
+            continue
+
+        # Make sure it's an error, not part of config (e.g., "enable password" in ASA config is ok)
+        # Check if error appears without being part of a config line
+        lines_with_pattern = [l for l in config.split('\n') if pattern in l.lower()]
+        for line in lines_with_pattern:
+            # Skip config lines that contain passwords as settings
+            if line.strip().startswith(('enable password', 'password', 'username')) and '***' in line:
+                continue
+            # Every pattern above now actually rejects — this used to be
+            # hardcoded to only ever check for 'invalid password' or
+            # 'access denied' here, silently ignoring the other 15
+            # configured patterns (e.g. 'login incorrect', 'permission
+            # denied', 'not authorized' never rejected anything, no matter
+            # what the device actually returned).
+            return False, f"Error detected: '{line.strip()[:100]}'"
 
     lines = [l for l in config.strip().split('\n') if l.strip()]
 

@@ -313,9 +313,21 @@ class DeviceCreateSerializer(serializers.ModelSerializer):
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
+        # Both credential fields treat an empty string as "leave unchanged",
+        # not "clear the credential" — they used to disagree (password used
+        # this falsy check, enable_password used `is not None` and wiped on
+        # ''), which wasn't a deliberate two-tier feature, just drift. An
+        # empty string here is indistinguishable from
+        # DeviceFormModal.tsx's onFocus handler blanking the '*****'
+        # placeholder the moment the input gains focus — including from an
+        # incidental Tab-through with nothing retyped — so treating it as
+        # "clear" silently and irreversibly discards a device credential on
+        # what can be an accidental focus event, not a deliberate one.
+        # There's no separate UI affordance for "explicitly clear this
+        # credential" here, so neither field should infer it from ''.
         if password:
             instance.set_password(password)
-        if enable_password is not None:
+        if enable_password:
             instance.set_enable_password(enable_password)
 
         instance.save()

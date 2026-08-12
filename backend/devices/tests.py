@@ -579,6 +579,63 @@ class BackupCommandsValidationTestCase(TestCase):
             })
 
 
+class DeviceUpdateCredentialSymmetryTestCase(APITestCase):
+    """Tests for the fix: password and enable_password used to disagree on
+    what an empty string means during update — password treated it as "no
+    change" (falsy check), enable_password treated it as "clear the
+    credential" (`is not None`). DeviceFormModal.tsx's onFocus handler
+    blanks the '*****' placeholder for *either* field the instant it gains
+    focus, including from an incidental Tab-through with nothing retyped,
+    so that inconsistency meant one field silently discarded a real
+    credential on what can be an accidental UI interaction while the other
+    didn't. Both must now behave the same (safe) way: empty means
+    unchanged, for both.
+    """
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='cred_symmetry@example.com', username='cred_symmetry',
+            password='TestPass123!', role='administrator'
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-sym')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-sym')
+        self.device = Device.objects.create(
+            name='Sym-Device', ip_address='10.0.9.1', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('original-password'),
+            enable_password_encrypted=encrypt_data('original-enable'),
+            created_by=self.admin,
+        )
+
+    def test_empty_password_does_not_clear_on_update(self):
+        response = self.client.patch(f'/api/v1/devices/devices/{self.device.id}/', {'password': ''})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.get_password(), 'original-password')
+
+    def test_empty_enable_password_does_not_clear_on_update(self):
+        """The actual regression: this used to silently wipe the credential."""
+        response = self.client.patch(f'/api/v1/devices/devices/{self.device.id}/', {'enable_password': ''})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.get_enable_password(), 'original-enable')
+
+    def test_nonempty_password_still_updates(self):
+        response = self.client.patch(f'/api/v1/devices/devices/{self.device.id}/', {'password': 'new-password'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.get_password(), 'new-password')
+
+    def test_nonempty_enable_password_still_updates(self):
+        response = self.client.patch(f'/api/v1/devices/devices/{self.device.id}/', {'enable_password': 'new-enable'})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.get_enable_password(), 'new-enable')
+
+
 class DeviceAPIAdvancedTestCase(APITestCase):
     """Advanced tests for Device API endpoints"""
 
@@ -1257,6 +1314,57 @@ Password:
         from devices.connection import validate_backup_config
         is_valid, error = validate_backup_config(self.ERROR_CONFIG_ACCESS_DENIED)
         self.assertFalse(is_valid)
+
+    def test_validate_backup_config_auth_failed(self):
+        """ERROR_CONFIG_AUTH_FAILED was defined but never actually used by
+        any test — matches the bug this covers: 15 of 17 ERROR_PATTERNS
+        were silently never enforced, this fixture's pattern
+        ('authentication failed') being one of them."""
+        from devices.connection import validate_backup_config
+        is_valid, error = validate_backup_config(self.ERROR_CONFIG_AUTH_FAILED)
+        self.assertFalse(is_valid)
+
+    def test_validate_backup_config_login_incorrect_rejected(self):
+        """Regression check for the fix: this pattern used to never
+        reject anything no matter what the device returned."""
+        from devices.connection import validate_backup_config
+        is_valid, error = validate_backup_config(
+            "Router#show running-config\n% Login incorrect\nRouter#"
+        )
+        self.assertFalse(is_valid)
+
+    def test_validate_backup_config_permission_denied_rejected(self):
+        from devices.connection import validate_backup_config
+        is_valid, error = validate_backup_config(
+            "Router#show running-config\nPermission denied\nRouter#"
+        )
+        self.assertFalse(is_valid)
+
+    def test_validate_backup_config_command_authorization_failed_rejected(self):
+        from devices.connection import validate_backup_config
+        is_valid, error = validate_backup_config(
+            "Router#show running-config\nCommand authorization failed\nRouter#"
+        )
+        self.assertFalse(is_valid)
+
+    def test_validate_backup_config_privilege_level_not_falsely_rejected(self):
+        """'privilege level' and 'enable password' are common, entirely
+        legitimate Cisco config directives — they must NOT be treated as
+        error signatures (they were removed from ERROR_PATTERNS precisely
+        because enforcing them would reject real, successful backups)."""
+        from devices.connection import validate_backup_config
+        config = (
+            "hostname Router\n!\n"
+            "enable password 7 08351A1E1B0A\n"
+            "!\n"
+            "username admin privilege 15 secret 5 $1$abc$def\n"
+            "line vty 0 4\n"
+            " privilege level 15\n"
+            " login local\n"
+            "!\nend\n"
+        )
+        is_valid, error = validate_backup_config(config)
+        self.assertTrue(is_valid, error)
 
     def test_clean_device_output_cisco(self):
         """Test Cisco output cleaning"""
