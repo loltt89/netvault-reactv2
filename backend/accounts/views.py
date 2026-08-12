@@ -6,7 +6,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from .models import User, AuditLog
-from .throttling import LoginRateThrottle
+from .throttling import LoginRateThrottle, TwoFactorVerifyThrottle
 
 logger = logging.getLogger(__name__)
 from .permissions import CanManageUsers, CanViewAuditLogs
@@ -276,7 +276,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
         return Response(result)
 
-    @action(detail=False, methods=['post'], throttle_classes=[LoginRateThrottle])
+    @action(detail=False, methods=['post'], throttle_classes=[TwoFactorVerifyThrottle])
     def verify_2fa(self, request):
         """Verify and activate 2FA (rate limited to prevent brute force)"""
         serializer = Verify2FASerializer(data=request.data, context={'request': request})

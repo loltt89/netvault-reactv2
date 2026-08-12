@@ -1,6 +1,8 @@
 """
 Tests for devices app - Device, Vendor, DeviceType models
 """
+import io
+
 from django.test import TestCase, override_settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -494,6 +496,89 @@ class DeviceValidationTestCase(TestCase):
             self.assertEqual(device.criticality, crit)
 
 
+class BackupCommandsValidationTestCase(TestCase):
+    """Tests for validate_backup_commands — in particular exec_wrapper,
+    which used to be type-checked only and not run through
+    _validate_command's SAFE_COMMAND_PATTERN/DANGEROUS_COMMANDS pass like
+    every other command field (backup, setup[], logout[]). This function
+    backs both Device.custom_commands and Vendor.backup_commands, and
+    Vendor.backup_commands has no admin-only gate — any operator can write
+    it — so an unvalidated exec_wrapper was a real command-injection path
+    onto live devices, not just a Device-level, admin-only one.
+    """
+
+    def test_valid_config_passes(self):
+        from devices.serializers import validate_backup_commands
+
+        validate_backup_commands({
+            'backup': 'show running-config',
+            'setup': ['terminal length 0'],
+            'exec_mode': True,
+            'exec_wrapper': 'vyatta-op-cmd-wrapper',
+        })  # must not raise
+
+    def test_dangerous_exec_wrapper_rejected(self):
+        from rest_framework import serializers
+        from devices.serializers import validate_backup_commands
+
+        with self.assertRaises(serializers.ValidationError):
+            validate_backup_commands({
+                'backup': 'show running-config',
+                'exec_mode': True,
+                'exec_wrapper': 'reload',
+            })
+
+    def test_exec_wrapper_with_dangerous_command_embedded_rejected(self):
+        """The actual exploit shape: a wrapper string that carries an
+        injected dangerous command alongside legitimate-looking text."""
+        from rest_framework import serializers
+        from devices.serializers import validate_backup_commands
+
+        with self.assertRaises(serializers.ValidationError):
+            validate_backup_commands({
+                'backup': 'show running-config',
+                'exec_mode': True,
+                'exec_wrapper': 'wrapper ; erase startup-config',
+            })
+
+    def test_exec_wrapper_non_string_rejected(self):
+        from rest_framework import serializers
+        from devices.serializers import validate_backup_commands
+
+        with self.assertRaises(serializers.ValidationError):
+            validate_backup_commands({
+                'backup': 'show running-config',
+                'exec_wrapper': 123,
+            })
+
+    def test_empty_exec_wrapper_allowed(self):
+        from devices.serializers import validate_backup_commands
+
+        validate_backup_commands({
+            'backup': 'show running-config',
+            'exec_wrapper': '',
+        })  # must not raise
+
+    def test_dangerous_backup_command_still_rejected(self):
+        """Pre-existing coverage gap: nothing exercised the blacklist at
+        all before this test class."""
+        from rest_framework import serializers
+        from devices.serializers import validate_backup_commands
+
+        with self.assertRaises(serializers.ValidationError):
+            validate_backup_commands({'backup': 'reload'})
+
+    def test_dangerous_setup_command_still_rejected(self):
+        from rest_framework import serializers
+        from devices.serializers import validate_backup_commands
+
+        with self.assertRaises(serializers.ValidationError):
+            validate_backup_commands({
+                'backup': 'show running-config',
+                'setup': ['write erase'],
+            })
+
+
 class DeviceAPIAdvancedTestCase(APITestCase):
     """Advanced tests for Device API endpoints"""
 
@@ -772,6 +857,90 @@ class DeviceViewSetActionsTestCase(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data['success'])
+
+
+class DeviceCsvImportSecurityTestCase(APITestCase):
+    """Tests for csv_import's SSRF and CSV-injection guards.
+
+    csv_import builds Device rows directly instead of going through
+    DeviceCreateSerializer, so it used to skip both _never_a_device (the
+    SSRF fix applied to the JSON/API create path) and validate_csv_safe
+    (applied there to name/description/location) entirely — a second,
+    unguarded path to the exact holes those fixes closed elsewhere.
+    """
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='csvimport@example.com',
+            username='csvimport',
+            password='TestPass123!',
+            role='administrator'
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+        Vendor.objects.create(name='Cisco', slug='cisco')
+        DeviceType.objects.create(name='Router', slug='router')
+
+    def _upload(self, csv_body):
+        return self.client.post(
+            '/api/v1/devices/devices/csv_import/',
+            {'file': io.BytesIO(csv_body.encode('utf-8'))},
+            format='multipart',
+        )
+
+    def test_metadata_ip_rejected(self):
+        body = 'Name;IP Address;Username;Vendor;Device Type\nMeta-Device;169.254.169.254;admin;cisco;router\n'
+        response = self._upload(body)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['created'], 0)
+        self.assertTrue(any('link-local' in e.lower() for e in response.data['errors']))
+        self.assertFalse(Device.objects.filter(ip_address='169.254.169.254').exists())
+
+    def test_csv_formula_injection_in_name_rejected(self):
+        body = 'Name;IP Address;Username;Vendor;Device Type\n=cmd|\' /C calc\'!A1;10.0.5.5;admin;cisco;router\n'
+        response = self._upload(body)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['created'], 0)
+        self.assertFalse(Device.objects.filter(ip_address='10.0.5.5').exists())
+
+    def test_csv_formula_injection_in_location_rejected(self):
+        body = 'Name;IP Address;Location;Username;Vendor;Device Type\nGood-Name;10.0.5.6;@SUM(1+1);admin;cisco;router\n'
+        response = self._upload(body)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['created'], 0)
+        self.assertFalse(Device.objects.filter(ip_address='10.0.5.6').exists())
+
+    def test_ordinary_row_still_imports(self):
+        body = 'Name;IP Address;Username;Vendor;Device Type\nGood-Device;10.0.5.7;admin;cisco;router\n'
+        response = self._upload(body)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['created'], 1)
+        self.assertTrue(Device.objects.filter(ip_address='10.0.5.7').exists())
+
+    def test_update_existing_also_rejects_csv_injection(self):
+        """The update-existing branch had zero validation at all before
+        this fix — not even the create path's partial username check."""
+        Device.objects.create(
+            name='Existing', ip_address='10.0.5.8', vendor=Vendor.objects.get(slug='cisco'),
+            device_type=DeviceType.objects.get(slug='router'), username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin,
+        )
+        body = 'Name;IP Address;Location;Vendor;Device Type\n=HYPERLINK("evil");10.0.5.8;here;cisco;router\n'
+        response = self.client.post(
+            '/api/v1/devices/devices/csv_import/',
+            {'file': io.BytesIO(body.encode('utf-8')), 'update_existing': 'true'},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['updated'], 0)
+        device = Device.objects.get(ip_address='10.0.5.8')
+        self.assertEqual(device.name, 'Existing')  # unchanged
 
 
 # ============================================================

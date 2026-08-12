@@ -49,3 +49,6 @@ pnetlab_devices.csv
 .coverage
 backend/.coverage
 htmlcov/
+
+# Local sqlite DBs created by ad-hoc test runs (DB_ENGINE=sqlite3 DB_NAME=test_db.sqlite3)
+backend/*.sqlite3

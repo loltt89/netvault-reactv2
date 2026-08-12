@@ -147,6 +147,69 @@ class TwoFactorAuthTestCase(TestCase):
         self.assertFalse(self.user.verify_2fa_token('123456'))
 
 
+class Verify2FAThrottleTestCase(APITestCase):
+    """Tests for the verify_2fa rate-limit fix.
+
+    verify_2fa used to be throttled by LoginRateThrottle — an
+    AnonRateThrottle, whose get_cache_key() returns None (skips throttling
+    entirely) once the request is authenticated. Since verify_2fa is only
+    reachable authenticated, that throttle never did anything: a stolen
+    access token could brute-force the 6-digit TOTP with no limit despite
+    the docstring claiming otherwise. TwoFactorVerifyThrottle
+    (UserRateThrottle, scope='two_factor_verify', 10/hour per settings.py)
+    replaces it.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()  # throttle counters are cache-backed; isolate from other tests
+
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='throttle2fa@example.com', username='throttle2fa', password='TestPass123!'
+        )
+        self.user.generate_2fa_secret()
+        self.user.save()
+
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def test_verify_2fa_is_actually_throttled(self):
+        """The core regression check: repeated calls must eventually 429,
+        not silently allow unlimited attempts (which is what
+        AnonRateThrottle did for this authenticated-only endpoint)."""
+        responses = [
+            self.client.post('/api/v1/users/verify_2fa/', {'token': '000000'})
+            for _ in range(15)  # over the 10/hour limit
+        ]
+
+        statuses = [r.status_code for r in responses]
+        self.assertIn(status.HTTP_429_TOO_MANY_REQUESTS, statuses,
+                       f"Expected a 429 among {statuses} — throttle never engaged")
+        # Every call before the throttle kicked in should have been a normal
+        # rejection (wrong code), not something throttle-unrelated failing.
+        first_429 = statuses.index(status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertTrue(all(s == status.HTTP_400_BAD_REQUEST for s in statuses[:first_429]))
+
+    def test_throttle_is_scoped_per_user(self):
+        """UserRateThrottle keys by user id — one account's attempts must
+        not lock out a different account."""
+        User = get_user_model()
+        other_user = User.objects.create_user(
+            email='other2fa@example.com', username='other2fa', password='TestPass123!'
+        )
+        other_user.generate_2fa_secret()
+        other_user.save()
+
+        for _ in range(10):
+            self.client.post('/api/v1/users/verify_2fa/', {'token': '000000'})
+
+        other_client = APIClient()
+        other_client.force_authenticate(user=other_user)
+        response = other_client.post('/api/v1/users/verify_2fa/', {'token': '000000'})
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
 class AuditLogTestCase(TestCase):
     """Tests for AuditLog model"""
 
@@ -400,6 +463,55 @@ class SAMLLinkInitViewTestCase(APITestCase):
         self.assertEqual(response.status_code, 503)
 
 
+class UserCreateSerializerPasswordValidationTestCase(TestCase):
+    """Tests for the password-strength-validation fix.
+
+    Neither UserCreateSerializer nor ChangePasswordSerializer used to call
+    Django's validate_password(), so settings.AUTH_PASSWORD_VALIDATORS
+    (min length, common-password, numeric-only, similarity-to-username/
+    email) was configured but never actually enforced on registration or
+    admin-created accounts — see UserViewSetTestCase.
+    test_change_password_weak_rejected for the change-password half.
+    """
+
+    def test_weak_numeric_password_rejected(self):
+        from accounts.serializers import UserCreateSerializer
+
+        serializer = UserCreateSerializer(data={
+            'email': 'weak@example.com', 'username': 'weakuser', 'password': '12345678',
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('password', serializer.errors)
+
+    def test_password_too_short_rejected(self):
+        from accounts.serializers import UserCreateSerializer
+
+        serializer = UserCreateSerializer(data={
+            'email': 'short@example.com', 'username': 'shortuser', 'password': 'ab1!',
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('password', serializer.errors)
+
+    def test_password_similar_to_email_rejected(self):
+        from accounts.serializers import UserCreateSerializer
+
+        serializer = UserCreateSerializer(data={
+            'email': 'similaruser@example.com', 'username': 'similaruser',
+            'password': 'similaruser@example.com',
+        })
+        self.assertFalse(serializer.is_valid())
+        self.assertIn('password', serializer.errors)
+
+    def test_strong_password_accepted(self):
+        from accounts.serializers import UserCreateSerializer
+
+        serializer = UserCreateSerializer(data={
+            'email': 'strong@example.com', 'username': 'stronguser',
+            'password': 'Xk9#mQ2$vLpZ7!wR',
+        })
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+
+
 @override_settings(
     LDAP_ADMIN_GROUPS={'netvault-admins', 'domain admins'},
     LDAP_OPERATOR_GROUPS={'netvault-operators'},
@@ -586,15 +698,11 @@ class UserViewSetTestCase(APITestCase):
         response = self.client.post('/api/v1/users/change_password/', {
             'old_password': 'TestPass123!',
             'new_password': 'NewSecurePass456!',
-            'confirm_password': 'NewSecurePass456!'
+            'new_password_confirm': 'NewSecurePass456!'
         })
-        # If password validation fails, check if 200 or 400 is acceptable
-        if response.status_code == status.HTTP_200_OK:
-            self.user.refresh_from_db()
-            self.assertTrue(self.user.check_password('NewSecurePass456!'))
-        else:
-            # Password requirements might be strict
-            self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('NewSecurePass456!'))
 
     def test_change_password_wrong_old(self):
         """Test changing password with wrong old password"""
@@ -602,7 +710,30 @@ class UserViewSetTestCase(APITestCase):
         response = self.client.post('/api/v1/users/change_password/', {
             'old_password': 'WrongPass!',
             'new_password': 'NewPass456!',
-            'confirm_password': 'NewPass456!'
+            'new_password_confirm': 'NewPass456!'
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_change_password_weak_rejected(self):
+        """Fix: AUTH_PASSWORD_VALIDATORS (length/common-password/numeric/
+        similarity) used to never be enforced here at all."""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post('/api/v1/users/change_password/', {
+            'old_password': 'TestPass123!',
+            'new_password': '12345678',
+            'new_password_confirm': '12345678'
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('new_password', response.data)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.check_password('12345678'))
+
+    def test_change_password_similar_to_email_rejected(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post('/api/v1/users/change_password/', {
+            'old_password': 'TestPass123!',
+            'new_password': 'user@example.com',
+            'new_password_confirm': 'user@example.com'
         })
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -627,6 +758,38 @@ class UserViewSetTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('secret', response.data)
         self.assertIn('uri', response.data)
+
+
+class JWTSigningKeyTestCase(TestCase):
+    """Tests for the JWT-signing-key-isolation fix.
+
+    SIMPLE_JWT['SIGNING_KEY'] used to be hardcoded to SECRET_KEY, so any
+    leak of SECRET_KEY (which also signs Django sessions, CSRF tokens, and
+    password-reset tokens) would let an attacker forge JWTs too. It now
+    reads settings.JWT_SIGNING_KEY (falls back to SECRET_KEY only if unset)
+    — this confirms that value is what tokens actually get signed with.
+    """
+
+    def test_simple_jwt_signing_key_matches_configured_key(self):
+        from django.conf import settings
+        self.assertEqual(settings.SIMPLE_JWT['SIGNING_KEY'], settings.JWT_SIGNING_KEY)
+
+    def test_issued_token_is_signed_with_configured_key(self):
+        import jwt as pyjwt
+        from django.conf import settings
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        user = User.objects.create_user(email='jwtkey@example.com', username='jwtkey', password='TestPass123!')
+        token = str(RefreshToken.for_user(user).access_token)
+
+        # Decodes cleanly with the configured signing key...
+        decoded = pyjwt.decode(token, settings.JWT_SIGNING_KEY, algorithms=[settings.SIMPLE_JWT['ALGORITHM']])
+        self.assertEqual(decoded['user_id'], user.id)
+
+        # ...and is rejected with any other key, proving it isn't signed
+        # with something unrelated/blank.
+        with self.assertRaises(pyjwt.InvalidSignatureError):
+            pyjwt.decode(token, 'a-completely-different-key', algorithms=[settings.SIMPLE_JWT['ALGORITHM']])
 
 
 class AuthLogoutTestCase(APITestCase):

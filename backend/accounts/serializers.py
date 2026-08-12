@@ -1,6 +1,8 @@
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import authenticate
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from .models import User, AuditLog
 import pyotp
 import qrcode
@@ -92,6 +94,21 @@ class UserCreateSerializer(serializers.ModelSerializer):
         # Only check password_confirm if it's provided
         if 'password_confirm' in attrs and attrs['password'] != attrs['password_confirm']:
             raise serializers.ValidationError({'password': 'Passwords do not match'})
+
+        # Enforce settings.AUTH_PASSWORD_VALIDATORS (length, common-password,
+        # numeric-only, similarity-to-username/email). This serializer never
+        # called it before — registration and admin-created-user accounts
+        # accepted anything, including the user's own email as their
+        # password, despite the validators being configured and enforced
+        # everywhere Django's own auth forms are used. A transient (unsaved)
+        # User is enough for UserAttributeSimilarityValidator to compare
+        # against — it only reads attributes, never touches the DB.
+        temp_user = User(email=attrs.get('email', ''), username=attrs.get('username', ''))
+        try:
+            validate_password(attrs['password'], user=temp_user)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError({'password': list(e.messages)})
+
         return attrs
 
     def create(self, validated_data):
@@ -125,6 +142,17 @@ class ChangePasswordSerializer(serializers.Serializer):
     def validate(self, attrs):
         if attrs['new_password'] != attrs['new_password_confirm']:
             raise serializers.ValidationError({'new_password': 'Passwords do not match'})
+
+        # Enforce settings.AUTH_PASSWORD_VALIDATORS — see UserCreateSerializer
+        # for why this was missing entirely before. Here we have the real
+        # authenticated user already, so similarity checks compare against
+        # their actual email/username/name, not a transient stand-in.
+        user = self.context['request'].user
+        try:
+            validate_password(attrs['new_password'], user=user)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError({'new_password': list(e.messages)})
+
         return attrs
 
     def validate_old_password(self, value):

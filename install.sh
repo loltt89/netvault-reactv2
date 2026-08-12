@@ -377,6 +377,7 @@ generate_env_file() {
 
     ENCRYPTION_KEY=$(generate_encryption_key)
     SECRET_KEY=$(generate_secret_key)
+    JWT_SIGNING_KEY=$(generate_secret_key)
 
     cat > $INSTALL_DIR/.env <<EOF
 # NetVault Configuration
@@ -385,6 +386,11 @@ generate_env_file() {
 # Django Settings
 SECRET_KEY=${SECRET_KEY}
 DEBUG=False
+
+# JWT signing key — deliberately generated separately from SECRET_KEY.
+# SECRET_KEY also signs Django sessions/CSRF/password-reset tokens; a
+# shared key means any exposure of one lets an attacker forge the other.
+JWT_SIGNING_KEY=${JWT_SIGNING_KEY}
 ALLOWED_HOSTS=${DOMAIN},localhost,127.0.0.1
 # CORS: private IPs auto-allowed via regex, add public domains here if needed
 CORS_ALLOWED_ORIGINS=http://${DOMAIN},https://${DOMAIN}

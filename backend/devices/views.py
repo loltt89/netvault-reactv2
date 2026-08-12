@@ -45,8 +45,10 @@ from .serializers import (
     VendorSerializer, DeviceTypeSerializer,
     DeviceSerializer, DeviceCreateSerializer, DeviceDetailSerializer
 )
-from core.utils import sanitize_csv_value
+from core.utils import sanitize_csv_value, validate_csv_safe
 from accounts.models import AuditLog
+from .connection import _never_a_device
+import ipaddress
 
 
 class VendorViewSet(viewsets.ModelViewSet):
@@ -615,6 +617,31 @@ class DeviceViewSet(viewsets.ModelViewSet):
                     errors.append(f'Row {row_num}: Missing required fields')
                     continue
 
+                # CSV-injection guard for every free-text field this row can
+                # write, on both branches below (create and update-existing
+                # alike write name/location/description straight from the
+                # uploaded file). The JSON/API create path
+                # (DeviceCreateSerializer._validate_and_sanitize_data) already
+                # runs validate_csv_safe on these; this import path used to
+                # only check `username` further down, leaving name/location/
+                # description unguarded here — and the update-existing branch
+                # had no validation at all.
+                csv_safety_error = None
+                for field_label, field_value in (
+                    ('Name', name),
+                    ('Location', mapped_row.get('location', '')),
+                    ('Description', mapped_row.get('description', '')),
+                ):
+                    if field_value:
+                        try:
+                            validate_csv_safe(field_value, field_name=field_label)
+                        except ValueError as e:
+                            csv_safety_error = str(e)
+                            break
+                if csv_safety_error:
+                    errors.append(f'Row {row_num}: {csv_safety_error}')
+                    continue
+
                 # Check if exists (using set lookup - O(1) instead of loading full objects)
                 if ip_address in existing_ips:
                     if update_existing:
@@ -636,6 +663,16 @@ class DeviceViewSet(viewsets.ModelViewSet):
 
                 # Create new device
                 try:
+                    # SSRF guard — the same check DeviceCreateSerializer.validate_ip_address
+                    # runs for the JSON/API create path (devices/connection.py's
+                    # _never_a_device). This import path built Device objects
+                    # directly, bypassing it entirely — a CSV row with
+                    # ip_address=169.254.169.254 sailed straight through.
+                    reject_reason = _never_a_device(ipaddress.ip_address(ip_address))
+                    if reject_reason:
+                        errors.append(f'Row {row_num}: {ip_address} cannot be used as a device address: {reject_reason}.')
+                        continue
+
                     vendor_slug = mapped_row.get('vendor', 'other').lower()
                     device_type_slug = mapped_row.get('device_type', 'router').lower()
 

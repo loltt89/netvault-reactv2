@@ -114,9 +114,24 @@ def validate_backup_commands(value, field_name='backup_commands'):
         if field in value and not isinstance(value[field], bool):
             raise serializers.ValidationError(f'{field} must be a boolean')
 
-    # Check string fields
-    if 'exec_wrapper' in value and not isinstance(value['exec_wrapper'], str):
-        raise serializers.ValidationError('exec_wrapper must be a string')
+    # Check string fields — exec_wrapper gets concatenated directly onto the
+    # backup command and sent to the device shell (devices/connection.py's
+    # get_config: f'{exec_wrapper} {show_command}'), exactly like `backup`
+    # and the `setup`/`logout` list items above, so it needs the same
+    # whitelist/blacklist pass. It used to be type-checked only. This
+    # function backs both Device.custom_commands (admin-only, gated in
+    # DeviceCreateSerializer._validate_and_sanitize_data) AND
+    # Vendor.backup_commands (VendorSerializer — no admin gate at all,
+    # writable by any 'operator' via CanManageDevices, and used for every
+    # device of that vendor that doesn't set its own custom_commands) — so
+    # the unvalidated exec_wrapper was reachable by an operator either way,
+    # letting them smuggle a command like 'reload' or 'erase' straight past
+    # DANGEROUS_COMMANDS.
+    if 'exec_wrapper' in value:
+        if not isinstance(value['exec_wrapper'], str):
+            raise serializers.ValidationError('exec_wrapper must be a string')
+        if value['exec_wrapper'].strip():
+            _validate_command(value['exec_wrapper'], 'exec_wrapper')
 
     # Warn about unknown keys
     unknown_keys = set(value.keys()) - BACKUP_COMMANDS_KEYS

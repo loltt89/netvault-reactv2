@@ -205,6 +205,7 @@ REST_FRAMEWORK = {
         'anon': '10000/hour',  # Anonymous users: 10000 requests per hour
         'user': '100000/hour',  # Authenticated users: 100000 per hour
         'login': '200/hour',  # Login attempts: 200 per hour per IP
+        'two_factor_verify': '10/hour',  # TOTP confirmation attempts: 10 per hour per user
     },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
@@ -227,6 +228,19 @@ REST_FRAMEWORK = {
 }
 
 # JWT Configuration
+#
+# SIGNING_KEY defaults to SECRET_KEY only as a fallback for deployments that
+# haven't set JWT_SIGNING_KEY yet — set it explicitly and separately from
+# SECRET_KEY in .env. SECRET_KEY also signs Django sessions, CSRF tokens,
+# and password-reset tokens; sharing it with JWT means any exposure of one
+# (a leaked .env, a misconfigured debug endpoint, an unrelated signing bug)
+# lets an attacker forge the other too, instead of the blast radius being
+# contained to whichever single-purpose secret actually leaked. Rotating
+# JWT_SIGNING_KEY invalidates every outstanding access/refresh token,
+# forcing re-login — same operational caveat as rotating SECRET_KEY today,
+# just now scoped to auth tokens instead of also nuking sessions/CSRF.
+JWT_SIGNING_KEY = os.getenv('JWT_SIGNING_KEY', '').strip() or SECRET_KEY
+
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=int(os.getenv('JWT_ACCESS_TOKEN_LIFETIME', '60'))),
     'REFRESH_TOKEN_LIFETIME': timedelta(minutes=int(os.getenv('JWT_REFRESH_TOKEN_LIFETIME', '1440'))),
@@ -234,7 +248,7 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
     'ALGORITHM': os.getenv('JWT_ALGORITHM', 'HS256'),
-    'SIGNING_KEY': SECRET_KEY,
+    'SIGNING_KEY': JWT_SIGNING_KEY,
     'VERIFYING_KEY': None,
     'AUTH_HEADER_TYPES': ('Bearer',),
     'AUTH_HEADER_NAME': 'HTTP_AUTHORIZATION',
