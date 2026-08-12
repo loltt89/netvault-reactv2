@@ -1,13 +1,14 @@
 """
 Tests for core module - DeviceLock and utilities
 """
-from django.test import TestCase, override_settings
+from django.test import TestCase, SimpleTestCase, override_settings
 from unittest.mock import patch, MagicMock
 import redis
 
 from core.redis_lock import DeviceLock, DeviceLockError
 from core.utils import validate_csv_safe, sanitize_csv_value
 from core.crypto import encrypt_data, decrypt_data
+from core.host_validation import _validate_host_allow_private_networks
 
 
 class DeviceLockTestCase(TestCase):
@@ -1198,3 +1199,42 @@ class LDAPConnectionMockTestCase(TestCase):
         )
 
         self.assertEqual(results, [])
+
+
+class HostValidationTestCase(SimpleTestCase):
+    """Tests for the ALLOW_PRIVATE_NETWORK_HOSTS ALLOWED_HOSTS patch"""
+
+    def test_private_ipv4_allowed_even_when_not_in_allowed_hosts(self):
+        for host in ('192.168.8.125', '10.0.0.1', '172.16.0.1', '172.31.255.255', '127.0.0.1'):
+            self.assertTrue(
+                _validate_host_allow_private_networks(host, ['example.com']),
+                f'{host} should be treated as a valid Host header',
+            )
+
+    def test_public_ip_still_rejected(self):
+        self.assertFalse(
+            _validate_host_allow_private_networks('8.8.8.8', ['example.com']),
+        )
+
+    def test_ip_adjacent_to_private_ranges_not_treated_as_private(self):
+        # 172.15.x.x and 172.32.x.x are outside the 172.16.0.0/12 block —
+        # regression guard against an off-by-one in the range boundaries.
+        for host in ('172.15.255.255', '172.32.0.1', '192.169.0.1', '11.0.0.1'):
+            self.assertFalse(
+                _validate_host_allow_private_networks(host, ['example.com']),
+                f'{host} is not a private IP and should fall through to allowed_hosts',
+            )
+
+    def test_named_host_falls_through_to_normal_allowed_hosts_check(self):
+        self.assertTrue(
+            _validate_host_allow_private_networks('example.com', ['example.com']),
+        )
+        self.assertFalse(
+            _validate_host_allow_private_networks('evil.com', ['example.com']),
+        )
+
+    def test_non_ip_hostname_does_not_raise(self):
+        # Make sure a plain domain name doesn't blow up in ipaddress.ip_address().
+        self.assertFalse(
+            _validate_host_allow_private_networks('not-an-ip.local', []),
+        )

@@ -12,3 +12,9 @@ class CoreConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'core'
     verbose_name = 'NetVault Core'
+
+    def ready(self):
+        from django.conf import settings
+        if getattr(settings, 'ALLOW_PRIVATE_NETWORK_HOSTS', False):
+            from core.host_validation import patch
+            patch()

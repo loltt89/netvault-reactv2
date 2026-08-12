@@ -25,6 +25,15 @@ DEBUG = os.getenv('DEBUG', 'False') == 'True'
 
 ALLOWED_HOSTS = [host.strip() for host in os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')]
 
+# Self-hosted LAN appliance: this box's own address commonly moves under
+# DHCP (already happened once — 192.168.8.124 -> .125) and re-editing
+# ALLOWED_HOSTS by hand every time it does isn't sustainable. Off by
+# default — same opt-in shape as CORS_ALLOW_PRIVATE_NETWORKS below, and
+# meant to be turned on together with it. See core/host_validation.py for
+# what this actually widens and why that's judged an acceptable trade-off
+# only for a LAN deployment, not a default posture.
+ALLOW_PRIVATE_NETWORK_HOSTS = os.getenv('ALLOW_PRIVATE_NETWORK_HOSTS', 'False') == 'True'
+
 
 # Application definition
 
