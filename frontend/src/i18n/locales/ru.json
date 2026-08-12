@@ -124,7 +124,21 @@
     "first_page": "Первая страница",
     "last_page": "Последняя страница",
     "prev_page": "Предыдущая страница",
-    "next_page": "Следующая страница"
+    "next_page": "Следующая страница",
+    "ssh_host_key": "SSH Host Key",
+    "ssh_host_key_not_pinned": "Ещё не подключались — ключ будет закреплён при первом подключении",
+    "ssh_host_key_changed_title": "⚠ SSH host key изменился",
+    "ssh_host_key_changed_body": "При попытке подключения устройство предъявило другой SSH host key, чем тот, что сохранён. Подключения (включая плановые бэкапы) заблокированы, пока вы не сверите новый fingerprint вне сети (через консоль устройства) и не подтвердите или отклоните его ниже.",
+    "ssh_host_key_expected": "Ранее доверенный",
+    "ssh_host_key_received": "Новый предъявленный",
+    "approve_host_key": "Подтвердить новый ключ",
+    "reject_host_key": "Отклонить",
+    "confirm_approve_host_key": "Довериться новому SSH host key устройства {{name}}? Делайте это только после проверки fingerprint вне сети.",
+    "confirm_reject_host_key": "Отклонить смену ключа для {{name}}? Устройство останется недоступным, пока это не будет разрешено.",
+    "host_key_approved": "Новый SSH host key подтверждён",
+    "host_key_rejected": "Смена SSH host key отклонена",
+    "failed_approve_host_key": "Не удалось подтвердить ключ",
+    "failed_reject_host_key": "Не удалось отклонить ключ"
   },
   "backups": {
     "title": "Резервные копии",
@@ -672,7 +686,8 @@
     "days": "дней",
     "weeks": "недель",
     "months": "месяцев",
-    "deleting": "Удаление..."
+    "deleting": "Удаление...",
+    "detected_at": "Обнаружено"
   },
   "config_viewer": {
     "default_title": "Конфигурация",

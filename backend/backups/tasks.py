@@ -146,7 +146,8 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
                 vendor=vendor_slug,
                 enable_password=enable_password,
                 timeout=settings.BACKUP_CONNECTION_TIMEOUT,
-                backup_commands=backup_commands
+                backup_commands=backup_commands,
+                device_id=device.id,
             )
         finally:
             # Always release lock, even if backup fails
@@ -437,7 +438,8 @@ def test_device_connection(device_id: int):
             username=username,
             password=password,
             enable_password=enable_password,
-            timeout=10
+            timeout=10,
+            device_id=device.id,
         )
 
         return {'success': success, 'message': message}

@@ -102,6 +102,19 @@ class Device(EncryptedFieldMixin, models.Model):
     backup_schedule = models.CharField(max_length=255, blank=True)  # Cron expression
     custom_commands = models.JSONField(default=list, blank=True)  # Custom backup commands
 
+    # SSH host key pinning (see devices/connection.py::PinnedHostKeyPolicy).
+    # Pinned on first successful connection (trust-on-first-use); every
+    # connection after that must present the same key or is refused.
+    ssh_host_key_type = models.CharField(max_length=32, blank=True, help_text='e.g. ssh-ed25519, ssh-rsa')
+    ssh_host_key_fingerprint = models.CharField(max_length=128, blank=True, help_text='SHA256 fingerprint of the pinned host key')
+    ssh_host_key_verified_at = models.DateTimeField(null=True, blank=True, help_text='When the current key was pinned/approved')
+    # Populated when a connection presents a key that doesn't match the
+    # pinned one above. Non-empty means connections are being refused
+    # pending admin review — see Device.approve_ssh_host_key().
+    ssh_host_key_pending_type = models.CharField(max_length=32, blank=True)
+    ssh_host_key_pending_fingerprint = models.CharField(max_length=128, blank=True)
+    ssh_host_key_pending_detected_at = models.DateTimeField(null=True, blank=True)
+
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -164,6 +177,47 @@ class Device(EncryptedFieldMixin, models.Model):
         if self.vendor:
             return self.vendor.backup_commands
         return None
+
+    @property
+    def has_pending_ssh_host_key(self) -> bool:
+        """True if a connection presented an SSH host key that didn't match
+        the pinned one, and is awaiting admin review."""
+        return bool(self.ssh_host_key_pending_fingerprint)
+
+    def approve_ssh_host_key(self):
+        """Accept the pending SSH host key as the new trusted one.
+
+        Called from the device's "approve new key" action after an admin
+        has verified the new fingerprint out-of-band. Clears the pending
+        state so connections (and scheduled backups) resume.
+        """
+        from django.utils import timezone
+
+        self.ssh_host_key_type = self.ssh_host_key_pending_type
+        self.ssh_host_key_fingerprint = self.ssh_host_key_pending_fingerprint
+        self.ssh_host_key_verified_at = timezone.now()
+        self.ssh_host_key_pending_type = ''
+        self.ssh_host_key_pending_fingerprint = ''
+        self.ssh_host_key_pending_detected_at = None
+        self.save(update_fields=[
+            'ssh_host_key_type', 'ssh_host_key_fingerprint', 'ssh_host_key_verified_at',
+            'ssh_host_key_pending_type', 'ssh_host_key_pending_fingerprint', 'ssh_host_key_pending_detected_at',
+        ])
+
+    def reject_ssh_host_key(self):
+        """Discard the pending SSH host key without trusting it.
+
+        Leaves the previously-pinned key (if any) in place, so connections
+        stay refused — this just clears the pending/notified state, e.g.
+        after confirming out-of-band that the change was NOT expected and
+        the device has been isolated/investigated.
+        """
+        self.ssh_host_key_pending_type = ''
+        self.ssh_host_key_pending_fingerprint = ''
+        self.ssh_host_key_pending_detected_at = None
+        self.save(update_fields=[
+            'ssh_host_key_pending_type', 'ssh_host_key_pending_fingerprint', 'ssh_host_key_pending_detected_at',
+        ])
 
 
 class DeviceCredential(EncryptedFieldMixin, models.Model):

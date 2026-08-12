@@ -299,6 +299,7 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
     device_type = DeviceTypeSerializer(read_only=True)
     created_by_email = serializers.CharField(source='created_by.email', read_only=True, allow_null=True)
     backup_count = serializers.IntegerField(read_only=True, source='backups.count')
+    has_pending_ssh_host_key = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Device
@@ -309,6 +310,14 @@ class DeviceDetailSerializer(serializers.ModelSerializer):
             'location', 'tags', 'criticality',
             'status', 'last_seen', 'last_backup', 'backup_status', 'backup_count',
             'backup_enabled', 'backup_schedule', 'custom_commands',
+            'ssh_host_key_type', 'ssh_host_key_fingerprint', 'ssh_host_key_verified_at',
+            'ssh_host_key_pending_type', 'ssh_host_key_pending_fingerprint',
+            'ssh_host_key_pending_detected_at', 'has_pending_ssh_host_key',
             'created_at', 'updated_at', 'created_by_email'
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at', 'created_by_email', 'backup_count']
+        read_only_fields = [
+            'id', 'created_at', 'updated_at', 'created_by_email', 'backup_count',
+            'ssh_host_key_type', 'ssh_host_key_fingerprint', 'ssh_host_key_verified_at',
+            'ssh_host_key_pending_type', 'ssh_host_key_pending_fingerprint',
+            'ssh_host_key_pending_detected_at', 'has_pending_ssh_host_key',
+        ]

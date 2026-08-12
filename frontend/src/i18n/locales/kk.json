@@ -124,7 +124,21 @@
     "first_page": "Бірінші бет",
     "last_page": "Соңғы бет",
     "prev_page": "Алдыңғы бет",
-    "next_page": "Келесі бет"
+    "next_page": "Келесі бет",
+    "ssh_host_key": "SSH Host Key",
+    "ssh_host_key_not_pinned": "Әлі қосылмаған — бірінші қосылымда кілт бекітіледі",
+    "ssh_host_key_changed_title": "⚠ SSH host key өзгерді",
+    "ssh_host_key_changed_body": "Қосылу әрекеті кезінде құрылғы сақталған кілттен өзгеше SSH host key ұсынды. Жаңа fingerprint-ті желіден тыс тексеріп (құрылғы консолі арқылы), төменде растамайынша немесе қабылдамайынша қосылымдар (жоспарлы сақтық көшірмелерді қоса) бұғатталады.",
+    "ssh_host_key_expected": "Бұрын сенімді болған",
+    "ssh_host_key_received": "Жаңадан ұсынылған",
+    "approve_host_key": "Жаңа кілтті растау",
+    "reject_host_key": "Қабылдамау",
+    "confirm_approve_host_key": "{{name}} құрылғысының жаңа SSH host key-іне сену керек пе? Мұны тек fingerprint-ті желіден тыс тексергеннен кейін ғана жасаңыз.",
+    "confirm_reject_host_key": "{{name}} үшін кілт өзгеруін қабылдамайсыз ба? Бұл мәселе шешілмейінше құрылғы қолжетімсіз болады.",
+    "host_key_approved": "Жаңа SSH host key расталды",
+    "host_key_rejected": "SSH host key өзгеруі қабылданбады",
+    "failed_approve_host_key": "Кілтті растау мүмкін болмады",
+    "failed_reject_host_key": "Кілтті қабылдамау мүмкін болмады"
   },
   "backups": {
     "title": "Сақтық көшірмелер",
@@ -672,7 +686,8 @@
     "days": "күндер",
     "weeks": "апталар",
     "months": "айлар",
-    "deleting": "Жою..."
+    "deleting": "Жою...",
+    "detected_at": "Анықталды"
   },
   "config_viewer": {
     "default_title": "Конфигурация",

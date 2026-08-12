@@ -224,6 +224,49 @@ Please check the device connectivity."""
     send_telegram_notification(f"🔴 Device offline: *{device_name}*")
 
 
+def notify_host_key_mismatch(device_name: str, ip_address: str, expected: str, received: str):
+    """
+    Send notification when a device's SSH host key changes unexpectedly.
+
+    Unlike backup-failure notifications, this always fires regardless of the
+    notify_on_backup_failure setting — a host key mismatch is a potential
+    MITM indicator, not a routine operational failure, and connections to
+    the device are refused until an administrator reviews and approves the
+    new key from the device detail page.
+
+    Args:
+        device_name: Name of the device
+        ip_address: Device IP address
+        expected: Previously pinned key, as "type fingerprint"
+        received: Newly presented key, as "type fingerprint"
+    """
+    subject = f"SSH Host Key Changed: {device_name}"
+
+    message = f"""The SSH host key presented by a device no longer matches the one NetVault has on file.
+
+Device: {device_name} ({ip_address})
+Expected: {expected}
+Received: {received}
+
+Time: {get_current_time()}
+
+This can happen after a legitimate device replacement, IOS upgrade, or
+manual key regeneration — but it is also exactly what a machine-in-the-
+middle attack looks like. Connections to this device (including scheduled
+backups) will be refused until you verify the new key out-of-band (e.g.
+via the device's console, not over the network) and approve it from the
+device's detail page in NetVault."""
+
+    send_email_notification(subject, message)
+    send_telegram_notification(
+        f"🔑⚠️ *SSH host key changed*\n"
+        f"Device: *{device_name}* ({ip_address})\n"
+        f"Expected: `{expected}`\n"
+        f"Received: `{received}`\n"
+        f"Connections refused until approved in NetVault."
+    )
+
+
 def get_current_time():
     """Get current time as formatted string"""
     from django.utils import timezone

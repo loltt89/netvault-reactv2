@@ -108,6 +108,36 @@ const DeviceDetailPage: React.FC = () => {
     }
   };
 
+  const handleApproveHostKey = async () => {
+    if (!device) return;
+    if (!window.confirm(t('devices.confirm_approve_host_key', { name: device.name }))) return;
+
+    try {
+      await apiService.devices.approveSshHostKey(device.id);
+      const refreshed = await apiService.devices.get(device.id);
+      setDevice(refreshed);
+      toast.success(t('devices.host_key_approved'));
+    } catch (error: any) {
+      logger.error('Error approving SSH host key:', error);
+      toast.error(extractErrorMessage(error, t('devices.failed_approve_host_key')));
+    }
+  };
+
+  const handleRejectHostKey = async () => {
+    if (!device) return;
+    if (!window.confirm(t('devices.confirm_reject_host_key', { name: device.name }))) return;
+
+    try {
+      await apiService.devices.rejectSshHostKey(device.id);
+      const refreshed = await apiService.devices.get(device.id);
+      setDevice(refreshed);
+      toast.success(t('devices.host_key_rejected'));
+    } catch (error: any) {
+      logger.error('Error rejecting SSH host key:', error);
+      toast.error(extractErrorMessage(error, t('devices.failed_reject_host_key')));
+    }
+  };
+
   const viewBackupConfig = async (backup: Backup) => {
     try {
       const response = await apiService.backups.getConfiguration(backup.id);
@@ -349,6 +379,14 @@ const DeviceDetailPage: React.FC = () => {
                 {device.last_backup ? new Date(device.last_backup).toLocaleString() : t('devices.never')}
               </span>
             </div>
+            <div className="info-row">
+              <span className="info-label">{t('devices.ssh_host_key')}:</span>
+              <span className="info-value" style={{ fontFamily: 'monospace', fontSize: '0.85em' }}>
+                {device.ssh_host_key_fingerprint
+                  ? `${device.ssh_host_key_type} ${device.ssh_host_key_fingerprint}`
+                  : t('devices.ssh_host_key_not_pinned')}
+              </span>
+            </div>
           </div>
 
           {device.description && (
@@ -356,6 +394,58 @@ const DeviceDetailPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* SSH host key mismatch — device is unreachable until an admin resolves this */}
+      {device.has_pending_ssh_host_key && (
+        <div
+          className="device-card"
+          style={{
+            marginBottom: '2rem',
+            border: '2px solid var(--color-danger, #d32f2f)',
+            background: 'var(--color-danger-bg, rgba(211, 47, 47, 0.08))',
+          }}
+        >
+          <div className="device-body">
+            <h3 style={{ marginTop: 0, color: 'var(--color-danger, #d32f2f)' }}>
+              {t('devices.ssh_host_key_changed_title')}
+            </h3>
+            <p>{t('devices.ssh_host_key_changed_body')}</p>
+            <div
+              className="device-info"
+              style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', display: 'grid', gap: '1rem', margin: '1rem 0' }}
+            >
+              <div className="info-row">
+                <span className="info-label">{t('devices.ssh_host_key_expected')}:</span>
+                <span className="info-value" style={{ fontFamily: 'monospace', fontSize: '0.85em' }}>
+                  {device.ssh_host_key_type} {device.ssh_host_key_fingerprint}
+                </span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">{t('devices.ssh_host_key_received')}:</span>
+                <span className="info-value" style={{ fontFamily: 'monospace', fontSize: '0.85em' }}>
+                  {device.ssh_host_key_pending_type} {device.ssh_host_key_pending_fingerprint}
+                </span>
+              </div>
+              <div className="info-row">
+                <span className="info-label">{t('common.detected_at')}:</span>
+                <span className="info-value">
+                  {device.ssh_host_key_pending_detected_at
+                    ? new Date(device.ssh_host_key_pending_detected_at).toLocaleString()
+                    : 'N/A'}
+                </span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button onClick={handleApproveHostKey} className="btn-success">
+                ✓ {t('devices.approve_host_key')}
+              </button>
+              <button onClick={handleRejectHostKey} className="btn-danger">
+                ✖ {t('devices.reject_host_key')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Backups History */}
       <div className="page-header" style={{ marginTop: '2rem' }}>

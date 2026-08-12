@@ -53,6 +53,118 @@ class DeviceConnectionError(Exception):
     pass
 
 
+class HostKeyMismatchError(DeviceConnectionError):
+    """
+    Raised when a device presents an SSH host key that doesn't match the
+    one pinned in the database. Deliberately a distinct exception type —
+    callers must NOT treat this the same as a generic connection failure,
+    because SSHConnection.connect() falls back to the netvault-ssh binary
+    on generic Paramiko failures, and that binary does no host key
+    verification at all. Falling back here would silently defeat the
+    whole point of pinning. See _ParamikoSSH.connect()'s handling of this
+    exception specifically.
+    """
+    pass
+
+
+if PARAMIKO_AVAILABLE:
+    class PinnedHostKeyPolicy(paramiko.MissingHostKeyPolicy):
+        """
+        Trust-on-first-use SSH host key verification, backed by the
+        Device model (see devices/models.py fields ssh_host_key_*).
+
+        - No key on file yet: pin the presented key and allow the
+          connection (this is the "first use" — see the SECURITY.md /
+          conversation note that this moment can't be secured over the
+          same network channel it's protecting; verifying out-of-band
+          at device-provisioning time is the only real fix, which is
+          outside what an automated connection can do).
+        - Key matches what's pinned: allow.
+        - Key doesn't match: refuse the connection, record the new key
+          as *pending* (not trusted), and notify an administrator. The
+          device stays unreachable via NetVault until someone reviews
+          the fingerprint out-of-band and calls Device.approve_ssh_host_key().
+        """
+
+        def __init__(self, device_id: int):
+            self.device_id = device_id
+
+        def missing_host_key(self, client, hostname, key):
+            from devices.models import Device
+            from django.utils import timezone
+
+            fingerprint = f"SHA256:{key.get_fingerprint().hex()}"
+            key_type = key.get_name()
+
+            try:
+                device = Device.objects.get(id=self.device_id)
+            except Device.DoesNotExist:
+                # Fail closed: no device record to pin against, don't connect.
+                raise HostKeyMismatchError(
+                    f"Cannot verify SSH host key: device {self.device_id} not found"
+                )
+
+            if not device.ssh_host_key_fingerprint:
+                # First-ever connection to this device: pin it.
+                #
+                # This runs mid-request, inside client.connect()'s handshake
+                # — the caller (devices/views.py's test_connection action,
+                # backups/tasks.py's backup task) is holding its own,
+                # separately-loaded Device instance for the same row. Only
+                # touch these three columns: an unrestricted save() here
+                # would be harmless (this instance has no other pending
+                # changes), but callers MUST use update_fields on their own
+                # subsequent device.save() calls, or they will silently
+                # overwrite what gets written here with their stale
+                # in-memory copy. (Found the hard way: devices/views.py's
+                # test_connection previously did a bare device.save() after
+                # this returned, which clobbered the pin on every single
+                # first connection.)
+                device.ssh_host_key_type = key_type
+                device.ssh_host_key_fingerprint = fingerprint
+                device.ssh_host_key_verified_at = timezone.now()
+                device.save(update_fields=[
+                    'ssh_host_key_type', 'ssh_host_key_fingerprint', 'ssh_host_key_verified_at',
+                ])
+                logger.info(
+                    f"Pinned new SSH host key for device '{device.name}' ({hostname}): "
+                    f"{key_type} {fingerprint}"
+                )
+                return
+
+            if device.ssh_host_key_type == key_type and device.ssh_host_key_fingerprint == fingerprint:
+                # Matches what's already pinned.
+                return
+
+            # Mismatch — refuse, record as pending, notify.
+            expected = f"{device.ssh_host_key_type} {device.ssh_host_key_fingerprint}"
+            received = f"{key_type} {fingerprint}"
+
+            device.ssh_host_key_pending_type = key_type
+            device.ssh_host_key_pending_fingerprint = fingerprint
+            device.ssh_host_key_pending_detected_at = timezone.now()
+            device.save(update_fields=[
+                'ssh_host_key_pending_type', 'ssh_host_key_pending_fingerprint', 'ssh_host_key_pending_detected_at',
+            ])
+
+            logger.error(
+                f"SSH HOST KEY MISMATCH for device '{device.name}' ({hostname}): "
+                f"expected {expected}, received {received}. Refusing connection."
+            )
+
+            try:
+                from notifications.services import notify_host_key_mismatch
+                notify_host_key_mismatch(device.name, hostname, expected, received)
+            except Exception:
+                logger.exception(f"Failed to send host key mismatch notification for device '{device.name}'")
+
+            raise HostKeyMismatchError(
+                f"SSH host key for {hostname} does not match the pinned key "
+                f"(expected {expected}, received {received}). Connection refused — "
+                f"verify out-of-band and approve the new key in NetVault before retrying."
+            )
+
+
 def validate_target_host(host: str) -> str:
     """
     Validate target host to prevent SSRF attacks
@@ -292,23 +404,37 @@ class _ParamikoSSH:
     # Disable Paramiko's verbose logging
     logging.getLogger('paramiko').setLevel(logging.WARNING)
 
-    def __init__(self, host: str, port: int, username: str, password: str, timeout: int = 30):
+    def __init__(self, host: str, port: int, username: str, password: str, timeout: int = 30, device_id: Optional[int] = None):
         self.host = host
         self.port = port
         self.username = username
         self.password = password
         self.timeout = timeout
+        self.device_id = device_id
         self.client: Optional[paramiko.SSHClient] = None
         self.channel: Optional[paramiko.Channel] = None
 
     def connect(self) -> bool:
-        """Connect to device. Returns True on success, False on failure."""
+        """Connect to device. Returns True on success, False on failure.
+
+        Raises HostKeyMismatchError (not just False) when the device's SSH
+        host key has changed — that must NOT be treated like an ordinary
+        connection failure, because SSHConnection.connect() falls back to
+        the netvault-ssh binary on an ordinary failure, and that binary
+        performs no host key verification at all. See PinnedHostKeyPolicy.
+        """
         if not PARAMIKO_AVAILABLE:
+            return False
+
+        if not self.device_id:
+            # Fail closed rather than silently accepting any host key.
+            logger.error(f"Refusing Paramiko connection to {self.host}: no device_id supplied for host key verification")
+            self.client = None
             return False
 
         try:
             self.client = paramiko.SSHClient()
-            self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            self.client.set_missing_host_key_policy(PinnedHostKeyPolicy(self.device_id))
 
             # Enable legacy algorithms for older devices
             self.client.connect(
@@ -327,6 +453,12 @@ class _ParamikoSSH:
             )
             return True
 
+        except HostKeyMismatchError:
+            # Re-raise as-is — do not let this fall through to the
+            # generic handlers below, which would return False and send
+            # the caller straight into the unverified binary fallback.
+            self.client = None
+            raise
         except paramiko.ssh_exception.SSHException as e:
             logger.debug(f"Paramiko SSH error for {self.host}: {e}")
             self.client = None
@@ -467,7 +599,8 @@ class SSHConnection:
     """
 
     def __init__(self, host: str, port: int, username: str, password: str,
-                 enable_password: Optional[str] = None, timeout: int = 30, vendor: str = ''):
+                 enable_password: Optional[str] = None, timeout: int = 30, vendor: str = '',
+                 device_id: Optional[int] = None):
         self.host = host
         self.port = port
         self.username = username
@@ -475,16 +608,22 @@ class SSHConnection:
         self.enable_password = enable_password
         self.timeout = timeout
         self.vendor = vendor
+        self.device_id = device_id
         self.backup_commands: Optional[dict] = None
         self._connected = False
         self._use_binary = False  # Flag: if True, skip Paramiko and use binary directly
         self._paramiko: Optional[_ParamikoSSH] = None
 
     def connect(self) -> None:
-        """Test SSH connection (Paramiko first, binary fallback)"""
+        """Test SSH connection (Paramiko first, binary fallback).
+
+        Note: a HostKeyMismatchError from the Paramiko attempt propagates
+        straight out of this method rather than triggering the binary
+        fallback below — see _ParamikoSSH.connect()'s docstring for why.
+        """
         # Try Paramiko first
         if PARAMIKO_AVAILABLE and not self._use_binary:
-            self._paramiko = _ParamikoSSH(self.host, self.port, self.username, self.password, self.timeout)
+            self._paramiko = _ParamikoSSH(self.host, self.port, self.username, self.password, self.timeout, self.device_id)
             if self._paramiko.connect():
                 self._connected = True
                 logger.info(f"Connected to {self.host} via Paramiko")
@@ -932,7 +1071,7 @@ class TelnetConnection:
 
 def test_connection(host: str, port: int, protocol: str, username: str,
                    password: str, enable_password: Optional[str] = None,
-                   timeout: int = 5) -> Tuple[bool, str]:
+                   timeout: int = 5, device_id: Optional[int] = None) -> Tuple[bool, str]:
     """Test device connection"""
     try:
         resolved_host = validate_target_host(host)
@@ -945,13 +1084,14 @@ def test_connection(host: str, port: int, protocol: str, username: str,
 
     try:
         if protocol.lower() == 'ssh':
-            # Use shorter timeout for test - just verify we can authenticate
-            conn = SSHConnection(resolved_host, port, username, password, enable_password, timeout=5)
-            result = conn._run_ssh(mode='test')
-            if result['success']:
-                return True, "Connection successful"
-            else:
-                return False, result.get('error', 'Connection failed')
+            # Use shorter timeout for test - just verify we can authenticate.
+            # connect() itself already performs and verifies the connection
+            # (Paramiko first, binary fallback) and raises on failure — a
+            # second _run_ssh(mode='test') call here would just repeat
+            # whichever one of those two actually succeeded.
+            conn = SSHConnection(resolved_host, port, username, password, enable_password, timeout=5, device_id=device_id)
+            conn.connect()
+            return True, "Connection successful"
         else:
             with TelnetConnection(resolved_host, port, username, password, enable_password, timeout) as conn:
                 return True, "Connection successful"
@@ -961,7 +1101,8 @@ def test_connection(host: str, port: int, protocol: str, username: str,
 
 def backup_device_config(host: str, port: int, protocol: str, username: str,
                         password: str, vendor: str, enable_password: Optional[str] = None,
-                        timeout: int = 30, backup_commands: dict = None) -> Tuple[bool, str, str]:
+                        timeout: int = 30, backup_commands: dict = None,
+                        device_id: Optional[int] = None) -> Tuple[bool, str, str]:
     """Backup device configuration"""
     try:
         resolved_host = validate_target_host(host)
@@ -970,7 +1111,7 @@ def backup_device_config(host: str, port: int, protocol: str, username: str,
 
     try:
         if protocol.lower() == 'ssh':
-            with SSHConnection(resolved_host, port, username, password, enable_password, timeout, vendor) as conn:
+            with SSHConnection(resolved_host, port, username, password, enable_password, timeout, vendor, device_id=device_id) as conn:
                 config = conn.get_config(vendor, backup_commands)
 
                 is_valid, error_msg = validate_backup_config(config)

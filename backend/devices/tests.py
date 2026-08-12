@@ -1124,7 +1124,10 @@ class SSHConnectionMockTestCase(TestCase):
         mock_paramiko.SSHClient.return_value = mock_client
         mock_paramiko.AutoAddPolicy.return_value = MagicMock()
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        # device_id is required now (host key pinning needs a Device row to
+        # pin against) — SSHClient itself is mocked out here, so the real
+        # missing_host_key() callback never actually runs in this test.
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn.connect()
 
         mock_client.connect.assert_called_once()
@@ -1143,13 +1146,26 @@ class SSHConnectionMockTestCase(TestCase):
         mock_paramiko.AutoAddPolicy.return_value = MagicMock()
         mock_paramiko.ssh_exception = real_paramiko.ssh_exception
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'wrongpass')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'wrongpass', device_id=1)
 
         # Should fall back to binary and fail
         with patch.object(conn, '_run_ssh_binary') as mock_binary:
             mock_binary.return_value = {'success': False, 'error': 'Auth failed'}
             with self.assertRaises(DeviceConnectionError):
                 conn.connect()
+
+    @patch('devices.connection.PARAMIKO_AVAILABLE', True)
+    def test_paramiko_connect_without_device_id_fails_closed(self):
+        """No device_id means no way to verify the host key — must refuse
+        the connection rather than silently trusting whatever key is
+        presented (the old AutoAddPolicy behavior)."""
+        from devices.connection import _ParamikoSSH
+
+        ssh = _ParamikoSSH('192.168.1.1', 22, 'admin', 'password', device_id=None)
+        result = ssh.connect()
+
+        self.assertFalse(result)
+        self.assertIsNone(ssh.client)
 
     @patch('devices.connection.paramiko')
     @patch('devices.connection.PARAMIKO_AVAILABLE', True)
@@ -1171,6 +1187,145 @@ class SSHConnectionMockTestCase(TestCase):
         success, output = ssh.exec_command('uname -a')
         self.assertTrue(success)
         self.assertIn('Linux', output)
+
+
+class SSHHostKeyPinningTestCase(TestCase):
+    """
+    Tests for PinnedHostKeyPolicy — trust-on-first-use SSH host key
+    verification backed by the Device model, replacing the old
+    paramiko.AutoAddPolicy (which trusted any presented key
+    unconditionally, every time, with no persistence at all).
+    """
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='hostkey@example.com',
+            username='hostkeyuser',
+            password='pass123'
+        )
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-hostkey-test')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-hostkey-test')
+        self.device = Device.objects.create(
+            name='pin-test-device',
+            ip_address='192.168.50.1',
+            vendor=self.vendor,
+            device_type=self.device_type,
+            protocol='ssh',
+            port=22,
+            created_by=self.user,
+            username='admin',
+        )
+
+    @staticmethod
+    def _make_key(fingerprint_hex='aabbcc', key_type='ssh-ed25519'):
+        key = MagicMock()
+        key.get_fingerprint.return_value = bytes.fromhex(fingerprint_hex)
+        key.get_name.return_value = key_type
+        return key
+
+    def test_first_connection_pins_key(self):
+        """No key on file yet: the presented key is trusted and stored."""
+        from devices.connection import PinnedHostKeyPolicy
+
+        self.assertEqual(self.device.ssh_host_key_fingerprint, '')
+
+        policy = PinnedHostKeyPolicy(self.device.id)
+        policy.missing_host_key(MagicMock(), '192.168.50.1', self._make_key('aabbcc', 'ssh-ed25519'))
+        # Not raising is the pass condition here.
+
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.ssh_host_key_type, 'ssh-ed25519')
+        self.assertEqual(self.device.ssh_host_key_fingerprint, 'SHA256:aabbcc')
+        self.assertIsNotNone(self.device.ssh_host_key_verified_at)
+        self.assertFalse(self.device.has_pending_ssh_host_key)
+
+    def test_matching_key_is_silently_accepted(self):
+        """A key that matches what's pinned connects with no side effects."""
+        from devices.connection import PinnedHostKeyPolicy
+
+        self.device.ssh_host_key_type = 'ssh-ed25519'
+        self.device.ssh_host_key_fingerprint = 'SHA256:aabbcc'
+        self.device.save()
+
+        policy = PinnedHostKeyPolicy(self.device.id)
+        policy.missing_host_key(MagicMock(), '192.168.50.1', self._make_key('aabbcc', 'ssh-ed25519'))
+
+        self.device.refresh_from_db()
+        self.assertEqual(self.device.ssh_host_key_fingerprint, 'SHA256:aabbcc')
+        self.assertFalse(self.device.has_pending_ssh_host_key)
+
+    def test_mismatched_key_is_rejected_and_flagged(self):
+        """A key that doesn't match what's pinned: refuse the connection,
+        record the new key as pending (not trusted), leave the old pinned
+        key untouched, and attempt a notification."""
+        from devices.connection import PinnedHostKeyPolicy, HostKeyMismatchError
+
+        self.device.ssh_host_key_type = 'ssh-ed25519'
+        self.device.ssh_host_key_fingerprint = 'SHA256:aabbcc'
+        self.device.save()
+
+        policy = PinnedHostKeyPolicy(self.device.id)
+
+        with patch('notifications.services.notify_host_key_mismatch') as mock_notify:
+            with self.assertRaises(HostKeyMismatchError):
+                policy.missing_host_key(MagicMock(), '192.168.50.1', self._make_key('ddeeff', 'ssh-ed25519'))
+            mock_notify.assert_called_once()
+
+        self.device.refresh_from_db()
+        # Old pinned key is untouched.
+        self.assertEqual(self.device.ssh_host_key_fingerprint, 'SHA256:aabbcc')
+        # New key recorded as pending, not trusted.
+        self.assertEqual(self.device.ssh_host_key_pending_fingerprint, 'SHA256:ddeeff')
+        self.assertTrue(self.device.has_pending_ssh_host_key)
+
+    def test_mismatch_does_not_fall_back_to_binary(self):
+        """The whole point of raising a distinct exception type: a rejected
+        host key must abort the connection outright, not silently continue
+        via the netvault-ssh binary fallback, which performs no host key
+        verification of its own at all."""
+        from devices.connection import SSHConnection, HostKeyMismatchError
+
+        conn = SSHConnection('192.168.50.1', 22, 'admin', 'password', device_id=self.device.id)
+
+        with patch.object(conn, '_run_ssh_binary') as mock_binary, \
+             patch('devices.connection._ParamikoSSH.connect') as mock_paramiko_connect:
+            mock_paramiko_connect.side_effect = HostKeyMismatchError('host key changed')
+
+            with self.assertRaises(HostKeyMismatchError):
+                conn.connect()
+
+            mock_binary.assert_not_called()
+
+    def test_approve_pending_key_via_model(self):
+        """Device.approve_ssh_host_key() promotes the pending key and
+        clears the pending state, matching what the approve API action does."""
+        self.device.ssh_host_key_type = 'ssh-ed25519'
+        self.device.ssh_host_key_fingerprint = 'SHA256:aabbcc'
+        self.device.ssh_host_key_pending_type = 'ssh-ed25519'
+        self.device.ssh_host_key_pending_fingerprint = 'SHA256:ddeeff'
+        self.device.save()
+
+        self.device.approve_ssh_host_key()
+
+        self.assertEqual(self.device.ssh_host_key_fingerprint, 'SHA256:ddeeff')
+        self.assertEqual(self.device.ssh_host_key_pending_fingerprint, '')
+        self.assertFalse(self.device.has_pending_ssh_host_key)
+
+    def test_reject_pending_key_via_model(self):
+        """Device.reject_ssh_host_key() clears the pending state without
+        touching the previously-pinned key."""
+        self.device.ssh_host_key_type = 'ssh-ed25519'
+        self.device.ssh_host_key_fingerprint = 'SHA256:aabbcc'
+        self.device.ssh_host_key_pending_type = 'ssh-ed25519'
+        self.device.ssh_host_key_pending_fingerprint = 'SHA256:ddeeff'
+        self.device.save()
+
+        self.device.reject_ssh_host_key()
+
+        self.assertEqual(self.device.ssh_host_key_fingerprint, 'SHA256:aabbcc')
+        self.assertEqual(self.device.ssh_host_key_pending_fingerprint, '')
+        self.assertFalse(self.device.has_pending_ssh_host_key)
 
 
 class TelnetConnectionMockTestCase(TestCase):
@@ -1246,7 +1401,7 @@ class SSHBinaryMockTestCase(TestCase):
             returncode=0
         )
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='shell', commands='show run')
@@ -1263,7 +1418,7 @@ class SSHBinaryMockTestCase(TestCase):
             returncode=1
         )
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'wrongpass')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'wrongpass', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='test')
@@ -1281,7 +1436,7 @@ class SSHBinaryMockTestCase(TestCase):
             MagicMock(stdout='{"success":true,"output":"config"}', returncode=0)
         ]
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='shell', commands='show run')
@@ -1297,7 +1452,7 @@ class SSHBinaryMockTestCase(TestCase):
 
         mock_run.side_effect = subprocess.TimeoutExpired(cmd='ssh', timeout=30)
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='test')
@@ -1449,7 +1604,7 @@ class SSHVersionAndAlgorithmTestCase(TestCase):
             MagicMock(stdout=self.SSH_SUCCESS, returncode=0)
         ]
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='shell', commands='show run')
@@ -1467,7 +1622,7 @@ class SSHVersionAndAlgorithmTestCase(TestCase):
             MagicMock(stdout=self.SSH_CHACHA20_ERROR, returncode=1)
         ]
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='shell', commands='show run')
@@ -1485,7 +1640,7 @@ class SSHVersionAndAlgorithmTestCase(TestCase):
             MagicMock(stdout=self.SSH_SUCCESS, returncode=0)
         ]
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='shell', commands='show run')
@@ -1502,7 +1657,7 @@ class SSHVersionAndAlgorithmTestCase(TestCase):
             MagicMock(stdout=self.SSH_SUCCESS, returncode=0)
         ]
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='shell', commands='admin display-config')
@@ -1516,7 +1671,7 @@ class SSHVersionAndAlgorithmTestCase(TestCase):
         # Auth failure should NOT trigger fallback to modern binary
         mock_run.return_value = MagicMock(stdout=self.SSH_AUTH_FAILED, returncode=1)
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'wrongpass')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'wrongpass', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='test')
@@ -1532,7 +1687,7 @@ class SSHVersionAndAlgorithmTestCase(TestCase):
 
         mock_run.return_value = MagicMock(stdout=self.SSH_TIMEOUT, returncode=1)
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='test')
@@ -1552,7 +1707,7 @@ class SSHVersionAndAlgorithmTestCase(TestCase):
         mock_paramiko.SSHClient.return_value = mock_client
         mock_paramiko.AutoAddPolicy.return_value = MagicMock()
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn.connect()
 
         # Verify connect was called with disabled_algorithms param
@@ -1574,7 +1729,7 @@ class SSHVersionAndAlgorithmTestCase(TestCase):
         mock_paramiko.AutoAddPolicy.return_value = MagicMock()
         mock_paramiko.ssh_exception = real_paramiko.ssh_exception
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
 
         with patch.object(conn, '_run_ssh_binary') as mock_binary:
             mock_binary.return_value = {'success': True, 'output': 'config'}
@@ -1641,7 +1796,7 @@ return
             returncode=0
         )
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'cisco123')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'cisco123', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='shell', commands='show run')
@@ -1659,7 +1814,7 @@ return
             returncode=0
         )
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'nokia123')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'nokia123', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='shell', commands='admin display-config')
@@ -1678,7 +1833,7 @@ return
             MagicMock(stdout=json.dumps({"success": True, "output": self.HUAWEI_OLD_VRP}), returncode=0)
         ]
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'huawei123')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'huawei123', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='shell', commands='display current')
@@ -1726,7 +1881,7 @@ class ErrorCodeMappingTestCase(TestCase):
             returncode=1
         )
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='test')
@@ -1743,7 +1898,7 @@ class ErrorCodeMappingTestCase(TestCase):
             returncode=1
         )
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='test')
@@ -1866,7 +2021,7 @@ end
             returncode=1
         )
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='test')
@@ -1883,7 +2038,7 @@ end
             returncode=1
         )
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn._use_binary = True
 
         result = conn._run_ssh_binary(mode='shell', commands='show tech')
@@ -1898,7 +2053,7 @@ end
         # Simulate timeout during long command like "show tech-support"
         mock_run.side_effect = subprocess.TimeoutExpired(cmd='ssh', timeout=120)
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn._use_binary = True
         conn.timeout = 120
 
@@ -2007,7 +2162,7 @@ end
         mock_paramiko.AutoAddPolicy.return_value = MagicMock()
         mock_paramiko.ssh_exception = real_paramiko.ssh_exception
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
 
         with patch.object(conn, '_run_ssh_binary') as mock_binary:
             mock_binary.return_value = {'success': False, 'error': 'Auth failed'}
@@ -2030,7 +2185,7 @@ end
         mock_paramiko.SSHClient.return_value = mock_client
         mock_paramiko.AutoAddPolicy.return_value = MagicMock()
 
-        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password')
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'password', device_id=1)
         conn.connect()
 
         # Verify AutoAddPolicy was used (accepts changed keys)

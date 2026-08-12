@@ -46,6 +46,7 @@ from .serializers import (
     DeviceSerializer, DeviceCreateSerializer, DeviceDetailSerializer
 )
 from core.utils import sanitize_csv_value
+from accounts.models import AuditLog
 
 
 class VendorViewSet(viewsets.ModelViewSet):
@@ -194,16 +195,25 @@ class DeviceViewSet(viewsets.ModelViewSet):
                 username=username,
                 password=password,
                 enable_password=enable_password,
-                timeout=5  # Quick test, not full backup
+                timeout=5,  # Quick test, not full backup
+                device_id=device.id,
             )
 
-            # Update device status based on connection test result
+            # Update device status based on connection test result.
+            # update_fields matters here, not just style: test_connection()
+            # may pin or update this same device's SSH host key fields on a
+            # *separate* Device instance loaded inside
+            # PinnedHostKeyPolicy.missing_host_key() while the connection
+            # was being established. A bare device.save() here would
+            # overwrite that already-committed write with this view's
+            # stale in-memory copy (loaded before the connection attempt).
             if success:
                 device.status = 'online'
                 device.last_seen = timezone.now()
+                device.save(update_fields=['status', 'last_seen'])
             else:
                 device.status = 'offline'
-            device.save()
+                device.save(update_fields=['status'])
 
             return Response({
                 'success': success,
@@ -214,15 +224,89 @@ class DeviceViewSet(viewsets.ModelViewSet):
             })
 
         except Exception as e:
-            # Update device status to offline on exception
+            # Update device status to offline on exception (see note above
+            # about update_fields).
             device.status = 'offline'
-            device.save()
+            device.save(update_fields=['status'])
 
             logger.error(f"Connection test failed for device {device.id}: {str(e)}")
             return Response({
                 'detail': f'Connection test failed: {str(e)}',
                 'device_id': device.id,
             }, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdministrator])
+    def approve_ssh_host_key(self, request, pk=None):
+        """
+        Accept a device's pending SSH host key as the new trusted one.
+
+        Only reachable after an admin has verified the new fingerprint
+        out-of-band (device console, vendor documentation, etc.) — this
+        endpoint itself does not and cannot verify anything, it just
+        records that a human did. Admin-only: this is what lets
+        connections to the device resume after a host key mismatch.
+        """
+        device = self.get_object()
+
+        if not device.has_pending_ssh_host_key:
+            return Response(
+                {'detail': 'No pending SSH host key change for this device.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        old = f"{device.ssh_host_key_type} {device.ssh_host_key_fingerprint}" if device.ssh_host_key_fingerprint else '(none)'
+        new = f"{device.ssh_host_key_pending_type} {device.ssh_host_key_pending_fingerprint}"
+        device.approve_ssh_host_key()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action='update',
+            resource_type='Device',
+            resource_id=device.id,
+            resource_name=device.name,
+            description=f'Approved new SSH host key ({old} -> {new})',
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        )
+
+        return Response({
+            'success': True,
+            'ssh_host_key_type': device.ssh_host_key_type,
+            'ssh_host_key_fingerprint': device.ssh_host_key_fingerprint,
+        })
+
+    @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdministrator])
+    def reject_ssh_host_key(self, request, pk=None):
+        """
+        Discard a device's pending SSH host key without trusting it.
+
+        Leaves the previously-pinned key (if any) in place, so connections
+        stay refused. Use this after confirming out-of-band that the
+        change was NOT expected.
+        """
+        device = self.get_object()
+
+        if not device.has_pending_ssh_host_key:
+            return Response(
+                {'detail': 'No pending SSH host key change for this device.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        rejected = f"{device.ssh_host_key_pending_type} {device.ssh_host_key_pending_fingerprint}"
+        device.reject_ssh_host_key()
+
+        AuditLog.objects.create(
+            user=request.user,
+            action='update',
+            resource_type='Device',
+            resource_id=device.id,
+            resource_name=device.name,
+            description=f'Rejected new SSH host key ({rejected})',
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        )
+
+        return Response({'success': True})
 
     @action(detail=True, methods=['post'])
     def backup_now(self, request, pk=None):

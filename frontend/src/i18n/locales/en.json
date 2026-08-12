@@ -124,7 +124,21 @@
     "first_page": "First page",
     "last_page": "Last page",
     "prev_page": "Previous page",
-    "next_page": "Next page"
+    "next_page": "Next page",
+    "ssh_host_key": "SSH Host Key",
+    "ssh_host_key_not_pinned": "Not yet connected — key will be pinned on first connection",
+    "ssh_host_key_changed_title": "⚠ SSH host key changed",
+    "ssh_host_key_changed_body": "A connection attempt presented a different SSH host key than the one on file. Connections (including scheduled backups) are refused until you verify the new fingerprint out-of-band (device console, not over the network) and approve or reject it below.",
+    "ssh_host_key_expected": "Previously trusted",
+    "ssh_host_key_received": "Newly presented",
+    "approve_host_key": "Approve new key",
+    "reject_host_key": "Reject",
+    "confirm_approve_host_key": "Trust this new SSH host key for {{name}}? Only do this after verifying the fingerprint out-of-band.",
+    "confirm_reject_host_key": "Reject this key change for {{name}}? The device will stay unreachable until this is resolved.",
+    "host_key_approved": "New SSH host key approved",
+    "host_key_rejected": "SSH host key change rejected",
+    "failed_approve_host_key": "Failed to approve host key",
+    "failed_reject_host_key": "Failed to reject host key"
   },
   "backups": {
     "title": "Backups",
@@ -672,7 +686,8 @@
     "days": "days",
     "weeks": "weeks",
     "months": "months",
-    "deleting": "Deleting..."
+    "deleting": "Deleting...",
+    "detected_at": "Detected at"
   },
   "config_viewer": {
     "default_title": "Configuration",

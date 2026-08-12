@@ -358,6 +358,16 @@ class APIService {
       return response.data;
     },
 
+    approveSshHostKey: async (id: number) => {
+      const response = await apiClient.post(`/devices/devices/${id}/approve_ssh_host_key/`);
+      return response.data;
+    },
+
+    rejectSshHostKey: async (id: number) => {
+      const response = await apiClient.post(`/devices/devices/${id}/reject_ssh_host_key/`);
+      return response.data;
+    },
+
     statistics: async () => {
       const response = await apiClient.get('/devices/devices/statistics/');
       return response.data;

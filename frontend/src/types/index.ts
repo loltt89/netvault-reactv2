@@ -137,6 +137,13 @@ export interface DeviceDetail {
   backup_enabled: boolean;
   backup_schedule: string;
   custom_commands: string[];
+  ssh_host_key_type: string;
+  ssh_host_key_fingerprint: string;
+  ssh_host_key_verified_at: string | null;
+  ssh_host_key_pending_type: string;
+  ssh_host_key_pending_fingerprint: string;
+  ssh_host_key_pending_detected_at: string | null;
+  has_pending_ssh_host_key: boolean;
   created_at: string;
   updated_at: string;
   created_by_email: string | null;
