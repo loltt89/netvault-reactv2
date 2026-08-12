@@ -22,6 +22,10 @@ app.conf.beat_schedule = {
         'task': 'backups.tasks.run_scheduled_backups',
         'schedule': crontab(minute='*/5'),  # Every 5 minutes
     },
+    'reap-stale-backups': {
+        'task': 'backups.tasks.reap_stale_backups',
+        'schedule': crontab(minute='*/15'),  # Every 15 minutes
+    },
     'cleanup-old-backups': {
         'task': 'backups.tasks.cleanup_old_backups',
         'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM

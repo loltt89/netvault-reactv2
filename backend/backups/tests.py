@@ -819,6 +819,79 @@ class RetentionPolicyApplicationTestCase(TestCase):
         self.assertEqual(Backup.objects.filter(device=other_device).count(), 1)  # untouched
 
 
+class ReapStaleBackupsTestCase(TestCase):
+    """Tests for the fix: a Backup stuck at status='running' forever if the
+    worker process died mid-task (OOM, hard CELERY_TASK_TIME_LIMIT SIGKILL,
+    pod eviction) — no except/finally block runs in that case, so nothing
+    ever revisited the row before this task existed.
+    """
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='reap@example.com', username='reapuser', password='TestPass123!'
+        )
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-reap')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-reap')
+        self.device = Device.objects.create(
+            name='Reap-Device', ip_address='10.0.9.70', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.user,
+        )
+
+    def _make_running_backup(self, started_ago):
+        from django.conf import settings
+        b = Backup.objects.create(device=self.device, status='running')
+        Backup.objects.filter(id=b.id).update(started_at=timezone.now() - started_ago)
+        return Backup.objects.get(id=b.id)
+
+    def test_reaps_backup_stuck_past_time_limit(self):
+        from django.conf import settings
+        from backups.tasks import reap_stale_backups
+
+        stale = self._make_running_backup(timedelta(seconds=settings.CELERY_TASK_TIME_LIMIT + 600))
+
+        result = reap_stale_backups()
+        self.assertEqual(result['reaped_count'], 1)
+
+        stale.refresh_from_db()
+        self.assertEqual(stale.status, 'failed')
+        self.assertFalse(stale.success)
+        self.assertIsNotNone(stale.completed_at)
+        self.assertIsNotNone(stale.duration_seconds)
+        self.assertIn('worker', stale.error_message.lower())
+
+    def test_does_not_touch_recently_started_running_backup(self):
+        """A backup that's genuinely still in progress (well within the
+        time limit) must not be falsely marked failed."""
+        from backups.tasks import reap_stale_backups
+
+        fresh = self._make_running_backup(timedelta(minutes=2))
+
+        result = reap_stale_backups()
+        self.assertEqual(result['reaped_count'], 0)
+
+        fresh.refresh_from_db()
+        self.assertEqual(fresh.status, 'running')
+
+    def test_does_not_touch_completed_backups(self):
+        from django.conf import settings
+        from backups.tasks import reap_stale_backups
+
+        old_success = Backup.objects.create(
+            device=self.device, status='success', success=True,
+            configuration_encrypted=encrypt_data('cfg'), configuration_hash='h1',
+        )
+        Backup.objects.filter(id=old_success.id).update(
+            started_at=timezone.now() - timedelta(seconds=settings.CELERY_TASK_TIME_LIMIT + 600)
+        )
+
+        reap_stale_backups()
+
+        old_success.refresh_from_db()
+        self.assertEqual(old_success.status, 'success')
+
+
 class BackupTasksTestCase(TestCase):
     """Tests for Celery backup tasks"""
 

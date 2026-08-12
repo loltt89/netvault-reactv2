@@ -414,6 +414,52 @@ def cleanup_old_backups(retention_days: int = None):
     return {'success': True, 'deleted_count': count}
 
 
+@shared_task
+def reap_stale_backups():
+    """
+    Find Backup rows stuck at status='running' and mark them failed.
+
+    backup_device() sets status='running' before attempting the connection,
+    and every code path that can finish the task also flips that status —
+    *except* the worker process being killed outright (OOM, the hard
+    CELERY_TASK_TIME_LIMIT sending SIGKILL, a pod eviction or deploy
+    restart mid-task). None of those go through any except/finally block —
+    the process just stops — so the row is left at 'running' forever, with
+    nothing else in the codebase that ever revisits it. The dashboard and
+    device detail page then show a backup "in progress" indefinitely, with
+    no way to clear it short of a manual DB fix.
+
+    A Backup can only legitimately still be 'running' for at most
+    CELERY_TASK_TIME_LIMIT — Celery guarantees the worker is killed by
+    then, so anything older than that plus a safety margin is provably
+    dead, not just slow.
+    """
+    from django.conf import settings
+
+    cutoff = timezone.now() - timedelta(seconds=settings.CELERY_TASK_TIME_LIMIT + 300)
+    stale = Backup.objects.filter(status='running', started_at__lt=cutoff)
+
+    count = 0
+    for backup in stale:
+        backup.status = 'failed'
+        backup.success = False
+        backup.error_message = (
+            'Backup task did not complete — the worker process likely died '
+            'mid-task (killed, OOM, or restarted) before it could report a '
+            'result. Automatically marked failed by reap_stale_backups after '
+            f'{settings.CELERY_TASK_TIME_LIMIT + 300}s with no update.'
+        )
+        backup.completed_at = timezone.now()
+        backup.duration_seconds = (backup.completed_at - backup.started_at).total_seconds()
+        backup.save(update_fields=['status', 'success', 'error_message', 'completed_at', 'duration_seconds'])
+        count += 1
+
+    if count:
+        logger.warning(f"Reaped {count} stale 'running' backup(s) stuck past their possible lifetime")
+
+    return {'success': True, 'reaped_count': count}
+
+
 def _backups_outside_retention(backups, keep_last_n, keep_daily, keep_weekly, keep_monthly):
     """
     Grandfather-father-son retention: given a device's successful backups
