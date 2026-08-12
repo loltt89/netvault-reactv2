@@ -1,6 +1,6 @@
 from django.db import models
 from django.conf import settings
-from core.crypto import encrypt_data, decrypt_data
+from core.crypto import EncryptedFieldMixin
 
 
 class Vendor(models.Model):
@@ -44,7 +44,7 @@ class DeviceType(models.Model):
         return self.name
 
 
-class Device(models.Model):
+class Device(EncryptedFieldMixin, models.Model):
     """Network device"""
 
     PROTOCOL_CHOICES = (
@@ -80,6 +80,11 @@ class Device(models.Model):
     username = models.CharField(max_length=255)
     password_encrypted = models.TextField(blank=True, default='')  # Encrypted password (can be empty for some devices)
     enable_password_encrypted = models.TextField(blank=True)  # Encrypted enable password for Cisco
+
+    ENCRYPTED_FIELDS = {
+        'password': 'password_encrypted',
+        'enable_password': 'enable_password_encrypted',
+    }
 
     # Organization
     location = models.CharField(max_length=255, blank=True)
@@ -138,19 +143,19 @@ class Device(models.Model):
 
     def set_password(self, password):
         """Encrypt and set password"""
-        self.password_encrypted = encrypt_data(password)
+        self.set_encrypted('password', password)
 
     def get_password(self):
         """Decrypt and get password"""
-        return decrypt_data(self.password_encrypted)
+        return self.get_encrypted('password')
 
     def set_enable_password(self, password):
         """Encrypt and set enable password"""
-        self.enable_password_encrypted = encrypt_data(password)
+        self.set_encrypted('enable_password', password)
 
     def get_enable_password(self):
         """Decrypt and get enable password"""
-        return decrypt_data(self.enable_password_encrypted)
+        return self.get_encrypted('enable_password')
 
     def get_backup_commands(self):
         """Get backup commands for this device"""
@@ -161,7 +166,7 @@ class Device(models.Model):
         return None
 
 
-class DeviceCredential(models.Model):
+class DeviceCredential(EncryptedFieldMixin, models.Model):
     """Additional credentials for devices (for privilege escalation, etc.)"""
 
     device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='credentials')
@@ -169,6 +174,10 @@ class DeviceCredential(models.Model):
     username = models.CharField(max_length=255, blank=True)
     password_encrypted = models.TextField(blank=True, default='')
     description = models.TextField(blank=True)
+
+    ENCRYPTED_FIELDS = {
+        'password': 'password_encrypted',
+    }
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -182,8 +191,8 @@ class DeviceCredential(models.Model):
 
     def set_password(self, password):
         """Encrypt and set password"""
-        self.password_encrypted = encrypt_data(password)
+        self.set_encrypted('password', password)
 
     def get_password(self):
         """Decrypt and get password"""
-        return decrypt_data(self.password_encrypted)
+        return self.get_encrypted('password')

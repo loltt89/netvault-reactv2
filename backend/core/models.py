@@ -3,10 +3,10 @@ System-wide settings stored in database
 """
 from django.db import models
 from django.core.cache import cache
-from core.crypto import encrypt_data, decrypt_data
+from core.crypto import EncryptedFieldMixin
 
 
-class SystemSettings(models.Model):
+class SystemSettings(EncryptedFieldMixin, models.Model):
     """
     System-wide settings (Singleton model)
 
@@ -52,6 +52,12 @@ class SystemSettings(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    ENCRYPTED_FIELDS = {
+        'email_password': 'email_host_password_encrypted',
+        'telegram_bot_token': 'telegram_bot_token_encrypted',
+        'ldap_bind_password': 'ldap_bind_password_encrypted',
+    }
+
     class Meta:
         db_table = 'system_settings'
         verbose_name = 'System Settings'
@@ -84,41 +90,26 @@ class SystemSettings(models.Model):
     # ===== Email Password Methods =====
     def set_email_password(self, password: str):
         """Encrypt and store email password"""
-        if password:
-            self.email_host_password_encrypted = encrypt_data(password)
-        else:
-            self.email_host_password_encrypted = ''
+        self.set_encrypted('email_password', password)
 
     def get_email_password(self) -> str:
         """Decrypt and return email password"""
-        if self.email_host_password_encrypted:
-            return decrypt_data(self.email_host_password_encrypted)
-        return ''
+        return self.get_encrypted('email_password')
 
     # ===== Telegram Token Methods =====
     def set_telegram_bot_token(self, token: str):
         """Encrypt and store Telegram bot token"""
-        if token:
-            self.telegram_bot_token_encrypted = encrypt_data(token)
-        else:
-            self.telegram_bot_token_encrypted = ''
+        self.set_encrypted('telegram_bot_token', token)
 
     def get_telegram_bot_token(self) -> str:
         """Decrypt and return Telegram bot token"""
-        if self.telegram_bot_token_encrypted:
-            return decrypt_data(self.telegram_bot_token_encrypted)
-        return ''
+        return self.get_encrypted('telegram_bot_token')
 
     # ===== LDAP Password Methods =====
     def set_ldap_bind_password(self, password: str):
         """Encrypt and store LDAP bind password"""
-        if password:
-            self.ldap_bind_password_encrypted = encrypt_data(password)
-        else:
-            self.ldap_bind_password_encrypted = ''
+        self.set_encrypted('ldap_bind_password', password)
 
     def get_ldap_bind_password(self) -> str:
         """Decrypt and return LDAP bind password"""
-        if self.ldap_bind_password_encrypted:
-            return decrypt_data(self.ldap_bind_password_encrypted)
-        return ''
+        return self.get_encrypted('ldap_bind_password')

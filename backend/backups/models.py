@@ -1,11 +1,11 @@
 from django.db import models
 from django.conf import settings
 from devices.models import Device
-from core.crypto import encrypt_data, decrypt_data
+from core.crypto import EncryptedFieldMixin
 import hashlib
 
 
-class Backup(models.Model):
+class Backup(EncryptedFieldMixin, models.Model):
     """Configuration backup for a device"""
 
     STATUS_CHOICES = (
@@ -23,6 +23,10 @@ class Backup(models.Model):
     configuration_encrypted = models.TextField()  # Encrypted configuration content
     configuration_hash = models.CharField(max_length=64, db_index=True)  # SHA256 hash for deduplication
     size_bytes = models.BigIntegerField(default=0)
+
+    ENCRYPTED_FIELDS = {
+        'configuration': 'configuration_encrypted',
+    }
 
     # Timing
     started_at = models.DateTimeField(null=True, blank=True)
@@ -80,7 +84,7 @@ class Backup(models.Model):
         """Encrypt and set configuration content"""
         from .config_normalizer import normalize_config
 
-        self.configuration_encrypted = encrypt_data(configuration)
+        self.set_encrypted('configuration', configuration)
 
         # Normalize config before hashing to ignore vendor-specific dynamic content
         # (timestamps, encrypted passwords, crypto blocks, etc.)
@@ -92,7 +96,7 @@ class Backup(models.Model):
 
     def get_configuration(self):
         """Decrypt and get configuration content"""
-        return decrypt_data(self.configuration_encrypted)
+        return self.get_encrypted('configuration')
 
     def compare_with_previous(self):
         """Compare with previous backup to detect changes"""
