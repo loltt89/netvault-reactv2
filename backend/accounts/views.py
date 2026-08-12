@@ -1,4 +1,5 @@
 import logging
+from django.middleware.csrf import get_token
 from rest_framework import viewsets, status, permissions
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -28,6 +29,13 @@ def set_jwt_cookies(response, request, access_token=None, refresh_token=None):
         refresh_token: Refresh token string (optional)
     """
     if access_token:
+        # Forces Django's CsrfViewMiddleware to include a fresh, JS-readable
+        # `csrftoken` cookie on this response — nothing else in this API
+        # ever triggers that (there are no server-rendered templates using
+        # {% csrf_token %}), so without this call the cookie-authenticated
+        # requests CookieJWTAuthentication.enforce_csrf() now requires a
+        # valid CSRF token for would have no way to ever obtain one.
+        get_token(request)
         response.set_cookie(
             'access_token',
             access_token,

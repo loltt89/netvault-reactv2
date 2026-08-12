@@ -46,6 +46,7 @@ from .serializers import (
     DeviceSerializer, DeviceCreateSerializer, DeviceDetailSerializer
 )
 from core.utils import sanitize_csv_value, validate_csv_safe
+from core.throttling import DeviceConnectionTestThrottle, DeviceBackupNowThrottle
 from accounts.models import AuditLog
 from .connection import _never_a_device
 import ipaddress
@@ -174,7 +175,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
             'backup_enabled': backup_enabled,
         })
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], throttle_classes=[DeviceConnectionTestThrottle])
     def test_connection(self, request, pk=None):
         """Test connection to device"""
         from .connection import test_connection
@@ -331,7 +332,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
 
         return Response({'success': True})
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], throttle_classes=[DeviceBackupNowThrottle])
     def backup_now(self, request, pk=None):
         """Trigger immediate backup for device (works regardless of backup_enabled status)"""
         from backups.tasks import backup_device

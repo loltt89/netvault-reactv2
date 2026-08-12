@@ -22,6 +22,15 @@ const apiClient: AxiosInstance = axios.create({
   },
   timeout: 30000,
   withCredentials: true, // Send cookies with requests
+  // Cookie-authenticated state-changing requests now require a CSRF token
+  // (see accounts/authentication.py's CookieJWTAuthentication.enforce_csrf)
+  // — these two lines are what actually send it: axios reads the named
+  // cookie and attaches it as the named header automatically, on every
+  // request, with no per-call code needed. Names must match Django's own
+  // defaults (CSRF_COOKIE_NAME='csrftoken', CSRF_HEADER_NAME maps to
+  // 'X-CSRFToken'), not axios's own defaults (XSRF-TOKEN / X-XSRF-TOKEN).
+  xsrfCookieName: 'csrftoken',
+  xsrfHeaderName: 'X-CSRFToken',
 });
 
 /**

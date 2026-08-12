@@ -946,6 +946,67 @@ class DeviceViewSetActionsTestCase(APITestCase):
         mock_lock.release.assert_not_called()  # never acquired, nothing to release
 
 
+class DeviceExpensiveOperationThrottleTestCase(APITestCase):
+    """Tests for rate-limiting test_connection/backup_now — both open a
+    real SSH/Telnet session. DeviceLock already stops two of these racing
+    against the *same* device; this instead bounds how many a single user
+    can fire off against any number of devices in a row, which nothing did
+    before.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+        # Throttle counters are cache-backed and the cache isn't reset
+        # between test classes the way the DB is (each test's DB writes
+        # roll back in a transaction; cache entries don't). Test-DB PKs
+        # commonly restart from 1 in each isolated test, so a throttle
+        # counter keyed by user.pk here can otherwise leak into an
+        # unrelated test class's user that happens to get the same PK.
+        # Clearing on both ends keeps this test's throttling from leaking
+        # in either direction.
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='throttle_dev@example.com', username='throttle_dev',
+            password='TestPass123!', role='administrator'
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-throttle')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-throttle')
+        self.device = Device.objects.create(
+            name='Throttle-Device', ip_address='10.0.9.80', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin,
+        )
+
+    @patch('devices.connection.test_connection')
+    @patch('core.redis_lock.DeviceLock')
+    def test_test_connection_throttled_after_limit(self, mock_lock_class, mock_test):
+        mock_lock = MagicMock()
+        mock_lock.acquire.return_value = True
+        mock_lock_class.return_value = mock_lock
+        mock_test.return_value = (True, 'Connection successful')
+
+        statuses = [
+            self.client.post(f'/api/v1/devices/devices/{self.device.id}/test_connection/').status_code
+            for _ in range(65)  # over the 60/hour limit
+        ]
+        self.assertIn(status.HTTP_429_TOO_MANY_REQUESTS, statuses)
+
+    @patch('backups.tasks.backup_device.delay')
+    def test_backup_now_throttled_after_limit(self, mock_delay):
+        mock_delay.return_value = MagicMock(id='fake-task-id')
+
+        statuses = [
+            self.client.post(f'/api/v1/devices/devices/{self.device.id}/backup_now/').status_code
+            for _ in range(35)  # over the 30/hour limit
+        ]
+        self.assertIn(status.HTTP_429_TOO_MANY_REQUESTS, statuses)
+
+
 class DeviceCsvImportSecurityTestCase(APITestCase):
     """Tests for csv_import's SSRF and CSV-injection guards.
 

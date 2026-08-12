@@ -162,7 +162,13 @@ class Verify2FAThrottleTestCase(APITestCase):
 
     def setUp(self):
         from django.core.cache import cache
-        cache.clear()  # throttle counters are cache-backed; isolate from other tests
+        # Cache-backed throttle counters aren't reset between test classes
+        # the way the DB is, and test-DB PKs commonly restart from 1 per
+        # test — a counter keyed by user.pk here could otherwise leak into
+        # an unrelated later test class whose user happens to get the same
+        # PK. Clear on both ends.
+        cache.clear()
+        self.addCleanup(cache.clear)
 
         User = get_user_model()
         self.user = User.objects.create_user(
@@ -727,6 +733,72 @@ class CookieTokenRefreshTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertEqual(response.cookies['refresh_token'].value, '')
         self.assertEqual(response.cookies['access_token'].value, '')
+
+
+class CookieAuthCSRFTestCase(APITestCase):
+    """Tests for CSRF enforcement on cookie-authenticated requests.
+
+    DRF's APIView marks every view csrf_exempt at the Django-middleware
+    level, and DRF's own CSRF handling only ever covers SessionAuthentication
+    — CookieJWTAuthentication's cookie fallback had no CSRF check of any
+    kind, relying solely on SameSite=Lax as the only barrier against a
+    cookie riding along on a cross-site request. These confirm the new
+    check in CookieJWTAuthentication.enforce_csrf actually blocks a
+    cookie-authenticated state-changing request with no CSRF token, allows
+    one with a valid token, and — importantly — leaves plain
+    Authorization-header (Bearer) requests alone, since those aren't
+    something a browser attaches automatically and forcing a CSRF token on
+    them would break every non-browser API client and the rest of this
+    test suite's force_authenticate()-based tests.
+    """
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='csrfuser@example.com', username='csrfuser', password='TestPass123!'
+        )
+        # Django's test Client sets request._dont_enforce_csrf_checks = True
+        # by default (enforce_csrf_checks=False) — a test-client-only
+        # concept real browser/production traffic never has. Without this,
+        # every request through self.client would silently skip the check
+        # entirely regardless of whether a token was sent, and both the
+        # "rejected without a token" and "allowed with one" tests would
+        # pass for the wrong reason (nothing was actually being enforced).
+        self.client = APIClient(enforce_csrf_checks=True)
+
+    def _login_via_cookies(self):
+        response = self.client.post('/api/v1/token/', {
+            'email': 'csrfuser@example.com', 'password': 'TestPass123!'
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response
+
+    def test_cookie_auth_state_changing_request_without_csrf_token_rejected(self):
+        self._login_via_cookies()
+
+        response = self.client.post('/api/v1/auth/logout/')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_cookie_auth_state_changing_request_with_csrf_token_succeeds(self):
+        login_response = self._login_via_cookies()
+        csrf_token = login_response.cookies['csrftoken'].value
+        self.assertTrue(csrf_token, "Login must set a csrftoken cookie or the client has no way to pass this check")
+
+        response = self.client.post('/api/v1/auth/logout/', HTTP_X_CSRFTOKEN=csrf_token)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_bearer_header_auth_never_requires_csrf(self):
+        """The header path must stay exactly as permissive as before —
+        this is what every non-browser API client, and most of this test
+        suite via force_authenticate, actually relies on."""
+        from rest_framework_simplejwt.tokens import RefreshToken
+
+        access = str(RefreshToken.for_user(self.user).access_token)
+        client = APIClient()
+        response = client.post(
+            '/api/v1/auth/logout/', HTTP_AUTHORIZATION=f'Bearer {access}'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
 class UserRoleTestCase(TestCase):

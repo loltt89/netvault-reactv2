@@ -206,6 +206,12 @@ REST_FRAMEWORK = {
         'user': '100000/hour',  # Authenticated users: 100000 per hour
         'login': '200/hour',  # Login attempts: 200 per hour per IP
         'two_factor_verify': '10/hour',  # TOTP confirmation attempts: 10 per hour per user
+        # Both of these open a real SSH/Telnet session to a device.
+        # DeviceLock already stops two of these racing against the *same*
+        # device; this instead bounds how many a single user can fire off
+        # against *any number* of devices in a row.
+        'device_connection_test': '60/hour',  # manual "Test Connection" clicks, per user
+        'device_backup_now': '30/hour',  # manual "Backup Now" triggers, per user
     },
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
@@ -262,17 +268,26 @@ SIMPLE_JWT = {
 # Only allow specified origins (set in .env or use defaults)
 CORS_ALLOW_ALL_ORIGINS = False
 
-# Default includes localhost and common private network ranges
+# Default includes localhost only — install.sh always sets
+# CORS_ALLOWED_ORIGINS explicitly to the real deployment domain, so this
+# default is really only hit for local dev.
 _default_cors = 'http://localhost:3000,http://127.0.0.1:3000,http://localhost,http://127.0.0.1'
-# Add common private IP patterns (will be matched by CORS_ALLOWED_ORIGIN_REGEXES)
 CORS_ALLOWED_ORIGINS = os.getenv('CORS_ALLOWED_ORIGINS', _default_cors).split(',')
 
-# Allow private network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
-CORS_ALLOWED_ORIGIN_REGEXES = [
-    r"^https?://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$",
-    r"^https?://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$",
-    r"^https?://172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}(:\d+)?$",
-]
+# Trusting "any origin that looks like a private IP" is a wider trust
+# boundary than a self-hosted app with a known, install-time-configured
+# domain (CORS_ALLOWED_ORIGINS above) actually needs — combined with
+# CORS_ALLOW_CREDENTIALS below, it means literally anything else on the
+# same LAN claiming a 192.168.x.x/10.x.x.x/172.16-31.x.x Origin header
+# gets a credentialed CORS response. Off by default now; opt in only if
+# you specifically need to reach this instance from multiple private IPs
+# that aren't worth enumerating explicitly (e.g. no stable DNS yet).
+if os.getenv('CORS_ALLOW_PRIVATE_NETWORKS', 'False') == 'True':
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        r"^https?://192\.168\.\d{1,3}\.\d{1,3}(:\d+)?$",
+        r"^https?://10\.\d{1,3}\.\d{1,3}\.\d{1,3}(:\d+)?$",
+        r"^https?://172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}(:\d+)?$",
+    ]
 
 CORS_ALLOW_CREDENTIALS = True
 

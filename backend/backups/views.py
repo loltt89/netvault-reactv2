@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Count, Sum, Q
 from django.utils import timezone
 from accounts.permissions import CanManageBackups, CanManageDevices, IsAdministrator
+from core.throttling import DeviceBackupNowThrottle
 from accounts.models import AuditLog
 
 logger = logging.getLogger(__name__)
@@ -440,7 +441,7 @@ class BackupScheduleViewSet(viewsets.ModelViewSet):
             'message': f'Schedule {"activated" if schedule.is_active else "deactivated"}'
         })
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], throttle_classes=[DeviceBackupNowThrottle])
     def run_now(self, request, pk=None):
         """Manually trigger a scheduled backup (runs for all devices with backup_enabled=true)"""
         from .tasks import backup_multiple_devices
