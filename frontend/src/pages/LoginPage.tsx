@@ -41,7 +41,7 @@ const LoginPage: React.FC = () => {
 
   const checkSsoStatus = async () => {
     try {
-      const response = await apiService.request('GET', '/saml/status/');
+      const response = await apiService.saml.status();
       setSsoEnabled(response.enabled);
     } catch (err) {
       logger.debug('SSO status check failed (may not be configured)');

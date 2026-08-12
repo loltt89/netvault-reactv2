@@ -607,7 +607,13 @@
     "passwords_dont_match": "Passwords don't match",
     "password_too_short": "Password must be at least 8 characters",
     "password_changed": "Password changed successfully",
-    "failed_change_password": "Failed to change password"
+    "failed_change_password": "Failed to change password",
+    "saml_sso": "Single Sign-On (SAML)",
+    "saml_linked": "Linked",
+    "saml_not_linked": "Not linked",
+    "saml_link_description": "Link your account to your organization's SAML identity provider to sign in with SSO. You must be logged in for this — SAML can only be linked to the account that requests it, never auto-attached to an existing account by another login.",
+    "link_saml_account": "Link SAML account",
+    "failed_saml_link": "Failed to start SAML linking"
   },
   "tasks": {
     "title": "Tasks",

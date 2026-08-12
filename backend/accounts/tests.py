@@ -9,6 +9,7 @@ from unittest.mock import patch, MagicMock
 import pyotp
 
 from accounts.models import User, AuditLog, SAMLSettings
+from accounts.saml_views import SAMLACSView, SAMLAccountLinkRequired
 
 
 class UserModelTestCase(TestCase):
@@ -247,6 +248,156 @@ class SAMLSettingsTestCase(TestCase):
         settings = SAMLSettings.get_settings()
         self.assertTrue(settings.enabled)
         self.assertEqual(settings.idp_entity_id, 'https://idp.example.com')
+
+
+class SAMLAccountLinkingTestCase(TestCase):
+    """Tests for the SAML account-takeover fix.
+
+    _get_or_create_user must never silently attach a SAML identity to an
+    existing password-protected account just because the IdP asserted a
+    matching email/username — that's the account-takeover primitive. It
+    should still work transparently for accounts that have no password to
+    steal (SAML-provisioned, or explicitly passwordless), for returning
+    users already linked by saml_name_id, and for the explicit
+    authenticated link flow (link_user_id, from SAMLLinkInitView).
+    """
+
+    def setUp(self):
+        self.saml_config = SAMLSettings.objects.create(
+            enabled=True,
+            auto_create_users=True,
+            default_role='viewer',
+        )
+        self.view = SAMLACSView()
+
+    def test_refuses_to_link_existing_password_account(self):
+        admin = User.objects.create_user(
+            email='admin@example.com', username='admin',
+            password='RealPassword123!', role='administrator',
+        )
+
+        with self.assertRaises(SAMLAccountLinkRequired):
+            self.view._get_or_create_user(
+                self.saml_config, 'admin', 'admin@example.com', 'Admin', 'User', 'attacker-nameid'
+            )
+
+        admin.refresh_from_db()
+        self.assertFalse(admin.is_saml_user)
+        self.assertEqual(admin.saml_name_id, '')
+
+    def test_logs_in_existing_saml_only_account_by_email(self):
+        """No local password == nothing for a spoofed attribute to steal."""
+        user = User.objects.create(email='sso@example.com', username='sso', is_saml_user=True, is_active=True)
+        user.set_unusable_password()
+        user.save()
+
+        result = self.view._get_or_create_user(
+            self.saml_config, 'sso', 'sso@example.com', 'SSO', 'User', 'idp-nameid-1'
+        )
+        self.assertEqual(result.id, user.id)
+        self.assertEqual(result.saml_name_id, 'idp-nameid-1')
+
+    def test_returning_user_matched_by_saml_name_id(self):
+        """Already-linked users are found by their stable NameID, not email."""
+        user = User.objects.create(
+            email='linked@example.com', username='linked',
+            is_saml_user=True, saml_name_id='stable-id', is_active=True,
+        )
+        user.set_unusable_password()
+        user.save()
+
+        result = self.view._get_or_create_user(
+            self.saml_config, 'linked', 'linked@example.com', '', '', 'stable-id'
+        )
+        self.assertEqual(result.id, user.id)
+
+    def test_creates_new_user_when_auto_create_enabled(self):
+        result = self.view._get_or_create_user(
+            self.saml_config, 'newuser', 'newuser@example.com', 'New', 'User', 'idp-nameid-2'
+        )
+        self.assertIsNotNone(result)
+        self.assertEqual(result.email, 'newuser@example.com')
+        self.assertTrue(result.is_saml_user)
+        self.assertFalse(result.has_usable_password())
+
+    def test_no_auto_create_returns_none_for_unknown_user(self):
+        self.saml_config.auto_create_users = False
+        self.saml_config.save()
+
+        result = self.view._get_or_create_user(
+            self.saml_config, 'ghost', 'ghost@example.com', '', '', 'idp-nameid-3'
+        )
+        self.assertIsNone(result)
+
+    def test_explicit_link_attaches_to_authenticated_users_own_account(self):
+        """The legitimate replacement path: an id proven by SAMLLinkInitView
+        (the user was already logged in) may link even a password account."""
+        admin = User.objects.create_user(
+            email='admin2@example.com', username='admin2',
+            password='RealPassword123!', role='administrator',
+        )
+
+        result = self.view._get_or_create_user(
+            self.saml_config, 'irrelevant', 'irrelevant@example.com', '', '', 'idp-nameid-4',
+            link_user_id=admin.id,
+        )
+        self.assertEqual(result.id, admin.id)
+        admin.refresh_from_db()
+        self.assertTrue(admin.is_saml_user)
+        self.assertEqual(admin.saml_name_id, 'idp-nameid-4')
+
+    def test_explicit_link_refuses_nameid_already_linked_elsewhere(self):
+        other = User.objects.create(
+            email='other@example.com', username='other',
+            is_saml_user=True, saml_name_id='taken-id', is_active=True,
+        )
+        other.set_unusable_password()
+        other.save()
+        admin = User.objects.create_user(
+            email='admin3@example.com', username='admin3', password='RealPassword123!'
+        )
+
+        result = self.view._get_or_create_user(
+            self.saml_config, 'admin3', 'admin3@example.com', '', '', 'taken-id',
+            link_user_id=admin.id,
+        )
+        self.assertIsNone(result)
+        admin.refresh_from_db()
+        self.assertFalse(admin.is_saml_user)
+
+
+class SAMLLinkInitViewTestCase(APITestCase):
+    """Tests for the authenticated account-link token endpoint."""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='link@example.com', username='linkuser', password='TestPass123!'
+        )
+        SAMLSettings.objects.create(enabled=True)
+
+    def test_requires_authentication(self):
+        response = self.client.post('/api/v1/saml/link-init/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_returns_signed_link_url_for_authenticated_user(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post('/api/v1/saml/link-init/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('link_token=', response.data['link_url'])
+
+        # The token must decode back to this user's id and nobody else's.
+        from django.core import signing
+        from accounts.saml_views import SAML_LINK_SALT
+        token = response.data['link_url'].split('link_token=')[1]
+        payload = signing.loads(token, salt=SAML_LINK_SALT, max_age=300)
+        self.assertEqual(payload['link_user_id'], self.user.id)
+
+    def test_disabled_when_saml_not_enabled(self):
+        SAMLSettings.objects.filter(pk=1).update(enabled=False)
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post('/api/v1/saml/link-init/')
+        self.assertEqual(response.status_code, 503)
 
 
 class AuthAPITestCase(APITestCase):

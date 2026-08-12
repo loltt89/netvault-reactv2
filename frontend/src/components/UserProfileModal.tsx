@@ -31,6 +31,10 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
   const [verificationCode, setVerificationCode] = useState('');
   const [twoFAEnabled, setTwoFAEnabled] = useState(user?.two_factor_enabled || false);
 
+  // SAML SSO linking — whether the org has SAML enabled at all (the link
+  // button is pointless to show otherwise)
+  const [samlEnabled, setSamlEnabled] = useState(false);
+
   // Password change states
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -39,6 +43,13 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
   useEffect(() => {
     setTwoFAEnabled(user?.two_factor_enabled || false);
   }, [user]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    apiService.saml.status()
+      .then((res) => setSamlEnabled(res.enabled))
+      .catch(() => setSamlEnabled(false));
+  }, [isOpen]);
 
   const languages = [
     { code: 'en', name: 'English', flag: '🇬🇧' },
@@ -144,6 +155,18 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
     } catch (error: any) {
       logger.error('Error disabling 2FA:', error);
       toast.error(t('profile.failed_disable_2fa'));
+    }
+  };
+
+  const handleLinkSaml = async () => {
+    try {
+      const { link_url } = await apiService.saml.linkInit();
+      // Full-page navigation, not a fetch — this has to go through the IdP
+      // and come back to /api/v1/saml/acs/, a fetch can't follow that.
+      window.location.href = link_url;
+    } catch (error) {
+      logger.error('Error initiating SAML account link:', error);
+      toast.error(t('profile.failed_saml_link'));
     }
   };
 
@@ -327,6 +350,27 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
                   <button onClick={handleVerify2FA} className="btn-primary">
                     {t('profile.verify_enable')}
                   </button>
+                </div>
+              )}
+
+              {/* SAML SSO linking */}
+              {samlEnabled && (
+                <div className="info-card" style={{ marginTop: '1.5rem' }}>
+                  <h3>🔗 {t('profile.saml_sso')}</h3>
+                  <div className="info-item">
+                    <span className="info-label">{t('profile.status')}:</span>
+                    <span className={`badge ${user?.is_saml_user ? 'badge-success' : 'badge-secondary'}`}>
+                      {user?.is_saml_user ? `✓ ${t('profile.saml_linked')}` : t('profile.saml_not_linked')}
+                    </span>
+                  </div>
+                  <p style={{ margin: '1rem 0', color: 'var(--text-secondary)' }}>
+                    {t('profile.saml_link_description')}
+                  </p>
+                  {!user?.is_saml_user && (
+                    <button onClick={handleLinkSaml} className="btn-primary">
+                      {t('profile.link_saml_account')}
+                    </button>
+                  )}
                 </div>
               )}
             </div>

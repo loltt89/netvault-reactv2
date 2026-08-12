@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import CustomTokenObtainPairView, CookieTokenRefreshView, AuthViewSet, UserViewSet, AuditLogViewSet
 from .saml_views import (
     SAMLMetadataView, SAMLLoginView, SAMLACSView, SAMLSLSView,
-    SAMLSettingsAPIView, SAMLStatusView
+    SAMLSettingsAPIView, SAMLStatusView, SAMLLinkInitView
 )
 
 router = DefaultRouter()
@@ -23,6 +23,7 @@ urlpatterns = [
     path('saml/sls/', SAMLSLSView.as_view(), name='saml_sls'),
     path('saml/settings/', SAMLSettingsAPIView.as_view(), name='saml_settings'),
     path('saml/status/', SAMLStatusView.as_view(), name='saml_status'),
+    path('saml/link-init/', SAMLLinkInitView.as_view(), name='saml_link_init'),
 
     # Router URLs
     path('', include(router.urls)),

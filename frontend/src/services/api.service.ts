@@ -565,6 +565,24 @@ class APIService {
     const response = await apiClient.request({ method, url, data, ...config });
     return response.data;
   };
+
+  /**
+   * SAML SSO endpoints
+   */
+  saml = {
+    status: async () => {
+      const response = await apiClient.get('/saml/status/');
+      return response.data;
+    },
+
+    // Returns a one-time signed link_url — the caller should navigate the
+    // browser to it (window.location.href), not fetch it, since it starts a
+    // full SAML redirect round-trip through the IdP. See SAMLLinkInitView.
+    linkInit: async () => {
+      const response = await apiClient.post('/saml/link-init/');
+      return response.data;
+    },
+  };
 }
 
 // Export singleton instance

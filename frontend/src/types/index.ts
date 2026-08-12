@@ -15,6 +15,7 @@ export interface User {
   is_active: boolean;
   two_factor_enabled: boolean;
   is_ldap_user: boolean;
+  is_saml_user: boolean;
   date_joined: string;
   last_login: string | null;
   preferred_language: Language;

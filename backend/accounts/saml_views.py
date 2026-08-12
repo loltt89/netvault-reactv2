@@ -2,6 +2,8 @@
 SAML 2.0 SSO Views for NetVault
 """
 import logging
+from urllib.parse import quote
+from django.core import signing
 from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
@@ -15,6 +17,32 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from .models import User, SAMLSettings
 
 logger = logging.getLogger(__name__)
+
+# Salt for the account-link token (see SAMLLinkInitView) — namespaces the
+# signature so it can never be confused with a token signed for another
+# purpose elsewhere in the app.
+SAML_LINK_SALT = 'saml-account-link'
+SAML_LINK_MAX_AGE = 300  # 5 minutes — this only needs to survive one IdP round-trip
+
+
+class SAMLAccountLinkRequired(Exception):
+    """Raised by SAMLACSView._get_or_create_user when a SAML assertion's
+    email/username matches an existing *password-protected* local account
+    that hasn't explicitly opted into SAML.
+
+    This is the fix for the SAML account-takeover class of bug: email and
+    username are attributes the IdP asserts, not proof of ownership of a
+    NetVault account. An IdP that lets its own principals set or spoof their
+    email (self-service directories, a second loosely-configured IdP, a
+    federation partner that doesn't verify addresses) would otherwise let
+    anyone sign in as any local admin whose email they can claim, without
+    ever knowing that admin's password. The only account that may legitimately
+    attach a SAML identity to a password-protected account is that account's
+    own owner, proven by being logged into it already — see SAMLLinkInitView.
+    """
+    def __init__(self, email):
+        self.email = email
+        super().__init__(f"Existing password-protected account for {email} requires explicit linking")
 
 
 def get_saml_settings(request):
@@ -129,11 +157,17 @@ class SAMLLoginView(View):
             req = prepare_saml_request(request)
             auth = OneLogin_Saml2_Auth(req, saml_settings)
 
-            # Get return URL from query param or default to dashboard
+            # A link_token (see SAMLLinkInitView) means an already-authenticated
+            # user is attaching their own account to this SAML identity, not
+            # a fresh login — carry it through RelayState with a distinct
+            # prefix so SAMLACSView can tell it apart from a plain return-to
+            # URL once the IdP echoes it back.
+            link_token = request.GET.get('link_token', '')
             return_to = request.GET.get('next', '/')
+            relay_state = f'LINK:{link_token}' if link_token else return_to
 
             # Redirect to IdP
-            sso_url = auth.login(return_to=return_to)
+            sso_url = auth.login(return_to=relay_state)
             return HttpResponseRedirect(sso_url)
 
         except ImportError:
@@ -183,10 +217,34 @@ class SAMLACSView(View):
             first_name = self._get_attribute(attributes, saml_config.attr_first_name, '')
             last_name = self._get_attribute(attributes, saml_config.attr_last_name, '')
 
+            # A RelayState of "LINK:<token>" means this response is completing
+            # an explicit account-link initiated by SAMLLinkInitView while the
+            # user was already authenticated locally — decode and verify it so
+            # _get_or_create_user can attach the SAML identity to that exact
+            # account instead of guessing from attacker-visible attributes.
+            relay_state = request.POST.get('RelayState', '')
+            link_user_id = None
+            if relay_state.startswith('LINK:'):
+                try:
+                    link_user_id = signing.loads(
+                        relay_state[len('LINK:'):], salt=SAML_LINK_SALT, max_age=SAML_LINK_MAX_AGE
+                    )['link_user_id']
+                except (signing.BadSignature, KeyError, TypeError):
+                    logger.warning("SAML: invalid or expired account-link token in RelayState")
+                    return HttpResponseRedirect('/login?error=saml_link_expired')
+
             # Find or create user
-            user = self._get_or_create_user(
-                saml_config, username, email, first_name, last_name, name_id
-            )
+            try:
+                user = self._get_or_create_user(
+                    saml_config, username, email, first_name, last_name, name_id,
+                    link_user_id=link_user_id,
+                )
+            except SAMLAccountLinkRequired as e:
+                message = quote(
+                    f"An account for {e.email} already exists. Log in with your password, "
+                    f"then link SAML from your profile settings."
+                )
+                return HttpResponseRedirect(f'/login?error=saml_link_required&message={message}')
 
             if not user:
                 return HttpResponseRedirect('/login?error=user_creation_failed')
@@ -234,19 +292,59 @@ class SAMLACSView(View):
         value = attributes.get(attr_name, [default])
         return value[0] if isinstance(value, list) and value else default
 
-    def _get_or_create_user(self, saml_config, username, email, first_name, last_name, name_id):
-        """Get existing user or create new one"""
+    def _get_or_create_user(self, saml_config, username, email, first_name, last_name, name_id, link_user_id=None):
+        """Get existing user or create new one.
+
+        Match order matters here — see SAMLAccountLinkRequired's docstring
+        for why. Summary: `saml_name_id` (an established link) and an
+        explicit `link_user_id` (an authenticated user linking themselves,
+        via SAMLLinkInitView) are both trustworthy. Matching a *new* login
+        purely by the email/username the IdP happens to assert is not —
+        it's how SAML account takeover works — so that path is only taken
+        when the matched account has no local password to steal in the
+        first place (auto_create_users, or a previous SAML-only account).
+        """
         try:
-            # Try to find by email first
-            user = User.objects.filter(email=email).first()
+            if link_user_id is not None:
+                try:
+                    user = User.objects.get(id=link_user_id)
+                except User.DoesNotExist:
+                    logger.error(f"SAML: link token referenced a nonexistent user id={link_user_id}")
+                    return None
+
+                other = User.objects.filter(saml_name_id=name_id).exclude(saml_name_id='').exclude(id=user.id).first()
+                if other:
+                    logger.error(
+                        f"SAML: NameID {name_id} is already linked to a different account "
+                        f"({other.email}); refusing to also link it to {user.email}"
+                    )
+                    return None
+
+                user.is_saml_user = True
+                user.saml_name_id = name_id
+                if first_name:
+                    user.first_name = first_name
+                if last_name:
+                    user.last_name = last_name
+                user.save()
+                logger.info(f"SAML: linked identity NameID={name_id} to account {user.email} (explicit, authenticated link)")
+                return user
+
+            # An established link — this is the same person coming back.
+            user = User.objects.filter(saml_name_id=name_id).exclude(saml_name_id='').first()
 
             if not user:
-                # Try by username
-                user = User.objects.filter(username=username).first()
-
-            if not user:
-                # Try by SAML name ID
-                user = User.objects.filter(saml_name_id=name_id).first()
+                candidate = User.objects.filter(email=email).first() or User.objects.filter(username=username).first()
+                if candidate:
+                    if candidate.has_usable_password() and not candidate.is_saml_user:
+                        logger.error(
+                            f"SAML: refusing to auto-link identity (NameID={name_id}, email={email}) to "
+                            f"existing password-protected account '{candidate.email}' — an IdP-asserted "
+                            f"attribute alone is not proof of ownership. The account owner must log in "
+                            f"locally and link SAML explicitly from their profile."
+                        )
+                        raise SAMLAccountLinkRequired(candidate.email)
+                    user = candidate
 
             if user:
                 # Update SAML info
@@ -288,6 +386,12 @@ class SAMLACSView(View):
             logger.info(f"SAML: Created new user: {email}")
             return user
 
+        except SAMLAccountLinkRequired:
+            # Deliberately distinct from the generic except below — this must
+            # propagate to SAMLACSView.post() so it can show the account
+            # owner a message telling them how to link SAML themselves,
+            # instead of being swallowed into the generic "creation failed".
+            raise
         except Exception as e:
             logger.error(f"Error getting/creating SAML user: {str(e)}")
             return None
@@ -421,3 +525,26 @@ class SAMLStatusView(APIView):
             'enabled': config.enabled,
             'login_url': '/api/v1/saml/login/' if config.enabled else None,
         })
+
+
+class SAMLLinkInitView(APIView):
+    """Lets the currently authenticated user attach their own account to a
+    SAML identity on their next SSO round-trip.
+
+    This exists because SAMLACSView now refuses to auto-link a fresh SAML
+    login to an existing password-protected account (see
+    SAMLAccountLinkRequired) — that auto-link was the account-takeover bug.
+    This is the replacement legitimate path: the user proves ownership by
+    being logged in right now, we hand back a short-lived signed token
+    naming their user id, SAMLLoginView carries it through as RelayState,
+    and SAMLACSView verifies the signature before trusting it.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        config = SAMLSettings.get_settings()
+        if not config.enabled:
+            return Response({'detail': 'SAML is not enabled'}, status=503)
+
+        token = signing.dumps({'link_user_id': request.user.id}, salt=SAML_LINK_SALT)
+        return Response({'link_url': f'/api/v1/saml/login/?link_token={token}'})
