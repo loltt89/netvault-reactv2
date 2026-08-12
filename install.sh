@@ -106,6 +106,37 @@ install_dependencies() {
     fi
 }
 
+# Verify apt's python3 is new enough. Requirements.txt pins packages
+# (Pillow 12.x needs >=3.10, current cryptography needs >=3.9) that simply
+# aren't published for older interpreters — pip would either silently
+# resolve to ancient, unpatched versions of those packages or fail outright.
+# This bit us for real on an Ubuntu 20.04 box still on Python 3.8 (EOL since
+# Oct 2024): the deadsnakes PPA no longer publishes builds for focal, so
+# there was no apt-based fix, only a from-source Python build. Catching it
+# here with a clear message beats discovering it as a wall of unrelated pip
+# resolver errors later.
+check_python_version() {
+    PYTHON_VERSION=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+    PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
+    PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
+
+    if [ "$PYTHON_MAJOR" -lt 3 ] || { [ "$PYTHON_MAJOR" -eq 3 ] && [ "$PYTHON_MINOR" -lt 10 ]; }; then
+        print_error "Python $PYTHON_VERSION found (from 'python3'), but NetVault requires Python >= 3.10."
+        echo ""
+        echo "This usually means the OS is older than the documented target (Ubuntu 24.04 LTS,"
+        echo "which ships Python 3.12 by default). Options:"
+        echo "  1. Install on Ubuntu 22.04+ or 24.04 instead."
+        echo "  2. On an older Ubuntu release, try: add-apt-repository ppa:deadsnakes/ppa"
+        echo "     (NOTE: deadsnakes has dropped some older releases — e.g. focal/20.04 — entirely;"
+        echo "     check https://launchpad.net/~deadsnakes/+archive/ubuntu/ppa before relying on it)."
+        echo "  3. As a last resort, build Python from source (python.org) and re-run this installer"
+        echo "     with that interpreter's 'python3' on PATH."
+        exit 1
+    fi
+
+    print_success "Python $PYTHON_VERSION OK"
+}
+
 # Setup Redis password
 setup_redis_password() {
     print_header "Securing Redis"
@@ -1079,6 +1110,7 @@ main() {
     fi
 
     install_dependencies
+    check_python_version
 
     setup_redis_password
     setup_database
