@@ -4,6 +4,7 @@ import apiService from '../services/api.service';
 import ConfigViewer from '../components/ConfigViewer';
 import { getConfigLanguage } from '../utils/configLanguage';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import { Backup } from '../types';
 import '../styles/Backups.css';
 
@@ -20,6 +21,7 @@ type DateFilterType = 'all' | 'today' | 'yesterday' | 'last7days' | 'last30days'
 
 const BackupsPage: React.FC = () => {
   const { t } = useTranslation();
+  const toast = useToast();
   const [groups, setGroups] = useState<BackupGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedBackup, setSelectedBackup] = useState<Backup | null>(null);
@@ -145,7 +147,7 @@ const BackupsPage: React.FC = () => {
       setShowViewer(true);
     } catch (error) {
       logger.error('Error loading configuration:', error);
-      alert(t('backups.failed_load_config'));
+      toast.error(t('backups.failed_load_config'));
     }
   };
 
@@ -162,7 +164,7 @@ const BackupsPage: React.FC = () => {
       window.URL.revokeObjectURL(url);
     } catch (error) {
       logger.error('Error downloading configuration:', error);
-      alert(t('backups.failed_download'));
+      toast.error(t('backups.failed_download'));
     }
   };
 
@@ -182,7 +184,7 @@ const BackupsPage: React.FC = () => {
       // No alert - browser will show download progress
     } catch (error) {
       logger.error('Error downloading multiple backups:', error);
-      alert(t('backups.failed_download_multiple'));
+      toast.error(t('backups.failed_download_multiple'));
     } finally {
       setDownloading(false);
     }
@@ -211,13 +213,13 @@ const BackupsPage: React.FC = () => {
       loadBackups();
 
       if (failed === 0) {
-        alert(t('backups.delete_multiple_success', { count: deleted }));
+        toast.success(t('backups.delete_multiple_success', { count: deleted }));
       } else {
-        alert(t('backups.delete_multiple_partial', { deleted, failed }));
+        toast.warning(t('backups.delete_multiple_partial', { deleted, failed }));
       }
     } catch (error) {
       logger.error('Error deleting backups:', error);
-      alert(t('backups.failed_delete_multiple'));
+      toast.error(t('backups.failed_delete_multiple'));
     } finally {
       setDeleting(false);
     }
@@ -230,11 +232,11 @@ const BackupsPage: React.FC = () => {
 
     try {
       await apiService.backups.delete(backup.id);
-      alert(t('backups.delete_success'));
+      toast.success(t('backups.delete_success'));
       loadBackups();
     } catch (error) {
       logger.error('Error deleting backup:', error);
-      alert(t('backups.failed_delete'));
+      toast.error(t('backups.failed_delete'));
     }
   };
 

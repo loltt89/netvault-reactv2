@@ -1,15 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import { unwrapList } from '../utils/unwrapList';
+import { extractErrorMessage } from '../utils/extractErrorMessage';
 import { User } from '../types';
 import '../styles/Devices.css';
 
 const UsersPage: React.FC = () => {
   const { t } = useTranslation();
   const { user: currentUser } = useAuth();
+  const toast = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -40,7 +43,7 @@ const UsersPage: React.FC = () => {
       setUsers(unwrapList<User>(data));
     } catch (error) {
       logger.error('Error loading users:', error);
-      alert(t('common.error') + ': ' + t('users.failed_load'));
+      toast.error(t('users.failed_load'));
     } finally {
       setLoading(false);
     }
@@ -90,28 +93,28 @@ const UsersPage: React.FC = () => {
           updateData.password = formData.password;
         }
         await apiService.users.update(editingUser.id, updateData);
-        alert(t('common.success') + ': ' + t('users.user_updated'));
+        toast.success(t('users.user_updated'));
       } else {
         // Create user
         if (!formData.password) {
-          alert(t('users.password_required'));
+          toast.warning(t('users.password_required'));
           return;
         }
         await apiService.users.create(formData);
-        alert(t('common.success') + ': ' + t('users.user_created'));
+        toast.success(t('users.user_created'));
       }
 
       setShowModal(false);
       loadUsers();
     } catch (error: any) {
       logger.error('Error saving user:', error);
-      alert(t('common.error') + ': ' + (error.response?.data?.detail || t('users.failed_save')));
+      toast.error(extractErrorMessage(error, t('users.failed_save')));
     }
   };
 
   const handleDeleteUser = async (user: User) => {
     if (user.id === currentUser?.id) {
-      alert(t('users.cannot_delete_self'));
+      toast.warning(t('users.cannot_delete_self'));
       return;
     }
 
@@ -121,11 +124,11 @@ const UsersPage: React.FC = () => {
 
     try {
       await apiService.users.delete(user.id);
-      alert(t('common.success') + ': ' + t('users.user_deleted'));
+      toast.success(t('users.user_deleted'));
       loadUsers();
     } catch (error) {
       logger.error('Error deleting user:', error);
-      alert(t('common.error') + ': ' + t('users.failed_delete'));
+      toast.error(t('users.failed_delete'));
     }
   };
 

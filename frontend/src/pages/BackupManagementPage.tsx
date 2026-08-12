@@ -4,10 +4,12 @@ import BackupSchedules from '../components/BackupSchedules';
 import BackupRetentionPolicies from '../components/BackupRetentionPolicies';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { useToast } from '../contexts/ToastContext';
 import '../styles/Settings.css';
 
 const BackupManagementPage: React.FC = () => {
   const { t } = useTranslation();
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<'schedules' | 'policies' | 'settings'>('schedules');
   const [retentionDays, setRetentionDays] = useState(90);
   const [parallelWorkers, setParallelWorkers] = useState(5);
@@ -43,10 +45,10 @@ const BackupManagementPage: React.FC = () => {
           parallel_workers: parallelWorkers
         }
       });
-      alert(t('systemSettings.backup.saved'));
+      toast.success(t('systemSettings.backup.saved'));
     } catch (error) {
       logger.error('Error saving backup settings:', error);
-      alert(t('systemSettings.backup.failed_save'));
+      toast.error(t('systemSettings.backup.failed_save'));
     } finally {
       setSaving(false);
     }

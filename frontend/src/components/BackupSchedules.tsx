@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import { extractErrorMessage } from '../utils/extractErrorMessage';
+import { useToast } from '../contexts/ToastContext';
 import { useListResource } from '../hooks/useListResource';
 import { useModalForm } from '../hooks/useModalForm';
 import { BackupSchedule } from '../types';
@@ -19,10 +20,11 @@ const DEFAULT_FORM_DATA = {
 
 const BackupSchedulesComponent: React.FC = () => {
   const { t } = useTranslation();
+  const toast = useToast();
 
   const { items: schedules, loading, reload: loadSchedules } = useListResource<BackupSchedule>(
     () => apiService.backupSchedules.list(),
-    () => alert(t('common.error') + ': ' + t('schedules.failed_load'))
+    () => toast.error(t('schedules.failed_load'))
   );
 
   const {
@@ -50,7 +52,7 @@ const BackupSchedulesComponent: React.FC = () => {
 
       if (formData.frequency !== 'hourly') {
         if (!formData.run_time) {
-          alert(t('schedules.time_required'));
+          toast.warning(t('schedules.time_required'));
           return;
         }
         scheduleData.run_time = formData.run_time;
@@ -62,17 +64,17 @@ const BackupSchedulesComponent: React.FC = () => {
 
       if (editingSchedule) {
         await apiService.backupSchedules.update(editingSchedule.id, scheduleData);
-        alert(t('common.success') + ': ' + t('schedules.schedule_updated'));
+        toast.success(t('schedules.schedule_updated'));
       } else {
         await apiService.backupSchedules.create(scheduleData);
-        alert(t('common.success') + ': ' + t('schedules.schedule_created'));
+        toast.success(t('schedules.schedule_created'));
       }
 
       closeModal();
       loadSchedules();
     } catch (error: any) {
       logger.error('Error saving schedule:', error);
-      alert(t('common.error') + ': ' + extractErrorMessage(error, t('schedules.failed_save')));
+      toast.error(extractErrorMessage(error, t('schedules.failed_save')));
     }
   };
 
@@ -83,32 +85,32 @@ const BackupSchedulesComponent: React.FC = () => {
 
     try {
       await apiService.backupSchedules.delete(schedule.id);
-      alert(t('common.success') + ': ' + t('schedules.schedule_deleted'));
+      toast.success(t('schedules.schedule_deleted'));
       loadSchedules();
     } catch (error) {
       logger.error('Error deleting schedule:', error);
-      alert(t('common.error') + ': ' + t('schedules.failed_delete'));
+      toast.error(t('schedules.failed_delete'));
     }
   };
 
   const handleToggleActive = async (schedule: BackupSchedule) => {
     try {
       await apiService.backupSchedules.toggleActive(schedule.id);
-      alert(t('common.success') + ': ' + t('schedules.schedule_toggled'));
+      toast.success(t('schedules.schedule_toggled'));
       loadSchedules();
     } catch (error) {
       logger.error('Error toggling schedule:', error);
-      alert(t('common.error') + ': ' + t('schedules.failed_toggle'));
+      toast.error(t('schedules.failed_toggle'));
     }
   };
 
   const handleRunNow = async (schedule: BackupSchedule) => {
     try {
       await apiService.backupSchedules.runNow(schedule.id);
-      alert(t('common.success') + ': ' + t('schedules.schedule_running'));
+      toast.success(t('schedules.schedule_running'));
     } catch (error) {
       logger.error('Error running schedule:', error);
-      alert(t('common.error') + ': ' + t('schedules.failed_run'));
+      toast.error(t('schedules.failed_run'));
     }
   };
 

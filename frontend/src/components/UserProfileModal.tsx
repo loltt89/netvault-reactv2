@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { QRCodeSVG } from 'qrcode.react';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
@@ -18,6 +19,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
   const { t, i18n } = useTranslation();
   const { theme, setTheme } = useTheme();
   const { user, updateProfile, refreshUser } = useAuth();
+  const toast = useToast();
   const [selectedLang, setSelectedLang] = useState(i18n.language);
   const [selectedTheme, setSelectedTheme] = useState(theme);
   const [activeTab, setActiveTab] = useState<'general' | 'security' | 'password'>('general');
@@ -107,13 +109,13 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
       setShow2FASetup(true);
     } catch (error) {
       logger.error('Error enabling 2FA:', error);
-      alert(t('profile.failed_enable_2fa'));
+      toast.error(t('profile.failed_enable_2fa'));
     }
   };
 
   const handleVerify2FA = async () => {
     if (!verificationCode || verificationCode.length !== 6) {
-      alert(t('profile.invalid_code'));
+      toast.warning(t('profile.invalid_code'));
       return;
     }
 
@@ -123,10 +125,10 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
       setShow2FASetup(false);
       setVerificationCode('');
       if (refreshUser) await refreshUser();
-      alert(t('profile.2fa_enabled'));
+      toast.success(t('profile.2fa_enabled'));
     } catch (error: any) {
       logger.error('Error verifying 2FA:', error);
-      alert(t('profile.invalid_verification'));
+      toast.error(t('profile.invalid_verification'));
     }
   };
 
@@ -138,10 +140,10 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
       await apiService.users.disable2FA(password);
       setTwoFAEnabled(false);
       if (refreshUser) await refreshUser();
-      alert(t('profile.2fa_disabled'));
+      toast.success(t('profile.2fa_disabled'));
     } catch (error: any) {
       logger.error('Error disabling 2FA:', error);
-      alert(t('profile.failed_disable_2fa'));
+      toast.error(t('profile.failed_disable_2fa'));
     }
   };
 
@@ -149,24 +151,24 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
     e.preventDefault();
 
     if (newPassword !== confirmPassword) {
-      alert(t('profile.passwords_dont_match'));
+      toast.warning(t('profile.passwords_dont_match'));
       return;
     }
 
     if (newPassword.length < 8) {
-      alert(t('profile.password_too_short'));
+      toast.warning(t('profile.password_too_short'));
       return;
     }
 
     try {
       await apiService.users.changePassword(oldPassword, newPassword, confirmPassword);
-      alert(t('profile.password_changed'));
+      toast.success(t('profile.password_changed'));
       setOldPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (error: any) {
       logger.error('Error changing password:', error);
-      alert(extractErrorMessage(error, t('profile.failed_change_password')));
+      toast.error(extractErrorMessage(error, t('profile.failed_change_password')));
     }
   };
 

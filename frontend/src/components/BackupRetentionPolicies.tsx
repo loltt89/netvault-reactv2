@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import { extractErrorMessage } from '../utils/extractErrorMessage';
+import { useToast } from '../contexts/ToastContext';
 import { useListResource } from '../hooks/useListResource';
 import { useModalForm } from '../hooks/useModalForm';
 import '../styles/Devices.css';
@@ -41,10 +42,11 @@ const DEFAULT_FORM_DATA = {
 
 const BackupRetentionPoliciesComponent: React.FC = () => {
   const { t } = useTranslation();
+  const toast = useToast();
 
   const { items: policies, loading, reload: loadPolicies } = useListResource<RetentionPolicy>(
     () => apiService.retentionPolicies.list(),
-    () => alert(t('common.error') + ': ' + t('retention.failed_load'))
+    () => toast.error(t('retention.failed_load'))
   );
 
   const { items: devices } = useListResource<Device>(() => apiService.devices.list());
@@ -82,17 +84,17 @@ const BackupRetentionPoliciesComponent: React.FC = () => {
 
       if (editingPolicy) {
         await apiService.retentionPolicies.update(editingPolicy.id, policyData);
-        alert(t('common.success') + ': ' + t('retention.policy_updated'));
+        toast.success(t('retention.policy_updated'));
       } else {
         await apiService.retentionPolicies.create(policyData);
-        alert(t('common.success') + ': ' + t('retention.policy_created'));
+        toast.success(t('retention.policy_created'));
       }
 
       closeModal();
       loadPolicies();
     } catch (error: any) {
       logger.error('Error saving retention policy:', error);
-      alert(t('common.error') + ': ' + extractErrorMessage(error, t('retention.failed_save')));
+      toast.error(extractErrorMessage(error, t('retention.failed_save')));
     }
   };
 
@@ -103,21 +105,21 @@ const BackupRetentionPoliciesComponent: React.FC = () => {
 
     try {
       await apiService.retentionPolicies.delete(policy.id);
-      alert(t('common.success') + ': ' + t('retention.policy_deleted'));
+      toast.success(t('retention.policy_deleted'));
       loadPolicies();
     } catch (error) {
       logger.error('Error deleting retention policy:', error);
-      alert(t('common.error') + ': ' + t('retention.failed_delete'));
+      toast.error(t('retention.failed_delete'));
     }
   };
 
   const handleApplyNow = async (policy: RetentionPolicy) => {
     try {
       await apiService.retentionPolicies.applyNow(policy.id);
-      alert(t('common.success') + ': ' + t('retention.policy_applied'));
+      toast.success(t('retention.policy_applied'));
     } catch (error) {
       logger.error('Error applying retention policy:', error);
-      alert(t('common.error') + ': ' + t('retention.failed_apply'));
+      toast.error(t('retention.failed_apply'));
     }
   };
 

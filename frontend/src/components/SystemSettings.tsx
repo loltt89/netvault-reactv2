@@ -4,6 +4,7 @@ import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import { extractErrorMessage } from '../utils/extractErrorMessage';
 import { unwrapList } from '../utils/unwrapList';
+import { useToast } from '../contexts/ToastContext';
 import { Vendor, DeviceType } from '../types';
 
 interface SystemSettings {
@@ -47,6 +48,7 @@ interface SystemSettings {
 
 const SystemSettings: React.FC = () => {
   const { t } = useTranslation();
+  const toast = useToast();
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -173,9 +175,9 @@ const SystemSettings: React.FC = () => {
     } catch (error: any) {
       logger.error('Error loading system settings:', error);
       if (error.response?.status === 403) {
-        alert(t('systemSettings.access_denied'));
+        toast.error(t('systemSettings.access_denied'));
       } else {
-        alert(t('systemSettings.failed_load'));
+        toast.error(t('systemSettings.failed_load'));
       }
     } finally {
       setLoading(false);
@@ -186,11 +188,11 @@ const SystemSettings: React.FC = () => {
     try {
       setSaving(true);
       await apiService.systemSettings.update({ email: emailSettings });
-      alert(t('systemSettings.email.saved'));
+      toast.success(t('systemSettings.email.saved'));
       await loadSettings();
     } catch (error) {
       logger.error('Error saving email settings:', error);
-      alert(t('systemSettings.email.failed_save'));
+      toast.error(t('systemSettings.email.failed_save'));
     } finally {
       setSaving(false);
     }
@@ -202,9 +204,9 @@ const SystemSettings: React.FC = () => {
 
     try {
       const result = await apiService.systemSettings.testEmail(testEmail);
-      alert(result.message);
+      toast.success(result.message);
     } catch (error: any) {
-      alert(extractErrorMessage(error, t('systemSettings.email.failed_test')));
+      toast.error(extractErrorMessage(error, t('systemSettings.email.failed_test')));
     }
   };
 
@@ -212,11 +214,11 @@ const SystemSettings: React.FC = () => {
     try {
       setSaving(true);
       await apiService.systemSettings.update({ telegram: telegramSettings });
-      alert(t('systemSettings.telegram.saved'));
+      toast.success(t('systemSettings.telegram.saved'));
       await loadSettings();
     } catch (error) {
       logger.error('Error saving telegram settings:', error);
-      alert(t('systemSettings.telegram.failed_save'));
+      toast.error(t('systemSettings.telegram.failed_save'));
     } finally {
       setSaving(false);
     }
@@ -228,9 +230,9 @@ const SystemSettings: React.FC = () => {
         telegramSettings.bot_token,
         telegramSettings.chat_id
       );
-      alert(result.message);
+      toast.success(result.message);
     } catch (error: any) {
-      alert(extractErrorMessage(error, t('systemSettings.telegram.failed_test')));
+      toast.error(extractErrorMessage(error, t('systemSettings.telegram.failed_test')));
     }
   };
 
@@ -238,11 +240,11 @@ const SystemSettings: React.FC = () => {
     try {
       setSaving(true);
       await apiService.systemSettings.update({ notifications: notificationSettings });
-      alert(t('systemSettings.notifications.saved'));
+      toast.success(t('systemSettings.notifications.saved'));
       await loadSettings();
     } catch (error) {
       logger.error('Error saving notification settings:', error);
-      alert(t('systemSettings.notifications.failed_save'));
+      toast.error(t('systemSettings.notifications.failed_save'));
     } finally {
       setSaving(false);
     }
@@ -252,11 +254,11 @@ const SystemSettings: React.FC = () => {
     try {
       setSaving(true);
       await apiService.systemSettings.update({ ldap: ldapSettings });
-      alert(t('systemSettings.ldap.saved'));
+      toast.success(t('systemSettings.ldap.saved'));
       await loadSettings();
     } catch (error) {
       logger.error('Error saving LDAP settings:', error);
-      alert(t('systemSettings.ldap.failed_save'));
+      toast.error(t('systemSettings.ldap.failed_save'));
     } finally {
       setSaving(false);
     }
@@ -266,11 +268,11 @@ const SystemSettings: React.FC = () => {
     try {
       setSaving(true);
       await apiService.systemSettings.update({ jwt: jwtSettings });
-      alert(t('systemSettings.jwt.saved'));
+      toast.success(t('systemSettings.jwt.saved'));
       await loadSettings();
     } catch (error) {
       logger.error('Error saving JWT settings:', error);
-      alert(t('systemSettings.jwt.failed_save'));
+      toast.error(t('systemSettings.jwt.failed_save'));
     } finally {
       setSaving(false);
     }
@@ -280,11 +282,11 @@ const SystemSettings: React.FC = () => {
     try {
       setSaving(true);
       await apiService.systemSettings.update({ redis: redisSettings });
-      alert(t('systemSettings.redis.saved'));
+      toast.success(t('systemSettings.redis.saved'));
       await loadSettings();
     } catch (error) {
       logger.error('Error saving Redis settings:', error);
-      alert(t('systemSettings.redis.failed_save'));
+      toast.error(t('systemSettings.redis.failed_save'));
     } finally {
       setSaving(false);
     }
@@ -316,7 +318,7 @@ const SystemSettings: React.FC = () => {
         try {
           parsedCommands = JSON.parse(vendorCommands);
         } catch (e) {
-          alert(t('systemSettings.vendors.invalid_json'));
+          toast.warning(t('systemSettings.vendors.invalid_json'));
           setSaving(false);
           return;
         }
@@ -326,13 +328,13 @@ const SystemSettings: React.FC = () => {
         backup_commands: parsedCommands
       });
 
-      alert(t('systemSettings.vendors.updated'));
+      toast.success(t('systemSettings.vendors.updated'));
       setEditingVendor(null);
       setVendorCommands('');
       await loadVendors();
     } catch (error) {
       logger.error('Error saving vendor commands:', error);
-      alert(t('systemSettings.vendors.failed_save'));
+      toast.error(t('systemSettings.vendors.failed_save'));
     } finally {
       setSaving(false);
     }
@@ -352,7 +354,7 @@ const SystemSettings: React.FC = () => {
         try {
           parsedCommands = JSON.parse(vendorForm.backup_commands);
         } catch (e) {
-          alert(t('systemSettings.vendors.invalid_json_commands'));
+          toast.warning(t('systemSettings.vendors.invalid_json_commands'));
           setSaving(false);
           return;
         }
@@ -366,12 +368,12 @@ const SystemSettings: React.FC = () => {
       };
 
       await apiService.vendors.create(payload);
-      alert(t('systemSettings.vendors.created'));
+      toast.success(t('systemSettings.vendors.created'));
       setShowVendorModal(false);
       await loadVendors();
     } catch (error: any) {
       logger.error('Error creating vendor:', error);
-      alert(error.response?.data?.slug?.[0] || error.response?.data?.name?.[0] || t('systemSettings.vendors.failed_create'));
+      toast.error(extractErrorMessage(error, t('systemSettings.vendors.failed_create')));
     } finally {
       setSaving(false);
     }
@@ -384,11 +386,11 @@ const SystemSettings: React.FC = () => {
 
     try {
       await apiService.vendors.delete(vendor.id);
-      alert(t('systemSettings.vendors.deleted'));
+      toast.success(t('systemSettings.vendors.deleted'));
       await loadVendors();
     } catch (error) {
       logger.error('Error deleting vendor:', error);
-      alert(t('systemSettings.vendors.failed_delete'));
+      toast.error(t('systemSettings.vendors.failed_delete'));
     }
   };
 
@@ -415,10 +417,10 @@ const SystemSettings: React.FC = () => {
     try {
       setSaving(true);
       await apiService.request('POST', '/saml/settings/', samlSettings);
-      alert(t('systemSettings.saml.saved'));
+      toast.success(t('systemSettings.saml.saved'));
     } catch (error: any) {
       logger.error('Error saving SAML settings:', error);
-      alert(extractErrorMessage(error, t('systemSettings.saml.failed')));
+      toast.error(extractErrorMessage(error, t('systemSettings.saml.failed')));
     } finally {
       setSaving(false);
     }
@@ -441,12 +443,12 @@ const SystemSettings: React.FC = () => {
       };
 
       await apiService.deviceTypes.create(payload);
-      alert(t('systemSettings.device_types.created'));
+      toast.success(t('systemSettings.device_types.created'));
       setShowDeviceTypeModal(false);
       await loadDeviceTypes();
     } catch (error: any) {
       logger.error('Error creating device type:', error);
-      alert(error.response?.data?.slug?.[0] || error.response?.data?.name?.[0] || t('systemSettings.device_types.failed_create'));
+      toast.error(extractErrorMessage(error, t('systemSettings.device_types.failed_create')));
     } finally {
       setSaving(false);
     }
@@ -459,11 +461,11 @@ const SystemSettings: React.FC = () => {
 
     try {
       await apiService.deviceTypes.delete(deviceType.id);
-      alert(t('systemSettings.device_types.deleted'));
+      toast.success(t('systemSettings.device_types.deleted'));
       await loadDeviceTypes();
     } catch (error) {
       logger.error('Error deleting device type:', error);
-      alert(t('systemSettings.device_types.failed_delete'));
+      toast.error(t('systemSettings.device_types.failed_delete'));
     }
   };
 

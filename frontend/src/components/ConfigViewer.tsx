@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import Editor from '@monaco-editor/react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useToast } from '../contexts/ToastContext';
 import logger from '../utils/logger';
 import '../styles/ConfigViewer.css';
 
@@ -20,6 +21,7 @@ const ConfigViewer: React.FC<ConfigViewerProps> = ({
   title = 'Configuration'
 }) => {
   const { theme } = useTheme();
+  const toast = useToast();
   const [localConfig, setLocalConfig] = useState(config);
   const [isModified, setIsModified] = useState(false);
   const [editorMounted, setEditorMounted] = useState(false);
@@ -63,7 +65,7 @@ const ConfigViewer: React.FC<ConfigViewerProps> = ({
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(localConfig);
-      alert('Configuration copied to clipboard!');
+      toast.success('Configuration copied to clipboard!');
     } catch (err) {
       logger.error('Failed to copy:', err);
     }

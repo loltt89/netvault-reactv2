@@ -5,6 +5,8 @@ import './styles/themes.css';
 import App from './App';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { ToastProvider } from './contexts/ToastContext';
+import ToastContainer from './components/ToastContainer';
 import './i18n/config';
 
 // Suppress ResizeObserver loop warnings from Monaco Editor ONLY
@@ -35,7 +37,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <AuthProvider>
       <ThemeProvider>
-        <App />
+        <ToastProvider>
+          <App />
+          <ToastContainer />
+        </ToastProvider>
       </ThemeProvider>
     </AuthProvider>
   </React.StrictMode>

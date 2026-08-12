@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import { unwrapList } from '../utils/unwrapList';
@@ -10,6 +11,7 @@ import '../styles/Devices.css';
 const AuditLogsPage: React.FC = () => {
   const { t } = useTranslation();
   const { user: currentUser } = useAuth();
+  const toast = useToast();
   const [logs, setLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -30,7 +32,7 @@ const AuditLogsPage: React.FC = () => {
       setLogs(unwrapList<AuditLog>(data));
     } catch (error) {
       logger.error('Error loading audit logs:', error);
-      alert(t('common.error') + ': ' + t('auditLogs.failed_load'));
+      toast.error(t('auditLogs.failed_load'));
     } finally {
       setLoading(false);
     }

@@ -8,6 +8,7 @@ import logger from '../utils/logger';
 import { unwrapList } from '../utils/unwrapList';
 import { extractErrorMessage } from '../utils/extractErrorMessage';
 import { usePolling } from '../hooks/usePolling';
+import { useToast } from '../contexts/ToastContext';
 import { DeviceDetail, Backup } from '../types';
 import '../styles/Devices.css';
 
@@ -15,6 +16,7 @@ const DeviceDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const toast = useToast();
   const [device, setDevice] = useState<DeviceDetail | null>(null);
   const [backups, setBackups] = useState<Backup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,7 +47,7 @@ const DeviceDetailPage: React.FC = () => {
         } catch (error) {
           if (isMounted) {
             logger.error('Error loading device:', error);
-            alert(t('common.error') + ': Failed to load device');
+            toast.error('Failed to load device');
           }
         } finally {
           if (isMounted) setLoading(false);
@@ -86,7 +88,7 @@ const DeviceDetailPage: React.FC = () => {
       startBackupPolling();
     } catch (error: any) {
       logger.error('Error initiating backup:', error);
-      alert(t('common.error') + ': ' + extractErrorMessage(error, 'Failed to queue backup task'));
+      toast.error(extractErrorMessage(error, 'Failed to queue backup task'));
     }
   };
 
@@ -96,13 +98,13 @@ const DeviceDetailPage: React.FC = () => {
     try {
       const result = await apiService.devices.testConnection(device.id);
       if (result.success) {
-        alert(`${t('common.success')}: ${result.message}`);
+        toast.success(result.message);
       } else {
-        alert(`${t('common.error')}: ${result.message}`);
+        toast.error(result.message);
       }
     } catch (error: any) {
       logger.error('Error testing connection:', error);
-      alert(t('common.error') + ': Connection test failed');
+      toast.error('Connection test failed');
     }
   };
 
@@ -114,7 +116,7 @@ const DeviceDetailPage: React.FC = () => {
       setShowViewer(true);
     } catch (error) {
       logger.error('Error loading configuration:', error);
-      alert(t('backups.failed_load_config'));
+      toast.error(t('backups.failed_load_config'));
     }
   };
 
@@ -131,7 +133,7 @@ const DeviceDetailPage: React.FC = () => {
       window.URL.revokeObjectURL(url);
     } catch (error) {
       logger.error('Error downloading configuration:', error);
-      alert(t('backups.failed_download'));
+      toast.error(t('backups.failed_download'));
     }
   };
 
@@ -142,11 +144,11 @@ const DeviceDetailPage: React.FC = () => {
 
     try {
       await apiService.backups.delete(backup.id);
-      alert(t('backups.delete_success'));
+      toast.success(t('backups.delete_success'));
       loadDeviceBackups();
     } catch (error) {
       logger.error('Error deleting backup:', error);
-      alert(t('backups.failed_delete'));
+      toast.error(t('backups.failed_delete'));
     }
   };
 
@@ -164,7 +166,7 @@ const DeviceDetailPage: React.FC = () => {
 
   const executeCompare = async () => {
     if (!compareBackup1 || !compareBackup2) {
-      alert('Please select two backups to compare');
+      toast.warning('Please select two backups to compare');
       return;
     }
 
@@ -174,7 +176,7 @@ const DeviceDetailPage: React.FC = () => {
       setShowViewer(true);
     } catch (error) {
       logger.error('Error comparing backups:', error);
-      alert('Failed to compare backups');
+      toast.error('Failed to compare backups');
     }
   };
 

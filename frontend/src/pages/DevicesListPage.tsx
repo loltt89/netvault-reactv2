@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import { extractErrorMessage } from '../utils/extractErrorMessage';
@@ -47,6 +48,7 @@ const DevicesListPage: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const toast = useToast();
   const [devices, setDevices] = useState<Device[]>([]);
   const [filteredDevices, setFilteredDevices] = useState<Device[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -359,7 +361,7 @@ const DevicesListPage: React.FC = () => {
       const preview = await apiService.devices.csvPreview(file);
       setImportPreview(preview);
     } catch (error: any) {
-      alert(extractErrorMessage(error, t('devices.import.preview_error')));
+      toast.error(extractErrorMessage(error, t('devices.import.preview_error')));
     } finally {
       setImportLoading(false);
     }
@@ -376,7 +378,7 @@ const DevicesListPage: React.FC = () => {
         loadDevices();
       }
     } catch (error: any) {
-      alert(extractErrorMessage(error, t('devices.import.import_error')));
+      toast.error(extractErrorMessage(error, t('devices.import.import_error')));
     } finally {
       setImportLoading(false);
     }
@@ -405,7 +407,7 @@ const DevicesListPage: React.FC = () => {
       }, 100);
     } catch (error) {
       logger.error('Failed to download template:', error);
-      alert(t('common.error') + ': ' + t('devices.import.template_download_error'));
+      toast.error(t('devices.import.template_download_error'));
     }
   };
 
@@ -439,7 +441,7 @@ const DevicesListPage: React.FC = () => {
           payload.enable_password = formData.enable_password;
         }
         await apiService.devices.update(editingDevice.id, payload);
-        alert(t('devices.device_updated'));
+        toast.success(t('devices.device_updated'));
       } else {
         // For new devices, always send password (can be empty)
         payload.password = formData.password;
@@ -447,14 +449,14 @@ const DevicesListPage: React.FC = () => {
           payload.enable_password = formData.enable_password;
         }
         await apiService.devices.create(payload);
-        alert(t('devices.device_created'));
+        toast.success(t('devices.device_created'));
       }
 
       setShowModal(false);
       loadDevices();
     } catch (error: any) {
       logger.error('Error saving device:', error);
-      alert(t('common.error') + ': ' + (error.response?.data?.message || t('devices.failed_save')));
+      toast.error(extractErrorMessage(error, t('devices.failed_save')));
     }
   };
 
@@ -466,11 +468,11 @@ const DevicesListPage: React.FC = () => {
 
     try {
       await apiService.devices.delete(device.id);
-      alert(t('devices.device_deleted'));
+      toast.success(t('devices.device_deleted'));
       loadDevices();
     } catch (error) {
       logger.error('Error deleting device:', error);
-      alert(t('devices.failed_delete'));
+      toast.error(t('devices.failed_delete'));
     }
   };
 
@@ -509,12 +511,12 @@ const DevicesListPage: React.FC = () => {
     setBulkDeleteLoading(true);
     try {
       const result = await apiService.devices.bulkDelete(Array.from(selectedDevices));
-      alert(t('devices.bulk_delete_success', { count: result.deleted_count }));
+      toast.success(t('devices.bulk_delete_success', { count: result.deleted_count }));
       setSelectedDevices(new Set());
       loadDevices();
     } catch (error: any) {
       logger.error('Error bulk deleting devices:', error);
-      alert(t('common.error') + ': ' + (error.response?.data?.detail || t('devices.bulk_delete_failed')));
+      toast.error(extractErrorMessage(error, t('devices.bulk_delete_failed')));
     } finally {
       setBulkDeleteLoading(false);
     }
@@ -528,7 +530,7 @@ const DevicesListPage: React.FC = () => {
       // No alert - logs will appear in TaskTerminal
     } catch (error: any) {
       logger.error('Error initiating backup:', error);
-      alert(t('common.error') + ': ' + extractErrorMessage(error, 'Failed to queue backup task'));
+      toast.error(extractErrorMessage(error, 'Failed to queue backup task'));
     }
   };
 
@@ -537,15 +539,15 @@ const DevicesListPage: React.FC = () => {
     try {
       const result = await apiService.devices.testConnection(device.id);
       if (result.success) {
-        alert(`${t('common.success')}: ${result.message}`);
+        toast.success(result.message);
       } else {
-        alert(`${t('common.error')}: ${result.message}`);
+        toast.error(result.message);
       }
       // Reload devices to update status
       loadDevices();
     } catch (error: any) {
       logger.error('Error testing connection:', error);
-      alert(t('common.error') + ': Connection test failed');
+      toast.error('Connection test failed');
     }
   };
 
