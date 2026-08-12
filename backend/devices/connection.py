@@ -2,7 +2,10 @@
 Device connection utilities for SSH and Telnet
 Strategy: Paramiko first (95% devices), netvault-ssh binary fallback (SSH v1)
 """
-import telnetlib
+import telnetlib  # nosec B401 - Telnet is a deliberately supported, opt-in
+# protocol (Device.protocol == 'telnet') for legacy devices with no SSH
+# support, not an accidental insecure default; SSH is what's used unless a
+# device is explicitly configured otherwise.
 import time
 import socket
 import re
@@ -948,7 +951,7 @@ class TelnetConnection:
     def connect(self) -> None:
         """Establish Telnet connection"""
         try:
-            self.connection = telnetlib.Telnet(self.host, self.port, self.timeout)
+            self.connection = telnetlib.Telnet(self.host, self.port, self.timeout)  # nosec B312 - see import-time note above
 
             # Quick initial read to check if connection is alive
             time.sleep(0.5)

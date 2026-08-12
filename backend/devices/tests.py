@@ -2545,7 +2545,7 @@ end
             mock_binary.return_value = {'success': False, 'error': 'Auth failed'}
             try:
                 conn.connect()
-            except:
+            except Exception:
                 pass
             # Should have tried binary fallback
             mock_binary.assert_called()

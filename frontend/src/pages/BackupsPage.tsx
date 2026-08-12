@@ -71,7 +71,7 @@ const BackupsPage: React.FC = () => {
     switch (filter) {
       case 'today':
         return { date_from: today.toISOString() };
-      case 'yesterday':
+      case 'yesterday': {
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
         const dayBeforeYesterday = new Date(yesterday);
@@ -80,14 +80,17 @@ const BackupsPage: React.FC = () => {
           date_from: dayBeforeYesterday.toISOString(),
           date_to: yesterday.toISOString()
         };
-      case 'last7days':
+      }
+      case 'last7days': {
         const last7 = new Date(today);
         last7.setDate(last7.getDate() - 7);
         return { date_from: last7.toISOString() };
-      case 'last30days':
+      }
+      case 'last30days': {
         const last30 = new Date(today);
         last30.setDate(last30.getDate() - 30);
         return { date_from: last30.toISOString() };
+      }
       case 'custom':
         return {
           date_from: dateFrom ? new Date(dateFrom).toISOString() : undefined,

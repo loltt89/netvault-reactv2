@@ -8,7 +8,10 @@ on:
 
 env:
   PYTHON_VERSION: '3.12'
-  NODE_VERSION: '18'
+  # react-router-dom (a production dependency, not dev) hard-requires
+  # Node >=20.0.0 with no fallback range — Node 18 is also EOL as of 2025.
+  # Node 22 is the current Active LTS.
+  NODE_VERSION: '22'
 
 jobs:
   # Backend Tests
@@ -124,6 +127,13 @@ jobs:
         working-directory: ./frontend
         run: npx tsc --noEmit
 
+      - name: Lint
+        working-directory: ./frontend
+        # 86 warnings (mostly pre-existing `any` and exhaustive-deps) are a
+        # known, tracked baseline — this only fails on new errors or on the
+        # warning count growing past that baseline, not on the backlog itself.
+        run: npx eslint . --max-warnings 86
+
       - name: Check locale files are in sync
         working-directory: ./frontend
         run: npm run check:i18n
@@ -150,11 +160,24 @@ jobs:
       - name: Install safety
         run: pip install safety bandit
 
+      # Blocking: known CVEs in pinned dependency versions. requirements.txt
+      # is expected to be clean of these at all times — if this goes red,
+      # the fix is bumping the flagged package, not adding `|| true` back.
       - name: Check Python dependencies for vulnerabilities
         working-directory: ./backend
-        run: safety check -r requirements.txt --ignore 70612 || true
+        run: safety check -r requirements.txt --ignore 70612
 
-      - name: Run Bandit security linter
+      # Blocking, HIGH+ only: real, actionable findings (hardcoded secrets,
+      # SQL injection, unsafe deserialization, etc.) shouldn't be able to
+      # merge silently. MEDIUM/LOW go to the informational report below
+      # instead — the volume there includes a lot of "you're doing something
+      # networked" noise (e.g. our deliberate Telnet support) not worth
+      # blocking a PR over.
+      - name: Run Bandit security linter (blocking, HIGH severity)
+        working-directory: ./backend
+        run: bandit -r . -x ./venv,./tests --severity-level high
+
+      - name: Run Bandit security linter (informational, MEDIUM+ report)
         working-directory: ./backend
         run: bandit -r . -x ./venv,./tests --severity-level medium -f json -o bandit-report.json || true
 
