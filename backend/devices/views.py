@@ -179,8 +179,26 @@ class DeviceViewSet(viewsets.ModelViewSet):
         """Test connection to device"""
         from .connection import test_connection
         from django.utils import timezone
+        from core.redis_lock import DeviceLock
 
         device = self.get_object()
+
+        # Same lock backup_device() takes, for the same reason: an SSH/Telnet
+        # session opened here can interleave with a scheduled backup (or
+        # another concurrent test) and exhaust VTY lines exactly as
+        # DeviceLock exists to prevent. This action previously took no lock
+        # at all, so it could always race a real backup regardless of how
+        # well-guarded that side was. Non-blocking + short TTL: this is a
+        # quick manual check (timeout=5s below), not worth queuing behind.
+        lock = DeviceLock(device_id=device.id, operation='test_connection', ttl=30, blocking=False)
+        if not lock.acquire():
+            return Response({
+                'success': False,
+                'message': f'Device {device.name} is currently busy (another backup or check in progress)',
+                'device_id': device.id,
+                'device_name': device.name,
+                'locked': True,
+            })
 
         try:
             username = device.username
@@ -236,6 +254,9 @@ class DeviceViewSet(viewsets.ModelViewSet):
                 'detail': f'Connection test failed: {str(e)}',
                 'device_id': device.id,
             }, status=status.HTTP_400_BAD_REQUEST)
+
+        finally:
+            lock.release()
 
     @action(detail=True, methods=['post'], permission_classes=[IsAuthenticated, IsAdministrator])
     def approve_ssh_host_key(self, request, pk=None):

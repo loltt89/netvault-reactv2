@@ -11,6 +11,7 @@ from devices.connection import backup_device_config
 from .models import Backup, BackupSchedule, BackupRetentionPolicy
 from core.redis_lock import DeviceLock
 import logging
+import threading
 
 # Real-time WebSocket log streaming
 from channels.layers import get_channel_layer
@@ -37,6 +38,19 @@ def update_schedule_stats(schedule_id: int, success: bool):
     BackupSchedule.objects.filter(id=schedule_id).update(
         **{field: F(field) + 1}
     )
+
+
+def _lock_heartbeat(lock, stop_event, interval=60, extend_by=120):
+    """
+    Periodically extend `lock` until `stop_event` is set — runs in its own
+    thread alongside a long device connection so the lock's TTL can't
+    expire out from under a backup that's still genuinely in progress.
+    Pulled out as its own function (rather than a closure inline in
+    backup_device) so it's directly unit-testable without needing a real
+    60-second wait.
+    """
+    while not stop_event.wait(timeout=interval):
+        lock.extend(extend_by)
 
 
 @shared_task(bind=True, max_retries=3)
@@ -117,6 +131,23 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
 
             return {'success': False, 'error': 'Device busy', 'locked': True}
 
+        # Heartbeat thread to keep the lock alive for however long the
+        # connection actually takes. The 120s TTL above is a starting
+        # budget, not a hard ceiling — a real backup (enable mode +
+        # several setup commands, each with up to 60s of idle-wait budget
+        # for paged output) can genuinely run past 2 minutes on a slow or
+        # heavily-paged device, and DeviceLock.extend() existed for exactly
+        # this case but nothing ever called it: the lock would expire out
+        # from under a still-running backup and let a second connection
+        # (a retry, a manual "Test Connection", an overlapping schedule)
+        # open a second session to the same device, exhausting VTY lines —
+        # the exact race this lock exists to prevent. Extending well
+        # before the TTL elapses (every 60s, refreshed to 120s) keeps the
+        # margin wide even under scheduler jitter.
+        stop_heartbeat = threading.Event()
+        heartbeat = threading.Thread(target=_lock_heartbeat, args=(lock, stop_heartbeat), daemon=True)
+        heartbeat.start()
+
         try:
             send_log('info', f"Lock acquired, connecting to {device.ip_address}:{device.port} via {device.protocol}...")
 
@@ -150,6 +181,8 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
                 device_id=device.id,
             )
         finally:
+            stop_heartbeat.set()
+            heartbeat.join(timeout=5)
             # Always release lock, even if backup fails
             lock.release()
 

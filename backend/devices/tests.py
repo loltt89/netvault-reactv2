@@ -896,24 +896,54 @@ class DeviceViewSetActionsTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     @patch('devices.connection.test_connection')
-    def test_test_connection_success(self, mock_test):
+    @patch('core.redis_lock.DeviceLock')
+    def test_test_connection_success(self, mock_lock_class, mock_test):
         """Test connection test endpoint - success"""
+        mock_lock = MagicMock()
+        mock_lock.acquire.return_value = True
+        mock_lock_class.return_value = mock_lock
         mock_test.return_value = (True, 'Connection successful')
 
         response = self.client.post(f'/api/v1/devices/devices/{self.device.id}/test_connection/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data['success'])
+        mock_lock.acquire.assert_called_once()
+        mock_lock.release.assert_called_once()
 
     @patch('devices.connection.test_connection')
-    def test_test_connection_failure(self, mock_test):
+    @patch('core.redis_lock.DeviceLock')
+    def test_test_connection_failure(self, mock_lock_class, mock_test):
         """Test connection test endpoint - failure"""
+        mock_lock = MagicMock()
+        mock_lock.acquire.return_value = True
+        mock_lock_class.return_value = mock_lock
         mock_test.return_value = (False, 'Connection timed out')
 
         response = self.client.post(f'/api/v1/devices/devices/{self.device.id}/test_connection/')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(response.data['success'])
+        mock_lock.release.assert_called_once()
+
+    @patch('devices.connection.test_connection')
+    @patch('core.redis_lock.DeviceLock')
+    def test_test_connection_fails_closed_when_device_locked(self, mock_lock_class, mock_test):
+        """Fix: this action used to take no lock at all, so a manual 'Test
+        Connection' could always race a concurrently-running scheduled
+        backup and open a second session to the same device — exactly what
+        DeviceLock exists to prevent."""
+        mock_lock = MagicMock()
+        mock_lock.acquire.return_value = False  # another operation holds it
+        mock_lock_class.return_value = mock_lock
+
+        response = self.client.post(f'/api/v1/devices/devices/{self.device.id}/test_connection/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.data['success'])
+        self.assertTrue(response.data.get('locked'))
+        mock_test.assert_not_called()  # never even attempted the connection
+        mock_lock.release.assert_not_called()  # never acquired, nothing to release
 
 
 class DeviceCsvImportSecurityTestCase(APITestCase):

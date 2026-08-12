@@ -892,6 +892,50 @@ class ReapStaleBackupsTestCase(TestCase):
         self.assertEqual(old_success.status, 'success')
 
 
+class LockHeartbeatTestCase(TestCase):
+    """Tests for _lock_heartbeat — the fix for DeviceLock's fixed 120s TTL
+    being shorter than a real backup can take (multiple setup commands,
+    each with up to 60s of idle-wait budget for paged output, easily
+    exceeds 2 minutes) and DeviceLock.extend() existing but never being
+    called from production code.
+    """
+
+    def test_extends_periodically_until_stopped(self):
+        import threading
+        import time
+        from backups.tasks import _lock_heartbeat
+
+        mock_lock = MagicMock()
+        stop_event = threading.Event()
+
+        thread = threading.Thread(
+            target=_lock_heartbeat, args=(mock_lock, stop_event), kwargs={'interval': 0.02, 'extend_by': 120}
+        )
+        thread.start()
+        time.sleep(0.1)  # several intervals' worth
+        stop_event.set()
+        thread.join(timeout=2)
+
+        self.assertFalse(thread.is_alive())
+        self.assertGreaterEqual(mock_lock.extend.call_count, 2)
+        mock_lock.extend.assert_called_with(120)
+
+    def test_stops_immediately_without_extending_if_already_set(self):
+        import threading
+        from backups.tasks import _lock_heartbeat
+
+        mock_lock = MagicMock()
+        stop_event = threading.Event()
+        stop_event.set()  # already stopped before the thread even starts
+
+        thread = threading.Thread(target=_lock_heartbeat, args=(mock_lock, stop_event), kwargs={'interval': 60})
+        thread.start()
+        thread.join(timeout=2)
+
+        self.assertFalse(thread.is_alive())
+        mock_lock.extend.assert_not_called()
+
+
 class BackupTasksTestCase(TestCase):
     """Tests for Celery backup tasks"""
 
