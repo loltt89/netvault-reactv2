@@ -2,6 +2,13 @@
 
 NetVault supports authentication and authorization via Active Directory (AD) or LDAP servers.
 
+> **Known gap:** the `LDAP_ENABLED` / `LDAP_SERVER_URI` / … fields in System Settings (`.env`)
+> only populate the `SystemSettings` DB row shown in the UI — they do **not** configure
+> `django-auth-ldap` or `AUTHENTICATION_BACKENDS`. Toggling LDAP on in the UI alone does
+> nothing. The steps below (manually editing `settings.py` / `ldap_backend.py` / `apps.py`)
+> are currently the *only* way to actually enable LDAP. Tracked for consolidation into one
+> config path — until then, follow this guide start to finish, not the UI toggle.
+
 ## Features
 
 - **Single Sign-On (SSO)** - Users can log in with their AD credentials
@@ -31,7 +38,7 @@ NetVault supports authentication and authorization via Active Directory (AD) or 
 
 ### 1. Configure LDAP Settings
 
-Edit `/home/loltt/netvault-react/backend/netvault/settings.py` and add:
+Edit `<project_root>/backend/netvault/settings.py` and add:
 
 ```python
 # Import LDAP configuration
@@ -40,7 +47,7 @@ from netvault.ldap_settings import *
 
 ### 2. Update LDAP Connection Details
 
-Edit `/home/loltt/netvault-react/backend/netvault/ldap_settings.py`:
+Edit `<project_root>/backend/netvault/ldap_settings.py`:
 
 ```python
 # LDAP Server URI
@@ -69,7 +76,7 @@ AUTH_LDAP_GROUP_SEARCH = LDAPSearch(
 
 ### 3. Configure AD Groups to NetVault Roles Mapping
 
-In `/home/loltt/netvault-react/backend/accounts/ldap_backend.py`, update the `_map_ldap_groups_to_role` method:
+In `<project_root>/backend/accounts/ldap_backend.py`, update the `_map_ldap_groups_to_role` method:
 
 ```python
 def _map_ldap_groups_to_role(self, ldap_groups):
@@ -94,7 +101,7 @@ def _map_ldap_groups_to_role(self, ldap_groups):
 
 ### 4. Enable LDAP Backend
 
-In `/home/loltt/netvault-react/backend/netvault/settings.py`, add:
+In `<project_root>/backend/netvault/settings.py`, add:
 
 ```python
 AUTHENTICATION_BACKENDS = [
@@ -105,7 +112,7 @@ AUTHENTICATION_BACKENDS = [
 
 ### 5. Connect Signal Handler
 
-In `/home/loltt/netvault-react/backend/accounts/apps.py`, add:
+In `<project_root>/backend/accounts/apps.py`, add:
 
 ```python
 from django.apps import AppConfig
@@ -126,7 +133,7 @@ class AccountsConfig(AppConfig):
 ### Test with Django Shell
 
 ```bash
-cd /home/loltt/netvault-react/backend
+cd <project_root>/backend
 source venv/bin/activate
 python manage.py shell
 ```
@@ -325,7 +332,7 @@ AUTHENTICATION_BACKENDS = [
 ## Support
 
 For issues with LDAP integration:
-1. Check logs in `/home/loltt/netvault-react/backend/logs/`
+1. Check logs in `<project_root>/backend/logs/`
 2. Enable DEBUG logging
 3. Test connection with ldapsearch tool
 4. Review this guide's troubleshooting section

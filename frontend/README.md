@@ -1,46 +1,67 @@
-# Getting Started with Create React App
+# NetVault Frontend
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+React + TypeScript SPA, built with [Vite](https://vitejs.dev/). Talks to the Django backend
+over a relative `/api/v1` path — in production nginx reverse-proxies both frontend and API
+under one origin (see `install.sh`); in dev, Vite's dev server runs standalone against the
+backend on `:8000`.
 
 ## Available Scripts
 
-In the project directory, you can run:
+### `npm run dev`
 
-### `npm start`
-
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
-
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
-
-### `npm test`
-
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+Starts the Vite dev server on **http://localhost:3000** (see `vite.config.ts`) with HMR.
 
 ### `npm run build`
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Builds the production bundle into `build/` (used by `install.sh`, copied to
+`/opt/netvault/frontend_build` and served by nginx).
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### `npm run preview`
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Serves the production build locally for a final check before deploying.
 
-### `npm run eject`
+### `npm run lint`
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+Runs ESLint. **Currently broken** — `eslint.config.js` doesn't exist in this directory even
+though `eslint`/`typescript-eslint`/`eslint-plugin-react-hooks` are installed as devDependencies.
+Add a flat config before relying on this script.
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+### `npm run test:e2e`
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+Runs the Playwright end-to-end suite (`e2e/*.spec.ts`). Defaults to `http://localhost:5173`
+(Playwright's stock default) unless `E2E_BASE_URL` is set — but `npm run dev` serves on
+`:3000`, not `:5173`. Set `E2E_BASE_URL=http://localhost:3000` (or run `npm run preview`,
+which does default to 4173/5173 depending on Vite version) before running e2e locally.
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+## Environment
+
+Copy `.env.example` to `.env`:
+
+```
+REACT_APP_API_URL=/api/v1   # relative path in production; point at :8000 for standalone dev
+HOST=0.0.0.0                 # dev server bind address
+```
+
+## Structure
+
+```
+src/
+├── components/   # Shared UI components (flat, no subfolders)
+├── contexts/     # AuthContext, ThemeContext
+├── i18n/         # ru/en/kk locales
+├── pages/        # Route-level components
+├── services/     # api.service.ts — single API client for the whole backend surface
+├── styles/       # Theme CSS (5 themes via CSS custom properties) + per-page stylesheets
+├── types/        # Shared TypeScript interfaces (see audit note below)
+└── utils/
+```
+
+> Several pages/components locally redeclare types that already exist in `types/index.ts`
+> instead of importing them, and in at least one case (`BackupSchedule`) the local copy
+> describes a different shape than the canonical type. See the architecture audit for the
+> full list before adding new features that touch these entities.
 
 ## Learn More
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+- [Vite documentation](https://vitejs.dev/guide/)
+- [React documentation](https://react.dev/)

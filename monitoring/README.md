@@ -47,6 +47,8 @@ docker-compose up -d
 
 ## Настройка для продакшена
 
-1. Измените `host.docker.internal` на IP вашего сервера в `prometheus/prometheus.yml`
+1. `prometheus/prometheus.yml` уже указывает на `172.17.0.1:8000` (дефолтный IP docker0-моста на Linux-хосте) —
+   если сервер запущен не в стандартной конфигурации Docker (другая сеть, Docker Desktop на Mac/Windows,
+   nginx/бэкенд в отдельном контейнере), поправьте `targets` под фактический адрес бэкенда.
 2. Измените пароль Grafana в `docker-compose.yml`
 3. Настройте Alertmanager для отправки уведомлений
