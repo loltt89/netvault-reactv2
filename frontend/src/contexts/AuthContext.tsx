@@ -70,7 +70,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await APIService.auth.login(email, password, twoFactorToken);
 
       // Save tokens
-      setTokens(response.access, response.refresh);
+      setTokens(response.access);
 
       // Set user data
       setUser(response.user);
@@ -115,7 +115,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const response = await APIService.auth.register(data);
 
       // Save tokens
-      setTokens(response.access, response.refresh);
+      setTokens(response.access);
 
       // Set user data
       setUser(response.user);

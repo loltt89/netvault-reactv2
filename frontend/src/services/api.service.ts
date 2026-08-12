@@ -118,10 +118,12 @@ apiClient.interceptors.response.use(
 /**
  * Token management functions
  */
-export const setTokens = (access: string, _refresh?: string) => {
-  // Store access token in memory (not localStorage for XSS protection)
+export const setTokens = (access: string) => {
+  // Store access token in memory (not localStorage for XSS protection).
+  // There's no refresh parameter here anymore because the backend no
+  // longer puts one in the response body at all — it's HttpOnly-cookie-only
+  // now (see accounts/views.py's CustomTokenObtainPairView).
   accessToken = access;
-  // Refresh token is handled by HttpOnly cookie set by server
 };
 
 export const getAccessToken = (): string | null => {

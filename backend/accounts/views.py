@@ -66,6 +66,13 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                 access_token=response.data.get('access'),
                 refresh_token=response.data.get('refresh')
             )
+            # The refresh token now lives only in the HttpOnly cookie.
+            # Returning it in the JSON body too was redundant exposure —
+            # readable by any script with access to the response (a
+            # network tab, an APM tool that logs response bodies, an XSS
+            # that only needs to read fetch results, not cookies) for a
+            # value the frontend never actually persists anyway.
+            response.data.pop('refresh', None)
 
         return response
 
@@ -78,21 +85,48 @@ class CookieTokenRefreshView(TokenRefreshView):
         refresh_token = request.COOKIES.get('refresh_token')
 
         if refresh_token:
-            # Inject into request data
-            request.data._mutable = True
-            request.data['refresh'] = refresh_token
-            request.data._mutable = False
+            # Inject into request data. request.data is only a QueryDict
+            # (immutable by default, needs the _mutable toggle) for
+            # multipart/form bodies — for a JSON body, which is what
+            # axios sends by default and so is what the real frontend
+            # actually uses for this call, DRF's JSONParser hands back a
+            # plain (already-mutable) dict that has no `_mutable`
+            # attribute at all. Blindly setting it unconditionally raised
+            # AttributeError on every real refresh call.
+            if hasattr(request.data, '_mutable'):
+                request.data._mutable = True
+                request.data['refresh'] = refresh_token
+                request.data._mutable = False
+            else:
+                request.data['refresh'] = refresh_token
 
         try:
             response = super().post(request, *args, **kwargs)
 
             if response.status_code == 200:
-                # Set new access token as cookie
+                # ROTATE_REFRESH_TOKENS=True means every refresh issues a
+                # brand new refresh token and — because
+                # BLACKLIST_AFTER_ROTATION=True — blacklists the one that
+                # was just used. This used to only refresh the access_token
+                # cookie; the refresh_token cookie was never updated with
+                # the new value, so it kept holding the now-blacklisted
+                # token. The *next* refresh attempt would then present that
+                # blacklisted token, get rejected, and force a full
+                # re-login — every session was silently killed exactly one
+                # ACCESS_TOKEN_LIFETIME after its first refresh, regardless
+                # of the much longer REFRESH_TOKEN_LIFETIME. Found while
+                # checking whether the refresh token still needed to be in
+                # the JSON body at all.
                 set_jwt_cookies(
                     response,
                     request,
-                    access_token=response.data.get('access')
+                    access_token=response.data.get('access'),
+                    refresh_token=response.data.get('refresh'),
                 )
+                # Same reasoning as CustomTokenObtainPairView: the cookie
+                # is authoritative now, don't also hand the (rotated)
+                # refresh token to JS.
+                response.data.pop('refresh', None)
 
             return response
         except (InvalidToken, TokenError) as e:
@@ -141,9 +175,10 @@ class AuthViewSet(viewsets.GenericViewSet):
         access_token = str(refresh.access_token)
         refresh_token = str(refresh)
 
+        # refresh_token is intentionally not in the body — it only goes into
+        # the HttpOnly cookie below (see CustomTokenObtainPairView for why).
         response = Response({
             'user': UserSerializer(user).data,
-            'refresh': refresh_token,
             'access': access_token,
         }, status=status.HTTP_201_CREATED)
 

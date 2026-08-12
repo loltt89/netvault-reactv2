@@ -598,8 +598,15 @@ class AuthAPITestCase(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn('access', response.data)
-        self.assertIn('refresh', response.data)
         self.assertIn('user', response.data)
+        # The refresh token must never be in the JSON body — only in the
+        # HttpOnly cookie set alongside it. It used to be in both, which
+        # was pure redundant exposure since the frontend never persists
+        # the JSON-body copy anyway.
+        self.assertNotIn('refresh', response.data)
+        self.assertIn('refresh_token', response.cookies)
+        self.assertTrue(response.cookies['refresh_token']['httponly'])
+        self.assertIn('access_token', response.cookies)
 
     def test_login_wrong_password(self):
         """Test login with wrong password"""
@@ -632,6 +639,94 @@ class AuthAPITestCase(APITestCase):
         response = self.client.get('/api/v1/users/me/')
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class CookieTokenRefreshTestCase(APITestCase):
+    """Tests for the token-rotation-cookie fix.
+
+    ROTATE_REFRESH_TOKENS=True + BLACKLIST_AFTER_ROTATION=True means every
+    call to /token/refresh/ issues a brand new refresh token and blacklists
+    the one that was just used. CookieTokenRefreshView used to only persist
+    the new *access* token back into its cookie — the refresh_token cookie
+    kept holding the now-blacklisted old value. The next refresh attempt
+    would then present that blacklisted token, get rejected, and force a
+    full re-login: every session died exactly one ACCESS_TOKEN_LIFETIME
+    after its first refresh, regardless of the much longer
+    REFRESH_TOKEN_LIFETIME actually configured. These tests exercise two
+    *consecutive* refreshes end-to-end through the real cookie jar — the
+    bug only shows up on the second one.
+    """
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='refreshcookie@example.com', username='refreshcookie', password='TestPass123!'
+        )
+
+    def _login(self):
+        response = self.client.post('/api/v1/token/', {
+            'email': 'refreshcookie@example.com', 'password': 'TestPass123!'
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response
+
+    def test_refresh_rotates_cookie_not_just_body(self):
+        self._login()
+        original_refresh_cookie = self.client.cookies['refresh_token'].value
+
+        response = self.client.post('/api/v1/token/refresh/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        # The rotated refresh token must never reach the JSON body...
+        self.assertNotIn('refresh', response.data)
+        # ...but the cookie jar must have actually been updated to a NEW
+        # value, not left holding the one that's now blacklisted.
+        new_refresh_cookie = self.client.cookies['refresh_token'].value
+        self.assertNotEqual(new_refresh_cookie, original_refresh_cookie)
+
+    def test_two_consecutive_refreshes_both_succeed(self):
+        """The actual regression: this is exactly what used to break."""
+        self._login()
+
+        first = self.client.post('/api/v1/token/refresh/')
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+
+        second = self.client.post('/api/v1/token/refresh/')
+        self.assertEqual(
+            second.status_code, status.HTTP_200_OK,
+            "Second consecutive refresh failed — the rotated refresh token "
+            "from the first refresh wasn't persisted to the cookie, so this "
+            "request replayed an already-blacklisted token."
+        )
+
+    def test_refresh_without_cookie_fails(self):
+        # No refresh cookie and no body field at all -> a required-field
+        # validation error (400), distinct from an invalid/expired token
+        # (401, covered below).
+        response = self.client.post('/api/v1/token/refresh/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_refresh_works_with_json_body(self):
+        """Regression test for the actual production bug: axios (what the
+        real frontend uses) POSTs with Content-Type: application/json by
+        default, which DRF parses into a plain dict — not a QueryDict.
+        request.data._mutable = True raised AttributeError unconditionally
+        on that plain dict, so every real refresh call from the browser
+        would have 500'd. Explicitly using format='json' here to make sure
+        this exact path — not just whatever the test client's default
+        happens to be — is covered."""
+        self._login()
+        response = self.client.post('/api/v1/token/refresh/', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_invalid_refresh_token_clears_cookies(self):
+        self._login()
+        self.client.cookies['refresh_token'] = 'not-a-real-token'
+
+        response = self.client.post('/api/v1/token/refresh/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(response.cookies['refresh_token'].value, '')
+        self.assertEqual(response.cookies['access_token'].value, '')
 
 
 class UserRoleTestCase(TestCase):
@@ -782,9 +877,11 @@ class JWTSigningKeyTestCase(TestCase):
         user = User.objects.create_user(email='jwtkey@example.com', username='jwtkey', password='TestPass123!')
         token = str(RefreshToken.for_user(user).access_token)
 
-        # Decodes cleanly with the configured signing key...
+        # Decodes cleanly with the configured signing key... (user_id is
+        # serialized as a string in the token claim regardless of the
+        # field's actual DB type — compare as such rather than assuming int)
         decoded = pyjwt.decode(token, settings.JWT_SIGNING_KEY, algorithms=[settings.SIMPLE_JWT['ALGORITHM']])
-        self.assertEqual(decoded['user_id'], user.id)
+        self.assertEqual(str(decoded['user_id']), str(user.id))
 
         # ...and is rejected with any other key, proving it isn't signed
         # with something unrelated/blank.

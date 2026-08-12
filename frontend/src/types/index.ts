@@ -50,10 +50,13 @@ export interface RegisterData {
   theme?: Theme;
 }
 
+// The refresh token is deliberately NOT part of this response — it only
+// ever lives in the HttpOnly cookie the backend sets alongside it (see
+// accounts/views.py's CustomTokenObtainPairView), never in JS-readable
+// JSON.
 export interface AuthResponse {
   user: User;
   access: string;
-  refresh: string;
 }
 
 export interface TokenPair {
