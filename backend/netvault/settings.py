@@ -317,6 +317,25 @@ LDAP_BIND_DN = os.getenv('LDAP_BIND_DN', '')
 LDAP_BIND_PASSWORD = os.getenv('LDAP_BIND_PASSWORD', '')
 LDAP_USER_SEARCH_BASE = os.getenv('LDAP_USER_SEARCH_BASE', '')
 
+
+def _parse_ldap_group_list(env_var, default):
+    """Comma-separated AD/LDAP group CNs, lowercased for the case-insensitive
+    *exact* match accounts.ldap_backend._map_ldap_groups_to_role does against
+    them. Exact, not substring — a group merely containing one of these names
+    (e.g. "IT-Administrators-Helpdesk" containing "administrators") must NOT
+    match; only a group whose name equals one of these exactly does."""
+    return {g.strip().lower() for g in os.getenv(env_var, default).split(',') if g.strip()}
+
+
+# LDAP/AD group -> NetVault role mapping. Defaults match the group names
+# LDAP_SETUP.md tells integrators to create; override per deployment if your
+# AD groups are named differently. Every deployment's real group names are
+# organization-specific — that's exactly why these were hardcoded fuzzy
+# patterns in the code before instead of exact, configurable names.
+LDAP_ADMIN_GROUPS = _parse_ldap_group_list('LDAP_ADMIN_GROUPS', 'NetVault-Admins,NetVault Admins,Domain Admins,Administrators')
+LDAP_OPERATOR_GROUPS = _parse_ldap_group_list('LDAP_OPERATOR_GROUPS', 'NetVault-Operators,NetVault Operators,Network Operators')
+LDAP_AUDITOR_GROUPS = _parse_ldap_group_list('LDAP_AUDITOR_GROUPS', 'NetVault-Auditors,NetVault Auditors,Security Auditors')
+
 # Backup Configuration
 BACKUP_RETENTION_DAYS = int(os.getenv('BACKUP_RETENTION_DAYS', '90'))
 BACKUP_PARALLEL_WORKERS = int(os.getenv('BACKUP_PARALLEL_WORKERS', '5'))

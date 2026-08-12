@@ -76,28 +76,29 @@ AUTH_LDAP_GROUP_SEARCH = LDAPSearch(
 
 ### 3. Configure AD Groups to NetVault Roles Mapping
 
-In `<project_root>/backend/accounts/ldap_backend.py`, update the `_map_ldap_groups_to_role` method:
+Group name matching is **exact** (case-insensitive), not substring — a group
+merely *containing* "administrators" in its name (e.g. an unrelated group
+like "IT-Administrators-Helpdesk") must never grant the `administrator`
+role. Set the group name lists in your environment (`.env`) rather than
+editing `accounts/ldap_backend.py`'s matching logic itself:
 
-```python
-def _map_ldap_groups_to_role(self, ldap_groups):
-    """Map AD groups to NetVault roles"""
-    groups_lower = [g.lower() for g in ldap_groups]
-
-    # Administrator role
-    if any('netvault-admins' in g or 'domain admins' in g for g in groups_lower):
-        return 'administrator'
-
-    # Operator role
-    if any('netvault-operators' in g for g in groups_lower):
-        return 'operator'
-
-    # Auditor role
-    if any('netvault-auditors' in g for g in groups_lower):
-        return 'auditor'
-
-    # Default: viewer
-    return 'viewer'
+```bash
+# .env — comma-separated AD/LDAP group CNs, one list per role.
+# Defaults if unset:
+#   LDAP_ADMIN_GROUPS=NetVault-Admins,NetVault Admins,Domain Admins,Administrators
+#   LDAP_OPERATOR_GROUPS=NetVault-Operators,NetVault Operators,Network Operators
+#   LDAP_AUDITOR_GROUPS=NetVault-Auditors,NetVault Auditors,Security Auditors
+# Override to match your AD groups exactly — each entry must equal the
+# group's CN exactly (case-insensitive), not just appear inside it.
+LDAP_ADMIN_GROUPS=NetVault-Admins,Domain Admins
+LDAP_OPERATOR_GROUPS=NetVault-Operators
+LDAP_AUDITOR_GROUPS=NetVault-Auditors
 ```
+
+`accounts/ldap_backend.py`'s `_map_ldap_groups_to_role` reads these from
+`settings.LDAP_ADMIN_GROUPS` / `LDAP_OPERATOR_GROUPS` / `LDAP_AUDITOR_GROUPS`
+and checks for exact membership — there's nothing left to edit in the method
+itself for a normal group-naming change.
 
 ### 4. Enable LDAP Backend
 
@@ -268,9 +269,10 @@ LOGGING = {
 - Check `memberOf` attribute exists
 
 **4. "User gets wrong role"**
-- Review group mapping in `_map_ldap_groups_to_role`
-- Check group names match (case-insensitive)
-- Verify groups are in lowercase comparison
+- Review `LDAP_ADMIN_GROUPS` / `LDAP_OPERATOR_GROUPS` / `LDAP_AUDITOR_GROUPS` in `.env`
+- Matching is exact (case-insensitive) against the AD group's CN — a group name has
+  to match one of these lists *exactly*, not just contain it as a substring
+- Log `ldap_user.group_names` for the affected user to see exactly what NetVault received
 
 ## Security Best Practices
 

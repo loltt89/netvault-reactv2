@@ -45,36 +45,37 @@ class NetVaultLDAPBackend(LDAPBackend):
 
     def _map_ldap_groups_to_role(self, ldap_groups):
         """
-        Map LDAP/AD groups to NetVault roles
+        Map LDAP/AD groups to NetVault roles.
 
-        Configure this mapping based on your AD groups:
-        - CN=NetVault-Admins,OU=Groups,DC=example,DC=com -> administrator
-        - CN=NetVault-Operators,OU=Groups,DC=example,DC=com -> operator
-        - CN=NetVault-Auditors,OU=Groups,DC=example,DC=com -> auditor
-        - Default -> viewer
+        Matching is exact (case-insensitive), against the group name lists
+        in settings.LDAP_ADMIN_GROUPS / LDAP_OPERATOR_GROUPS /
+        LDAP_AUDITOR_GROUPS — configure those per deployment, see
+        LDAP_SETUP.md, rather than editing this method.
+
+        This used to be a substring check (`pattern in group`), which meant
+        any AD group whose name merely *contained* a pattern like
+        "administrators" granted that role — a group named e.g.
+        "IT-Administrators-Helpdesk" or "Former-Domain-Admins-Readonly"
+        would silently escalate its members to NetVault administrator.
+        Real AD environments accumulate exactly this kind of incidentally-
+        similar group name over time, so this was a live privilege-
+        escalation path, not just a theoretical one. Exact matching against
+        an explicit, per-deployment configured list closes it.
         """
         if not ldap_groups:
             return 'viewer'
 
-        # Convert to lowercase for case-insensitive matching
-        groups_lower = [g.lower() for g in ldap_groups]
+        from django.conf import settings
 
-        # Check for admin groups
-        admin_patterns = ['netvault-admins', 'netvault admins', 'domain admins', 'administrators']
-        if any(pattern in group for pattern in admin_patterns for group in groups_lower):
+        groups_lower = {g.strip().lower() for g in ldap_groups}
+
+        if groups_lower & settings.LDAP_ADMIN_GROUPS:
             return 'administrator'
-
-        # Check for operator groups
-        operator_patterns = ['netvault-operators', 'netvault operators', 'network operators']
-        if any(pattern in group for pattern in operator_patterns for group in groups_lower):
+        if groups_lower & settings.LDAP_OPERATOR_GROUPS:
             return 'operator'
-
-        # Check for auditor groups
-        auditor_patterns = ['netvault-auditors', 'netvault auditors', 'security auditors']
-        if any(pattern in group for pattern in auditor_patterns for group in groups_lower):
+        if groups_lower & settings.LDAP_AUDITOR_GROUPS:
             return 'auditor'
 
-        # Default role
         return 'viewer'
 
 

@@ -795,14 +795,20 @@ class LDAPBackendMockTestCase(TestCase):
         )
 
     def test_group_mapping_administrator(self):
-        """Test LDAP group mapping - administrator role"""
+        """Test LDAP group mapping - administrator role.
+
+        django_auth_ldap's group_names resolves to the group's CN attribute
+        (e.g. 'NetVault-Admins'), never the full DN — LDAPGroupType's
+        name_attr defaults to 'cn' for every group type django_auth_ldap
+        ships. So bare CNs are the realistic input here, matched exactly
+        (case-insensitive) against settings.LDAP_ADMIN_GROUPS.
+        """
         from accounts.ldap_backend import NetVaultLDAPBackend
 
         backend = NetVaultLDAPBackend()
 
-        # Test various admin group patterns
         admin_groups = [
-            ['CN=NetVault-Admins,OU=Groups,DC=corp,DC=local'],
+            ['NetVault-Admins'],
             ['Domain Admins'],
             ['ADMINISTRATORS'],
             ['NetVault Admins', 'Users'],
@@ -819,7 +825,7 @@ class LDAPBackendMockTestCase(TestCase):
         backend = NetVaultLDAPBackend()
 
         operator_groups = [
-            ['CN=NetVault-Operators,OU=Groups,DC=corp,DC=local'],
+            ['NetVault-Operators'],
             ['Network Operators'],
             ['netvault operators'],
         ]
@@ -835,7 +841,7 @@ class LDAPBackendMockTestCase(TestCase):
         backend = NetVaultLDAPBackend()
 
         auditor_groups = [
-            ['CN=NetVault-Auditors,OU=Groups,DC=corp,DC=local'],
+            ['NetVault-Auditors'],
             ['Security Auditors'],
             ['netvault auditors'],
         ]
@@ -850,11 +856,16 @@ class LDAPBackendMockTestCase(TestCase):
 
         backend = NetVaultLDAPBackend()
 
-        # Regular groups without special NetVault permissions
+        # Regular groups without special NetVault permissions — including
+        # ones that merely *contain* a privileged name as a substring,
+        # which must NOT escalate (that was the bug: see
+        # accounts.tests.LDAPGroupMappingTestCase for the dedicated
+        # regression coverage of that specific case).
         viewer_groups = [
             ['Domain Users'],
-            ['CN=Employees,OU=Groups,DC=corp,DC=local'],
+            ['Employees'],
             ['Staff', 'IT Support'],
+            ['IT-Administrators-Helpdesk'],
             [],  # Empty groups
             None,  # No groups
         ]

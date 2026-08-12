@@ -400,6 +400,71 @@ class SAMLLinkInitViewTestCase(APITestCase):
         self.assertEqual(response.status_code, 503)
 
 
+@override_settings(
+    LDAP_ADMIN_GROUPS={'netvault-admins', 'domain admins'},
+    LDAP_OPERATOR_GROUPS={'netvault-operators'},
+    LDAP_AUDITOR_GROUPS={'netvault-auditors'},
+)
+class LDAPGroupMappingTestCase(TestCase):
+    """Tests for the LDAP role-by-substring-match fix.
+
+    _map_ldap_groups_to_role must match group names *exactly* against the
+    configured lists — not substring — so a group that merely contains a
+    privileged name as part of a longer, unrelated name can never grant
+    that role. This was a real privilege-escalation bug: real AD
+    environments accumulate groups like "IT-Administrators-Helpdesk" or
+    "Former-Domain-Admins-Readonly" over time.
+    """
+
+    def setUp(self):
+        from accounts.ldap_backend import NetVaultLDAPBackend
+        self.backend = NetVaultLDAPBackend()
+
+    def test_exact_admin_group_grants_administrator(self):
+        role = self.backend._map_ldap_groups_to_role(['NetVault-Admins'])
+        self.assertEqual(role, 'administrator')
+
+    def test_case_insensitive_exact_match(self):
+        role = self.backend._map_ldap_groups_to_role(['NETVAULT-ADMINS'])
+        self.assertEqual(role, 'administrator')
+
+    def test_substring_containing_admin_pattern_does_not_escalate(self):
+        """The actual bug: a group that merely *contains* 'netvault-admins'
+        or 'domain admins' as a substring must NOT grant administrator."""
+        role = self.backend._map_ldap_groups_to_role(['IT-Administrators-Helpdesk'])
+        self.assertEqual(role, 'viewer')
+
+        role = self.backend._map_ldap_groups_to_role(['Former-Domain-Admins-Readonly'])
+        self.assertEqual(role, 'viewer')
+
+        role = self.backend._map_ldap_groups_to_role(['Site-NetVault-Admins-Backup-Viewers'])
+        self.assertEqual(role, 'viewer')
+
+    def test_exact_operator_group(self):
+        role = self.backend._map_ldap_groups_to_role(['NetVault-Operators'])
+        self.assertEqual(role, 'operator')
+
+    def test_exact_auditor_group(self):
+        role = self.backend._map_ldap_groups_to_role(['NetVault-Auditors'])
+        self.assertEqual(role, 'auditor')
+
+    def test_no_matching_group_defaults_to_viewer(self):
+        role = self.backend._map_ldap_groups_to_role(['Some-Other-Group', 'Coffee-Club'])
+        self.assertEqual(role, 'viewer')
+
+    def test_empty_groups_defaults_to_viewer(self):
+        role = self.backend._map_ldap_groups_to_role([])
+        self.assertEqual(role, 'viewer')
+
+    def test_highest_privilege_wins_when_user_in_multiple_groups(self):
+        role = self.backend._map_ldap_groups_to_role(['NetVault-Auditors', 'NetVault-Admins'])
+        self.assertEqual(role, 'administrator')
+
+    def test_whitespace_around_group_name_still_matches(self):
+        role = self.backend._map_ldap_groups_to_role([' NetVault-Admins '])
+        self.assertEqual(role, 'administrator')
+
+
 class AuthAPITestCase(APITestCase):
     """Tests for authentication API endpoints"""
 
