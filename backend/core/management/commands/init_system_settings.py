@@ -5,7 +5,7 @@ This command is run during installation to migrate settings from .env to databas
 """
 from django.core.management.base import BaseCommand
 from django.conf import settings
-from netvault.models import SystemSettings
+from core.models import SystemSettings
 import os
 
 

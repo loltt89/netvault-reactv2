@@ -266,7 +266,7 @@ def backup_multiple_devices(device_ids: list, triggered_by_id: int = None, backu
         schedule_id: BackupSchedule ID if this is a scheduled backup
     """
     from celery import group
-    from netvault.models import SystemSettings
+    from core.models import SystemSettings
 
     # Rate limiting: split into chunks to prevent overwhelming the queue
     # Get parallel workers from database settings
@@ -395,7 +395,7 @@ def cleanup_old_backups(retention_days: int = None):
     """
     # Get retention days from system settings if not provided
     if retention_days is None:
-        from netvault.models import SystemSettings
+        from core.models import SystemSettings
         sys_settings = SystemSettings.get_settings()
         retention_days = sys_settings.backup_retention_days
 

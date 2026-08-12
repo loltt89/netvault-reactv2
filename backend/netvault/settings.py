@@ -47,7 +47,7 @@ INSTALLED_APPS = [
     'django_prometheus',
 
     # Local apps
-    'netvault.apps.NetvaultConfig',  # Core app with SystemSettings
+    'core.apps.CoreConfig',  # Shared infrastructure: SystemSettings, crypto, dashboard/health endpoints
     'accounts',
     'devices',
     'backups',
@@ -432,6 +432,16 @@ LOGGING = {
             'propagate': False,
         },
         'backups': {
+            'handlers': ['file', 'console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'core': {
+            'handlers': ['file', 'console'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
+        'notifications': {
             'handlers': ['file', 'console'],
             'level': 'DEBUG',
             'propagate': False,

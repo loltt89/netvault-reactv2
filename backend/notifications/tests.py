@@ -39,7 +39,7 @@ class SendEmailNotificationTestCase(TestCase):
             role='administrator'
         )
 
-    @patch('netvault.models.SystemSettings')
+    @patch('core.models.SystemSettings')
     def test_email_not_configured(self, mock_settings):
         """Test returns False when email not configured"""
         mock_settings.get_settings.return_value = MagicMock(
@@ -52,7 +52,7 @@ class SendEmailNotificationTestCase(TestCase):
 
     @patch('notifications.services.EmailBackend')
     @patch('notifications.services.EmailMessage')
-    @patch('netvault.models.SystemSettings')
+    @patch('core.models.SystemSettings')
     def test_email_send_success(self, mock_settings, mock_email, mock_backend):
         """Test successful email sending"""
         mock_settings.get_settings.return_value = MagicMock(
@@ -71,7 +71,7 @@ class SendEmailNotificationTestCase(TestCase):
         self.assertTrue(result)
         mock_email_instance.send.assert_called_once()
 
-    @patch('netvault.models.SystemSettings')
+    @patch('core.models.SystemSettings')
     def test_email_send_exception(self, mock_settings):
         """Test handles exception gracefully"""
         mock_settings.get_settings.side_effect = Exception("DB error")
@@ -83,7 +83,7 @@ class SendEmailNotificationTestCase(TestCase):
 class SendTelegramNotificationTestCase(TestCase):
     """Tests for Telegram notification service"""
 
-    @patch('netvault.models.SystemSettings')
+    @patch('core.models.SystemSettings')
     def test_telegram_disabled(self, mock_settings):
         """Test returns False when Telegram disabled"""
         mock_settings.get_settings.return_value = MagicMock(
@@ -93,7 +93,7 @@ class SendTelegramNotificationTestCase(TestCase):
         result = send_telegram_notification('Test message')
         self.assertFalse(result)
 
-    @patch('netvault.models.SystemSettings')
+    @patch('core.models.SystemSettings')
     def test_telegram_not_configured(self, mock_settings):
         """Test returns False when Telegram not configured"""
         mock_settings.get_settings.return_value = MagicMock(
@@ -106,7 +106,7 @@ class SendTelegramNotificationTestCase(TestCase):
         self.assertFalse(result)
 
     @patch('notifications.services.requests')
-    @patch('netvault.models.SystemSettings')
+    @patch('core.models.SystemSettings')
     def test_telegram_send_success(self, mock_settings, mock_requests):
         """Test successful Telegram sending"""
         mock_settings.get_settings.return_value = MagicMock(
@@ -122,7 +122,7 @@ class SendTelegramNotificationTestCase(TestCase):
         mock_requests.post.assert_called_once()
 
     @patch('notifications.services.requests')
-    @patch('netvault.models.SystemSettings')
+    @patch('core.models.SystemSettings')
     def test_telegram_api_error(self, mock_settings, mock_requests):
         """Test handles Telegram API error"""
         mock_settings.get_settings.return_value = MagicMock(
@@ -135,7 +135,7 @@ class SendTelegramNotificationTestCase(TestCase):
         result = send_telegram_notification('Test message')
         self.assertFalse(result)
 
-    @patch('netvault.models.SystemSettings')
+    @patch('core.models.SystemSettings')
     def test_telegram_exception(self, mock_settings):
         """Test handles exception gracefully"""
         mock_settings.get_settings.side_effect = Exception("Connection error")
@@ -149,7 +149,7 @@ class NotifyBackupSuccessTestCase(TestCase):
 
     @patch('notifications.services.send_telegram_notification')
     @patch('notifications.services.send_email_notification')
-    @patch('netvault.models.SystemSettings')
+    @patch('core.models.SystemSettings')
     def test_notification_disabled(self, mock_settings, mock_email, mock_telegram):
         """Test no notification when disabled"""
         mock_settings.get_settings.return_value = MagicMock(
@@ -163,7 +163,7 @@ class NotifyBackupSuccessTestCase(TestCase):
 
     @patch('notifications.services.send_telegram_notification')
     @patch('notifications.services.send_email_notification')
-    @patch('netvault.models.SystemSettings')
+    @patch('core.models.SystemSettings')
     def test_notification_enabled(self, mock_settings, mock_email, mock_telegram):
         """Test sends notification when enabled"""
         mock_settings.get_settings.return_value = MagicMock(
@@ -181,7 +181,7 @@ class NotifyBackupFailedTestCase(TestCase):
 
     @patch('notifications.services.send_telegram_notification')
     @patch('notifications.services.send_email_notification')
-    @patch('netvault.models.SystemSettings')
+    @patch('core.models.SystemSettings')
     def test_notification_disabled(self, mock_settings, mock_email, mock_telegram):
         """Test no notification when disabled"""
         mock_settings.get_settings.return_value = MagicMock(
@@ -195,7 +195,7 @@ class NotifyBackupFailedTestCase(TestCase):
 
     @patch('notifications.services.send_telegram_notification')
     @patch('notifications.services.send_email_notification')
-    @patch('netvault.models.SystemSettings')
+    @patch('core.models.SystemSettings')
     def test_notification_enabled(self, mock_settings, mock_email, mock_telegram):
         """Test sends notification when enabled"""
         mock_settings.get_settings.return_value = MagicMock(

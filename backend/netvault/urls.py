@@ -7,14 +7,14 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
-from .dashboard_views import dashboard_statistics, backup_trend, recent_backups
-from .system_settings_views import (
+from core.dashboard_views import dashboard_statistics, backup_trend, recent_backups
+from core.system_settings_views import (
     get_system_settings,
     update_system_settings,
     test_email_settings,
     test_telegram_settings
 )
-from .health_views import health_check, health_detailed, readiness_check, liveness_check
+from core.health_views import health_check, health_detailed, readiness_check, liveness_check
 
 urlpatterns = [
     path('admin/', admin.site.urls),

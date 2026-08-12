@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from accounts.permissions import IsAdministrator
-from netvault.models import SystemSettings
+from core.models import SystemSettings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -258,7 +258,7 @@ def test_telegram_settings(request):
     """Test Telegram configuration"""
 
     try:
-        from netvault.models import SystemSettings
+        from core.models import SystemSettings
         import requests
 
         sys_settings = SystemSettings.get_settings()

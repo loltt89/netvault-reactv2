@@ -20,7 +20,7 @@ def send_email_notification(subject: str, message: str, recipient_list: list = N
     """
     try:
         # Get system settings from database (cached)
-        from netvault.models import SystemSettings
+        from core.models import SystemSettings
         sys_settings = SystemSettings.get_settings()
 
         # Check if email is configured
@@ -74,7 +74,7 @@ def send_telegram_notification(message: str):
     """
     try:
         # Get system settings from database (cached)
-        from netvault.models import SystemSettings
+        from core.models import SystemSettings
         sys_settings = SystemSettings.get_settings()
 
         # Check if Telegram is enabled
@@ -119,7 +119,7 @@ def notify_backup_success(device_name: str, backup_id: int = None, size_bytes: i
         has_changes: Whether config changed
     """
     # Check if notifications are enabled (from database settings)
-    from netvault.models import SystemSettings
+    from core.models import SystemSettings
     sys_settings = SystemSettings.get_settings()
 
     if not sys_settings.notify_on_backup_success:
@@ -152,7 +152,7 @@ def notify_backup_failed(device_name: str, error_message: str, backup_id: int = 
         backup_id: Backup record ID
     """
     # Check if notifications are enabled (from database settings)
-    from netvault.models import SystemSettings
+    from core.models import SystemSettings
     sys_settings = SystemSettings.get_settings()
 
     if not sys_settings.notify_on_backup_failure:
