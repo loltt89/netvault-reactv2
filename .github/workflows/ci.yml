@@ -80,7 +80,17 @@ jobs:
           SECRET_KEY=test-secret-key-for-ci-testing-only
           DB_ENGINE=mysql
           DB_NAME=netvault_test
-          DB_USER=netvault_test
+          # root, not the netvault_test app user: the mysql image's
+          # MYSQL_USER only gets privileges on MYSQL_DATABASE itself, but
+          # Django's test runner creates and drops a *separate* database
+          # (test_netvault_test, the 'test_' prefix is Django's own
+          # convention) — netvault_test has no privilege on that one at
+          # all, so migrate/test failed with "Access denied ... to
+          # database 'test_netvault_test'" the first time this job
+          # actually ran against MySQL instead of silently falling back
+          # to SQLite. Root has no such restriction. This container is
+          # thrown away at the end of the job either way.
+          DB_USER=root
           DB_PASSWORD=testpassword
           DB_HOST=127.0.0.1
           DB_PORT=3306
