@@ -720,10 +720,17 @@ class RetentionPolicyApplicationTestCase(TestCase):
     def test_only_one_kept_per_day_in_daily_window(self):
         from backups.tasks import apply_retention_policy
 
-        # Two backups on "day 10" (a few hours apart) inside the daily window.
-        self._make_backup(10)
+        # Two backups on "day 10" (a few hours apart) inside the daily
+        # window. Anchored to a fixed noon-UTC timestamp rather than
+        # "now minus N hours" — the latter crosses the UTC calendar-day
+        # boundary (landing the two backups in different daily buckets
+        # instead of one) whenever the test happens to run within the
+        # first few hours of the UTC day.
+        day_10_noon = timezone.now().replace(hour=12, minute=0, second=0, microsecond=0) - timedelta(days=10)
+        b1 = self._make_backup(10)
         b2 = self._make_backup(10)
-        Backup.objects.filter(id=b2.id).update(created_at=timezone.now() - timedelta(days=10, hours=5))
+        Backup.objects.filter(id=b1.id).update(created_at=day_10_noon)
+        Backup.objects.filter(id=b2.id).update(created_at=day_10_noon - timedelta(hours=5))
 
         policy = BackupRetentionPolicy.objects.create(
             name='Daily', keep_last_n=0, keep_daily=30, keep_weekly=0, keep_monthly=0,
