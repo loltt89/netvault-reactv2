@@ -150,13 +150,57 @@ class UserCreateSerializer(serializers.ModelSerializer):
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for updating user profile"""
+    """
+    Serializer for a user updating their OWN profile (UserViewSet.update_profile).
+    Deliberately excludes role/is_active/password/device_scope — nothing
+    reachable through self-service should let a user touch its own
+    permissions or credentials via this path.
+    """
 
     class Meta:
         model = User
         fields = [
             'first_name', 'last_name', 'preferred_language', 'theme', 'page_size'
         ]
+
+
+class AdminUserUpdateSerializer(serializers.ModelSerializer):
+    """
+    Serializer for UserViewSet.update/partial_update — an administrator
+    editing another user from the Users management page. Separate from
+    UserUpdateSerializer above: CanManageUsers already restricts the
+    plain 'update'/'partial_update' actions to administrators only (see
+    accounts/permissions.py), so it's safe for this one to expose
+    role/is_active/password, which self-service must never reach.
+
+    Previously UserViewSet.get_serializer_class() routed 'update'/
+    'partial_update' to the self-service UserUpdateSerializer above,
+    which doesn't declare role/is_active/password as fields at all — a
+    ModelSerializer silently drops keys it doesn't declare, so admin
+    edits to a user's role, active status, or password from the Users
+    tab returned 200 and appeared to succeed but changed nothing.
+    """
+    password = serializers.CharField(
+        write_only=True, required=False, allow_blank=True, style={'input_type': 'password'}
+    )
+
+    class Meta:
+        model = User
+        fields = ['first_name', 'last_name', 'role', 'is_active', 'password']
+
+    def validate_password(self, value):
+        if not value:
+            return value
+        validate_password(value, user=self.instance)
+        return value
+
+    def update(self, instance, validated_data):
+        password = validated_data.pop('password', None)
+        instance = super().update(instance, validated_data)
+        if password:
+            instance.set_password(password)
+            instance.save(update_fields=['password'])
+        return instance
 
 
 class ChangePasswordSerializer(serializers.Serializer):

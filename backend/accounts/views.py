@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 from .permissions import CanManageUsers, CanViewAuditLogs, IsAdministrator
 from .serializers import (
     CustomTokenObtainPairSerializer, UserSerializer, UserCreateSerializer,
-    UserUpdateSerializer, ChangePasswordSerializer, Enable2FASerializer,
-    Verify2FASerializer, Disable2FASerializer, AuditLogSerializer,
-    WebAuthnCredentialSerializer
+    UserUpdateSerializer, AdminUserUpdateSerializer, ChangePasswordSerializer,
+    Enable2FASerializer, Verify2FASerializer, Disable2FASerializer,
+    AuditLogSerializer, WebAuthnCredentialSerializer
 )
 
 
@@ -279,7 +279,11 @@ class UserViewSet(viewsets.ModelViewSet):
         if self.action == 'create':
             return UserCreateSerializer
         elif self.action in ['update', 'partial_update']:
-            return UserUpdateSerializer
+            # Admin-only path (CanManageUsers gates 'update'/'partial_update' to
+            # administrators) — see AdminUserUpdateSerializer's docstring for why
+            # this must NOT be the self-service UserUpdateSerializer used by
+            # update_profile.
+            return AdminUserUpdateSerializer
         return UserSerializer
 
     def get_serializer_context(self):

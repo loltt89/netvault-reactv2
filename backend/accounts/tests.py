@@ -1302,6 +1302,75 @@ class UserViewSetTestCase(APITestCase):
         self.assertIn('secret', response.data)
         self.assertIn('uri', response.data)
 
+    def test_admin_update_other_user_role_and_active(self):
+        """
+        Regression test: PATCH /users/{id}/ used to route through
+        UserUpdateSerializer (self-service profile fields only), so an
+        admin editing another user's role/is_active from the Users page
+        got a 200 and nothing actually changed.
+        """
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(f'/api/v1/users/{self.user.id}/', {
+            'role': 'operator',
+            'is_active': False,
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.role, 'operator')
+        self.assertFalse(self.user.is_active)
+
+    def test_admin_update_other_user_password(self):
+        """
+        Regression test: same bug as above, specifically for password —
+        an admin-set password via the Users page silently didn't persist.
+        """
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(f'/api/v1/users/{self.user.id}/', {
+            'password': 'AdminSetPass789!',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('AdminSetPass789!'))
+
+    def test_admin_update_other_user_weak_password_rejected(self):
+        """Admin-set passwords still go through AUTH_PASSWORD_VALIDATORS."""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(f'/api/v1/users/{self.user.id}/', {
+            'password': '123',
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password('TestPass123!'))
+
+    def test_update_profile_cannot_change_role_or_password(self):
+        """
+        Self-service update_profile must keep using the restrictive
+        UserUpdateSerializer — role/is_active/password in the body should
+        be silently ignored (not 400 — ModelSerializer just drops
+        undeclared fields), not applied.
+        """
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch('/api/v1/users/update_profile/', {
+            'first_name': 'Self',
+            'role': 'administrator',
+            'is_active': False,
+            'password': 'ShouldNotApply1!',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.first_name, 'Self')
+        self.assertEqual(self.user.role, 'viewer')
+        self.assertTrue(self.user.is_active)
+        self.assertTrue(self.user.check_password('TestPass123!'))
+
+    def test_viewer_cannot_update_other_user(self):
+        """Non-admins get 403 on the plain update endpoint (CanManageUsers)."""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch(f'/api/v1/users/{self.admin.id}/', {
+            'role': 'viewer',
+        })
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
 
 class JWTSigningKeyTestCase(TestCase):
     """Tests for the JWT-signing-key-isolation fix.
