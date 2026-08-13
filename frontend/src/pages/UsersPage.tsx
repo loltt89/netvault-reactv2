@@ -6,7 +6,8 @@ import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import { unwrapList } from '../utils/unwrapList';
 import { extractErrorMessage } from '../utils/extractErrorMessage';
-import { User } from '../types';
+import { User, DeviceFilters } from '../types';
+import DeviceFiltersEditor from '../components/DeviceFiltersEditor';
 import '../styles/Devices.css';
 
 const UsersPage: React.FC = () => {
@@ -17,6 +18,10 @@ const UsersPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [showScopeModal, setShowScopeModal] = useState(false);
+  const [scopingUser, setScopingUser] = useState<User | null>(null);
+  const [scopeFormData, setScopeFormData] = useState<DeviceFilters>({});
+  const [scopeSaving, setScopeSaving] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     username: '',
@@ -75,6 +80,30 @@ const UsersPage: React.FC = () => {
       is_active: user.is_active
     });
     setShowModal(true);
+  };
+
+  const handleOpenScope = (user: User) => {
+    setScopingUser(user);
+    setScopeFormData(user.device_scope || {});
+    setShowScopeModal(true);
+  };
+
+  const handleSaveScope = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!scopingUser) return;
+
+    setScopeSaving(true);
+    try {
+      await apiService.users.setDeviceScope(scopingUser.id, scopeFormData);
+      toast.success(t('users.scope_updated'));
+      setShowScopeModal(false);
+      loadUsers();
+    } catch (error) {
+      logger.error('Error setting device scope:', error);
+      toast.error(extractErrorMessage(error, t('users.scope_failed')));
+    } finally {
+      setScopeSaving(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -184,9 +213,16 @@ const UsersPage: React.FC = () => {
                 </h3>
                 <p className="device-ip">{user.email}</p>
               </div>
-              <span className={`badge ${getRoleBadgeClass(user.role)}`}>
-                {user.role}
-              </span>
+              <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <span className={`badge ${getRoleBadgeClass(user.role)}`}>
+                  {user.role}
+                </span>
+                {user.role !== 'administrator' && user.device_scope && Object.keys(user.device_scope).length > 0 && (
+                  <span className="badge badge-info" title={JSON.stringify(user.device_scope)}>
+                    🎯 {t('users.scoped')}
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="device-body">
@@ -223,6 +259,15 @@ const UsersPage: React.FC = () => {
               >
                 ✏️ {t('common.edit')}
               </button>
+              {user.role !== 'administrator' && (
+                <button
+                  onClick={() => handleOpenScope(user)}
+                  className="btn-sm btn-secondary"
+                  title={t('users.scope_help')}
+                >
+                  🎯 {t('users.scope')}
+                </button>
+              )}
               <button
                 onClick={() => handleDeleteUser(user)}
                 className="btn-sm btn-danger"
@@ -334,6 +379,36 @@ const UsersPage: React.FC = () => {
                 </button>
                 <button type="submit" className="btn-primary">
                   {editingUser ? t('common.edit') : t('common.add')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Device Scope Modal */}
+      {showScopeModal && scopingUser && (
+        <div className="modal-overlay" onClick={() => setShowScopeModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '550px' }}>
+            <div className="modal-header">
+              <h2>🎯 {t('users.scope')}: {scopingUser.full_name || scopingUser.email}</h2>
+              <button onClick={() => setShowScopeModal(false)} className="btn-close">✕</button>
+            </div>
+
+            <form onSubmit={handleSaveScope}>
+              <div className="modal-body">
+                <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginTop: 0 }}>
+                  {t('users.scope_description')}
+                </p>
+                <DeviceFiltersEditor value={scopeFormData} onChange={setScopeFormData} />
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" onClick={() => setShowScopeModal(false)} className="btn-secondary">
+                  {t('common.cancel')}
+                </button>
+                <button type="submit" className="btn-primary" disabled={scopeSaving}>
+                  {scopeSaving ? t('systemSettings.saving') : t('common.save')}
                 </button>
               </div>
             </form>

@@ -94,6 +94,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             </Link>
           )}
 
+          {/* Compliance: violations readable by any role that manages devices, policies admin-only (gated inside the page) */}
+          <Link to="/compliance" className={`nav-item ${isActive('/compliance')}`}>
+            <span className="nav-icon">✅</span>
+            <span className="nav-text">{t('compliance.nav_title')}</span>
+          </Link>
+
+          {/* Notification Rules - Admin Only (NotificationRuleViewSet is administrator-only) */}
+          {user?.role === 'administrator' && (
+            <Link to="/notifications" className={`nav-item ${isActive('/notifications')}`}>
+              <span className="nav-icon">🔔</span>
+              <span className="nav-text">{t('notificationRules.nav_title')}</span>
+            </Link>
+          )}
+
           {/* System Settings - Admin Only */}
           {user?.role === 'administrator' && (
             <Link to="/settings" className={`nav-item ${isActive('/settings')}`}>

@@ -138,7 +138,25 @@
     "host_key_approved": "Жаңа SSH host key расталды",
     "host_key_rejected": "SSH host key өзгеруі қабылданбады",
     "failed_approve_host_key": "Кілтті растау мүмкін болмады",
-    "failed_reject_host_key": "Кілтті қабылдамау мүмкін болмады"
+    "failed_reject_host_key": "Кілтті қабылдамау мүмкін болмады",
+    "bulk_backup_now": "Қазір сақтық көшірмелеу ({{count}})",
+    "bulk_backup_success": "{{count}} құрылғы үшін сақтық көшірмелеу іске қосылды",
+    "bulk_backup_failed": "Жаппай сақтық көшірмелеуді іске қосу мүмкін болмады",
+    "bulk_tag_edit": "Тегтерді өңдеу ({{count}})",
+    "bulk_tag_edit_title": "{{count}} құрылғыда тегтерді өңдеу",
+    "bulk_tag_action": "Әрекет",
+    "bulk_tag_add": "Тегтер қосу",
+    "bulk_tag_remove": "Тегтерді жою",
+    "bulk_tag_set": "Барлық тегтерді ауыстыру",
+    "bulk_tag_set_help": "Таңдалған құрылғылардағы барлық тегтерді тазарту үшін бос қалдырыңыз.",
+    "bulk_tag_comma_help": "Тегтер үтірмен бөлінген",
+    "bulk_tag_success": "{{count}} құрылғыда тегтер жаңартылды",
+    "bulk_tag_failed": "Тегтерді жаңарту мүмкін болмады",
+    "tags": "Тегтер",
+    "criticality_low": "Төмен",
+    "criticality_medium": "Орташа",
+    "criticality_high": "Жоғары",
+    "criticality_critical": "Критикалық"
   },
   "backups": {
     "title": "Сақтық көшірмелер",
@@ -260,7 +278,13 @@
     "cannot_delete_self": "Өз есептік жазбаңызды жою мүмкін емес",
     "confirm_delete": "Пайдаланушыны жою",
     "access_denied": "Қатынас тыйым салынған",
-    "no_permission": "Бұл бетке қатынасу үшін сізде рұқсат жоқ."
+    "no_permission": "Бұл бетке қатынасу үшін сізде рұқсат жоқ.",
+    "scope": "Ауқым",
+    "scoped": "Шектелген",
+    "scope_help": "Бұл пайдаланушы көре және өзгерте алатын құрылғыларды шектеу",
+    "scope_description": "Бұл пайдаланушы көре және өзгерте алатын құрылғыларды шектейді. Шектеусіз қолжетімділік үшін (рөліне сәйкес) барлық сүзгілерді бос қалдырыңыз. Әкімшілерге қолданылмайды.",
+    "scope_updated": "Құрылғылар ауқымы жаңартылды",
+    "scope_failed": "Құрылғылар ауқымын жаңарту мүмкін болмады"
   },
   "auditLogs": {
     "title": "Аудит журналы",
@@ -694,7 +718,9 @@
     "weeks": "апталар",
     "months": "айлар",
     "deleting": "Жою...",
-    "detected_at": "Анықталды"
+    "detected_at": "Анықталды",
+    "saving": "Сақталуда...",
+    "apply": "Қолдану"
   },
   "config_viewer": {
     "default_title": "Конфигурация",
@@ -707,5 +733,137 @@
     "save": "Сақтау",
     "save_changes": "Өзгерістерді сақтау",
     "unsaved_changes": "Сақталмаған өзгерістер бар"
+  },
+  "notificationRules": {
+    "nav_title": "Хабарландырулар",
+    "subtitle": "Ескертулерді email, Telegram немесе webhook-қа бағыттау ережелері және жеткізу журналы",
+    "title": "Хабарландыру ережелері",
+    "create": "Ереже жасау",
+    "edit": "Ережені өңдеу",
+    "name": "Атауы",
+    "description": "Сипаттама",
+    "trigger": "Триггер",
+    "channel": "Арна",
+    "is_active": "Белсенді",
+    "inactive": "Белсенді емес",
+    "scoped": "Шектелген",
+    "device_filters": "Құрылғыларға қолданылады",
+    "email_recipients": "Email алушылары",
+    "email_recipients_help": "Үтірмен бөлінген. Әкімшінің әдепкі мекенжайын пайдалану үшін бос қалдырыңыз.",
+    "telegram_chat_ids": "Telegram чат ID-лері",
+    "telegram_chat_ids_help": "Үтірмен бөлінген. Жаһандық конфигурацияланған чатты пайдалану үшін бос қалдырыңыз.",
+    "webhook_url": "Webhook URL",
+    "rule_created": "Хабарландыру ережесі жасалды",
+    "rule_updated": "Хабарландыру ережесі жаңартылды",
+    "rule_deleted": "Хабарландыру ережесі жойылды",
+    "failed_load": "Хабарландыру ережелерін жүктеу мүмкін болмады",
+    "failed_save": "Хабарландыру ережесін сақтау мүмкін болмады",
+    "failed_delete": "Хабарландыру ережесін жою мүмкін болмады",
+    "no_rules": "Хабарландыру ережелері конфигурацияланбаған",
+    "create_first": "Әдепкі email/Telegram баптауларынан тыс ескертулерді бағыттау үшін ереже жасаңыз",
+    "confirm_delete": "Хабарландыру ережесін жою",
+    "triggers": {
+      "backup_failed": "Сақтық көшірме сәтсіз",
+      "backup_success": "Сақтық көшірме сәтті",
+      "device_offline": "Құрылғы қолжетімсіз",
+      "config_changed": "Конфигурация өзгерді",
+      "critical_change": "Маңызды өзгеріс"
+    },
+    "channels": {
+      "email": "Email",
+      "telegram": "Telegram",
+      "webhook": "Webhook"
+    },
+    "tabs": {
+      "rules": "Ережелер",
+      "log": "Жеткізу журналы"
+    },
+    "log": {
+      "title": "Жеткізу журналы",
+      "rule": "Ереже",
+      "recipient": "Алушы",
+      "status": "Күй",
+      "sent_at": "Жіберілді",
+      "empty": "Әлі хабарландыру жіберілмеген",
+      "failed_load": "Хабарландыру журналын жүктеу мүмкін болмады",
+      "statuses": {
+        "sent": "Жіберілді",
+        "failed": "Қате",
+        "pending": "Күтуде"
+      }
+    }
+  },
+  "compliance": {
+    "nav_title": "Сәйкестік",
+    "subtitle": "Әр жаңа сақтық көшірмеде тексерілетін үлгі негізіндегі саясаттар және табылған бұзушылықтар",
+    "policies_title": "Сәйкестік саясаттары",
+    "violations_title": "Бұзушылықтар",
+    "create": "Саясат жасау",
+    "edit": "Саясатты өңдеу",
+    "name": "Атауы",
+    "description": "Сипаттама",
+    "severity": "Маңыздылығы",
+    "severities": {
+      "low": "Төмен",
+      "medium": "Орташа",
+      "high": "Жоғары",
+      "critical": "Критикалық"
+    },
+    "rules_title": "Ережелер",
+    "rules_count": "Ережелер",
+    "rule_type": "Түрі",
+    "rule_types": {
+      "must_contain": "Құрамында болуы керек",
+      "must_not_contain": "Құрамында болмауы керек"
+    },
+    "pattern": "Үлгі",
+    "is_regex": "Regex",
+    "rule_description": "Себебі",
+    "rule_description_placeholder": "мыс. Telnet өшірілуі керек",
+    "add_rule": "Ереже қосу",
+    "policy_created": "Сәйкестік саясаты жасалды",
+    "policy_updated": "Сәйкестік саясаты жаңартылды",
+    "policy_deleted": "Сәйкестік саясаты жойылды",
+    "failed_load": "Сәйкестік деректерін жүктеу мүмкін болмады",
+    "failed_save": "Сәйкестік саясатын сақтау мүмкін болмады",
+    "failed_delete": "Сәйкестік саясатын жою мүмкін болмады",
+    "no_policies": "Сәйкестік саясаттары конфигурацияланбаған",
+    "create_first": "Сақтық көшірмелерді үлгілер бойынша тексеруді бастау үшін саясат жасаңыз",
+    "confirm_delete": "Сәйкестік саясатын жою",
+    "open_count": "{{count}} ашық",
+    "device": "Құрылғы",
+    "detected_at": "Анықталды",
+    "status": "Күй",
+    "status_open": "Ашық",
+    "status_resolved": "Шешілді",
+    "status_all": "Барлығы",
+    "filter_status": "Күй",
+    "no_violations": "Бұзушылықтар табылмады",
+    "acknowledge": "Растау",
+    "acknowledged": "Бұзушылық расталды",
+    "failed_acknowledge": "Бұзушылықты растау мүмкін болмады",
+    "open_total": "Ашық бұзушылықтар",
+    "affected_devices": "Қамтылған құрылғылар",
+    "tabs": {
+      "violations": "Бұзушылықтар",
+      "policies": "Саясаттар"
+    }
+  },
+  "staleBackups": {
+    "title": "Ескірген сақтық көшірмелер",
+    "device": "Құрылғы",
+    "ip_address": "IP мекенжайы",
+    "last_backup": "Соңғы сақтық көшірме",
+    "never": "Ешқашан",
+    "days_ago": "{{count}} күн бұрын",
+    "days_ago_plural": "{{count}} күн бұрын",
+    "and_more": "және тағы {{count}}..."
+  },
+  "deviceFilters": {
+    "tags": "Тегтер",
+    "tags_placeholder": "core, dc1",
+    "criticality": "Маңыздылығы",
+    "empty_means_all": "Сүзгілер орнатылмаған — барлық құрылғыларға қолданылады.",
+    "and_combined": "Таңдалған шарттардың барлығы сәйкес келуі керек (ЖӘНЕ)."
   }
 }

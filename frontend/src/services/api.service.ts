@@ -5,6 +5,7 @@
  */
 
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosError } from 'axios';
+import { DeviceFilters } from '../types';
 
 // API Base URL
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
@@ -304,6 +305,13 @@ class APIService {
       const response = await apiClient.delete(`/users/${id}/`);
       return response.data;
     },
+
+    setDeviceScope: async (id: number, deviceScope: DeviceFilters) => {
+      const response = await apiClient.patch(`/users/${id}/set_device_scope/`, {
+        device_scope: deviceScope,
+      });
+      return response.data;
+    },
   };
 
   /**
@@ -418,6 +426,20 @@ class APIService {
     bulkDelete: async (deviceIds: number[]) => {
       const response = await apiClient.post('/devices/devices/bulk_delete/', {
         device_ids: deviceIds,
+      });
+      return response.data;
+    },
+
+    bulkBackupNow: async (deviceIds: number[]) => {
+      const response = await apiClient.post('/devices/devices/bulk_backup_now/', {
+        device_ids: deviceIds,
+      });
+      return response.data;
+    },
+
+    bulkTagEdit: async (deviceIds: number[], action: 'add' | 'remove' | 'set', tags: string[]) => {
+      const response = await apiClient.post('/devices/devices/bulk_tag_edit/', {
+        device_ids: deviceIds, action, tags,
       });
       return response.data;
     },
@@ -591,6 +613,50 @@ class APIService {
     // full SAML redirect round-trip through the IdP. See SAMLLinkInitView.
     linkInit: async () => {
       const response = await apiClient.post('/saml/link-init/');
+      return response.data;
+    },
+  };
+
+  /**
+   * Notification Rules + delivery log
+   */
+  notificationRules = createCrudService('notifications/rules');
+
+  notificationLog = {
+    list: async (params?: { status?: string; channel?: string; rule?: number }) => {
+      const response = await apiClient.get('/notifications/log/', { params });
+      return response.data;
+    },
+  };
+
+  /**
+   * Compliance policies + violations
+   */
+  compliancePolicies = createCrudService('compliance/policies');
+
+  complianceViolations = {
+    list: async (params?: { status?: 'open' | 'resolved'; policy?: number; device?: number }) => {
+      const response = await apiClient.get('/compliance/violations/', { params });
+      return response.data;
+    },
+
+    statistics: async () => {
+      const response = await apiClient.get('/compliance/violations/statistics/');
+      return response.data;
+    },
+
+    acknowledge: async (id: number) => {
+      const response = await apiClient.post(`/compliance/violations/${id}/acknowledge/`);
+      return response.data;
+    },
+  };
+
+  /**
+   * Dashboard: stale-backups
+   */
+  staleBackups = {
+    list: async (days: number = 3) => {
+      const response = await apiClient.get('/dashboard/stale-backups/', { params: { days } });
       return response.data;
     },
   };

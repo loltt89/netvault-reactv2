@@ -138,7 +138,25 @@
     "host_key_approved": "New SSH host key approved",
     "host_key_rejected": "SSH host key change rejected",
     "failed_approve_host_key": "Failed to approve host key",
-    "failed_reject_host_key": "Failed to reject host key"
+    "failed_reject_host_key": "Failed to reject host key",
+    "bulk_backup_now": "Backup Now ({{count}})",
+    "bulk_backup_success": "Triggered backup for {{count}} device(s)",
+    "bulk_backup_failed": "Failed to trigger bulk backup",
+    "bulk_tag_edit": "Edit Tags ({{count}})",
+    "bulk_tag_edit_title": "Edit tags on {{count}} device(s)",
+    "bulk_tag_action": "Action",
+    "bulk_tag_add": "Add tags",
+    "bulk_tag_remove": "Remove tags",
+    "bulk_tag_set": "Replace all tags",
+    "bulk_tag_set_help": "Leave empty to clear all tags on the selected devices.",
+    "bulk_tag_comma_help": "Comma-separated tags",
+    "bulk_tag_success": "Updated tags on {{count}} device(s)",
+    "bulk_tag_failed": "Failed to update tags",
+    "tags": "Tags",
+    "criticality_low": "Low",
+    "criticality_medium": "Medium",
+    "criticality_high": "High",
+    "criticality_critical": "Critical"
   },
   "backups": {
     "title": "Backups",
@@ -260,7 +278,13 @@
     "cannot_delete_self": "Cannot delete your own account",
     "confirm_delete": "Delete user",
     "access_denied": "Access Denied",
-    "no_permission": "You don't have permission to access this page."
+    "no_permission": "You don't have permission to access this page.",
+    "scope": "Scope",
+    "scoped": "Scoped",
+    "scope_help": "Restrict which devices this user can see and act on",
+    "scope_description": "Restrict which devices this user can see and act on. Leave all filters empty for unrestricted access (subject to their role). Ignored for administrators.",
+    "scope_updated": "Device scope updated",
+    "scope_failed": "Failed to update device scope"
   },
   "auditLogs": {
     "title": "Audit Logs",
@@ -694,7 +718,9 @@
     "weeks": "weeks",
     "months": "months",
     "deleting": "Deleting...",
-    "detected_at": "Detected at"
+    "detected_at": "Detected at",
+    "saving": "Saving...",
+    "apply": "Apply"
   },
   "config_viewer": {
     "default_title": "Configuration",
@@ -707,5 +733,137 @@
     "save": "Save",
     "save_changes": "Save changes",
     "unsaved_changes": "Configuration has unsaved changes"
+  },
+  "notificationRules": {
+    "nav_title": "Notifications",
+    "subtitle": "Rules for routing alerts to email, Telegram, or a webhook, and a log of every delivery attempt",
+    "title": "Notification Rules",
+    "create": "Create Rule",
+    "edit": "Edit Rule",
+    "name": "Name",
+    "description": "Description",
+    "trigger": "Trigger",
+    "channel": "Channel",
+    "is_active": "Active",
+    "inactive": "Inactive",
+    "scoped": "Scoped",
+    "device_filters": "Applies to devices",
+    "email_recipients": "Email recipients",
+    "email_recipients_help": "Comma-separated. Leave empty to use the default administrator address.",
+    "telegram_chat_ids": "Telegram chat IDs",
+    "telegram_chat_ids_help": "Comma-separated. Leave empty to use the globally configured chat.",
+    "webhook_url": "Webhook URL",
+    "rule_created": "Notification rule created",
+    "rule_updated": "Notification rule updated",
+    "rule_deleted": "Notification rule deleted",
+    "failed_load": "Failed to load notification rules",
+    "failed_save": "Failed to save notification rule",
+    "failed_delete": "Failed to delete notification rule",
+    "no_rules": "No notification rules configured",
+    "create_first": "Create a rule to route alerts beyond the default email/Telegram settings",
+    "confirm_delete": "Delete notification rule",
+    "triggers": {
+      "backup_failed": "Backup failed",
+      "backup_success": "Backup succeeded",
+      "device_offline": "Device offline",
+      "config_changed": "Configuration changed",
+      "critical_change": "Critical change"
+    },
+    "channels": {
+      "email": "Email",
+      "telegram": "Telegram",
+      "webhook": "Webhook"
+    },
+    "tabs": {
+      "rules": "Rules",
+      "log": "Delivery Log"
+    },
+    "log": {
+      "title": "Delivery Log",
+      "rule": "Rule",
+      "recipient": "Recipient",
+      "status": "Status",
+      "sent_at": "Sent",
+      "empty": "No notifications sent yet",
+      "failed_load": "Failed to load notification log",
+      "statuses": {
+        "sent": "Sent",
+        "failed": "Failed",
+        "pending": "Pending"
+      }
+    }
+  },
+  "compliance": {
+    "nav_title": "Compliance",
+    "subtitle": "Pattern-based policies checked against every new backup, and the violations they find",
+    "policies_title": "Compliance Policies",
+    "violations_title": "Violations",
+    "create": "Create Policy",
+    "edit": "Edit Policy",
+    "name": "Name",
+    "description": "Description",
+    "severity": "Severity",
+    "severities": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "critical": "Critical"
+    },
+    "rules_title": "Rules",
+    "rules_count": "Rules",
+    "rule_type": "Type",
+    "rule_types": {
+      "must_contain": "Must contain",
+      "must_not_contain": "Must not contain"
+    },
+    "pattern": "Pattern",
+    "is_regex": "Regex",
+    "rule_description": "Reason",
+    "rule_description_placeholder": "e.g. Telnet must be disabled",
+    "add_rule": "Add Rule",
+    "policy_created": "Compliance policy created",
+    "policy_updated": "Compliance policy updated",
+    "policy_deleted": "Compliance policy deleted",
+    "failed_load": "Failed to load compliance data",
+    "failed_save": "Failed to save compliance policy",
+    "failed_delete": "Failed to delete compliance policy",
+    "no_policies": "No compliance policies configured",
+    "create_first": "Create a policy to start checking backups against pattern rules",
+    "confirm_delete": "Delete compliance policy",
+    "open_count": "{{count}} open",
+    "device": "Device",
+    "detected_at": "Detected",
+    "status": "Status",
+    "status_open": "Open",
+    "status_resolved": "Resolved",
+    "status_all": "All",
+    "filter_status": "Status",
+    "no_violations": "No violations found",
+    "acknowledge": "Acknowledge",
+    "acknowledged": "Violation acknowledged",
+    "failed_acknowledge": "Failed to acknowledge violation",
+    "open_total": "Open violations",
+    "affected_devices": "Affected devices",
+    "tabs": {
+      "violations": "Violations",
+      "policies": "Policies"
+    }
+  },
+  "staleBackups": {
+    "title": "Stale Backups",
+    "device": "Device",
+    "ip_address": "IP Address",
+    "last_backup": "Last Backup",
+    "never": "Never",
+    "days_ago": "{{count}} day ago",
+    "days_ago_plural": "{{count}} days ago",
+    "and_more": "and {{count}} more..."
+  },
+  "deviceFilters": {
+    "tags": "Tags",
+    "tags_placeholder": "core, dc1",
+    "criticality": "Criticality",
+    "empty_means_all": "No filters set — applies to all devices.",
+    "and_combined": "All selected conditions must match (AND)."
   }
 }

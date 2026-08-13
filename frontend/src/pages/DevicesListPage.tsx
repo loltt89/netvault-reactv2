@@ -12,6 +12,7 @@ import DevicesTable from './devices-list/DevicesTable';
 import DevicesPagination from './devices-list/DevicesPagination';
 import DeviceFormModal from './devices-list/DeviceFormModal';
 import ImportCsvModal from './devices-list/ImportCsvModal';
+import BulkTagEditModal from './devices-list/BulkTagEditModal';
 import '../styles/Devices.css';
 
 // This used to be one ~1300-line component doing the job of five: list
@@ -37,9 +38,16 @@ const DevicesListPage: React.FC = () => {
   const [editingDevice, setEditingDevice] = useState<Device | null>(null);
   const [selectedDevices, setSelectedDevices] = useState<Set<number>>(new Set());
   const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false);
+  const [bulkBackupLoading, setBulkBackupLoading] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showBulkTagModal, setShowBulkTagModal] = useState(false);
+  const [bulkTagSaving, setBulkTagSaving] = useState(false);
 
   const isAdmin = user?.role === 'administrator';
+  // bulk_backup_now/bulk_tag_edit are Operator+Admin on the backend
+  // (CanManageDevices allows POST for operator) — bulk_delete stays
+  // admin-only, matching its own dedicated permission_classes.
+  const canBulkAct = isAdmin || user?.role === 'operator';
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -298,6 +306,38 @@ const DevicesListPage: React.FC = () => {
     }
   };
 
+  const handleBulkBackupNow = async () => {
+    if (selectedDevices.size === 0) return;
+
+    setBulkBackupLoading(true);
+    try {
+      const result = await apiService.devices.bulkBackupNow(Array.from(selectedDevices));
+      toast.success(t('devices.bulk_backup_success', { count: result.triggered_count }));
+      setSelectedDevices(new Set());
+    } catch (error) {
+      logger.error('Error bulk-triggering backups:', error);
+      toast.error(extractErrorMessage(error, t('devices.bulk_backup_failed')));
+    } finally {
+      setBulkBackupLoading(false);
+    }
+  };
+
+  const handleBulkTagEdit = async (action: 'add' | 'remove' | 'set', tags: string[]) => {
+    setBulkTagSaving(true);
+    try {
+      const result = await apiService.devices.bulkTagEdit(Array.from(selectedDevices), action, tags);
+      toast.success(t('devices.bulk_tag_success', { count: result.updated_count }));
+      setShowBulkTagModal(false);
+      setSelectedDevices(new Set());
+      loadDevices();
+    } catch (error) {
+      logger.error('Error bulk-editing tags:', error);
+      toast.error(extractErrorMessage(error, t('devices.bulk_tag_failed')));
+    } finally {
+      setBulkTagSaving(false);
+    }
+  };
+
   const handleBackupNow = async (device: Device, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -343,6 +383,25 @@ const DevicesListPage: React.FC = () => {
       <div className="page-header">
         <h1>{t('devices.title')}</h1>
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {canBulkAct && selectedDevices.size > 0 && (
+            <>
+              <button
+                onClick={handleBulkBackupNow}
+                className="btn-secondary"
+                disabled={bulkBackupLoading}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                💾 {bulkBackupLoading ? t('common.loading') : t('devices.bulk_backup_now', { count: selectedDevices.size })}
+              </button>
+              <button
+                onClick={() => setShowBulkTagModal(true)}
+                className="btn-secondary"
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              >
+                🏷️ {t('devices.bulk_tag_edit', { count: selectedDevices.size })}
+              </button>
+            </>
+          )}
           {isAdmin && selectedDevices.size > 0 && (
             <button
               onClick={handleBulkDelete}
@@ -434,6 +493,15 @@ const DevicesListPage: React.FC = () => {
         onClose={() => setShowImportModal(false)}
         onImported={loadDevices}
       />
+
+      {showBulkTagModal && (
+        <BulkTagEditModal
+          deviceCount={selectedDevices.size}
+          saving={bulkTagSaving}
+          onClose={() => setShowBulkTagModal(false)}
+          onSubmit={handleBulkTagEdit}
+        />
+      )}
     </div>
   );
 };

@@ -3,6 +3,13 @@
  * Ensures type safety across frontend-backend communication
  */
 
+// Shared "which devices" shape — backend/core/device_filters.py.
+// {"tags": ["core"], "criticality": ["high", "critical"], ...}: each key's
+// value is a single string or a list of acceptable values. Used identically
+// by NotificationRule.device_filters, CompliancePolicy.device_filters, and
+// User.device_scope — one type, not three copies of `Record<string, any>`.
+export type DeviceFilters = Record<string, string | string[]>;
+
 // User Types
 export interface User {
   id: number;
@@ -21,6 +28,7 @@ export interface User {
   preferred_language: Language;
   theme: Theme;
   page_size: number;
+  device_scope: DeviceFilters;
 }
 
 export type UserRole = 'administrator' | 'operator' | 'viewer' | 'auditor';
@@ -288,9 +296,10 @@ export interface NotificationRule {
   email_recipients: string[];
   telegram_chat_ids: string[];
   webhook_url: string;
-  device_filters: Record<string, any>;
+  device_filters: DeviceFilters;
   created_at: string;
   updated_at: string;
+  created_by_email: string | null;
 }
 
 export type NotificationTrigger = 'backup_failed' | 'backup_success' | 'device_offline' | 'config_changed' | 'critical_change';
@@ -300,6 +309,7 @@ export type NotificationChannel = 'email' | 'telegram' | 'webhook';
 export interface Notification {
   id: number;
   rule: number | null;
+  rule_name: string | null;
   status: NotificationStatus;
   title: string;
   message: string;
@@ -311,6 +321,76 @@ export interface Notification {
 }
 
 export type NotificationStatus = 'pending' | 'sent' | 'failed';
+
+// Compliance Types — matches backend/compliance
+export type ComplianceRuleType = 'must_contain' | 'must_not_contain';
+
+export interface ComplianceRule {
+  type: ComplianceRuleType;
+  pattern: string;
+  is_regex?: boolean;
+  description?: string;
+}
+
+export type ComplianceSeverity = 'low' | 'medium' | 'high' | 'critical';
+
+export interface CompliancePolicy {
+  id: number;
+  name: string;
+  description: string;
+  is_active: boolean;
+  severity: ComplianceSeverity;
+  device_filters: DeviceFilters;
+  rules: ComplianceRule[];
+  created_at: string;
+  updated_at: string;
+  created_by_email: string | null;
+  open_violation_count: number;
+}
+
+export type ComplianceViolationStatus = 'open' | 'resolved';
+
+export interface ComplianceViolation {
+  id: number;
+  policy: number;
+  policy_name: string;
+  policy_severity: ComplianceSeverity;
+  device: number;
+  device_name: string;
+  device_ip: string;
+  backup: number | null;
+  rule_description: string;
+  status: ComplianceViolationStatus;
+  detected_at: string;
+  last_seen_at: string;
+  resolved_at: string | null;
+}
+
+export interface ComplianceStatistics {
+  open_total: number;
+  by_severity: Record<ComplianceSeverity, number>;
+  affected_devices: number;
+}
+
+// Stale-backups dashboard widget — matches
+// backend/core/dashboard_views.py::stale_backups
+export interface StaleDevice {
+  id: number;
+  name: string;
+  ip_address: string;
+  vendor: string | null;
+  device_type: string | null;
+  tags: string[];
+  criticality: string;
+  last_backup: string | null;
+  days_since_backup: number | null;
+}
+
+export interface StaleBackupsResponse {
+  threshold_days: number;
+  count: number;
+  devices: StaleDevice[];
+}
 
 // Dashboard Types — matches backend/core/dashboard_views.py::dashboard_statistics
 // exactly (field names are active_devices/inactive_devices, not

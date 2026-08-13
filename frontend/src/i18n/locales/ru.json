@@ -138,7 +138,25 @@
     "host_key_approved": "Новый SSH host key подтверждён",
     "host_key_rejected": "Смена SSH host key отклонена",
     "failed_approve_host_key": "Не удалось подтвердить ключ",
-    "failed_reject_host_key": "Не удалось отклонить ключ"
+    "failed_reject_host_key": "Не удалось отклонить ключ",
+    "bulk_backup_now": "Бэкап сейчас ({{count}})",
+    "bulk_backup_success": "Бэкап запущен для {{count}} устройств(а)",
+    "bulk_backup_failed": "Не удалось запустить массовый бэкап",
+    "bulk_tag_edit": "Изменить теги ({{count}})",
+    "bulk_tag_edit_title": "Изменить теги на {{count}} устройств(е)",
+    "bulk_tag_action": "Действие",
+    "bulk_tag_add": "Добавить теги",
+    "bulk_tag_remove": "Удалить теги",
+    "bulk_tag_set": "Заменить все теги",
+    "bulk_tag_set_help": "Оставьте пустым, чтобы очистить все теги у выбранных устройств.",
+    "bulk_tag_comma_help": "Теги через запятую",
+    "bulk_tag_success": "Теги обновлены на {{count}} устройств(е)",
+    "bulk_tag_failed": "Не удалось обновить теги",
+    "tags": "Теги",
+    "criticality_low": "Низкая",
+    "criticality_medium": "Средняя",
+    "criticality_high": "Высокая",
+    "criticality_critical": "Критическая"
   },
   "backups": {
     "title": "Резервные копии",
@@ -260,7 +278,13 @@
     "cannot_delete_self": "Нельзя удалить свою учетную запись",
     "confirm_delete": "Удалить пользователя",
     "access_denied": "Доступ запрещен",
-    "no_permission": "У вас нет прав для доступа к этой странице."
+    "no_permission": "У вас нет прав для доступа к этой странице.",
+    "scope": "Область",
+    "scoped": "Ограничен",
+    "scope_help": "Ограничить, какие устройства видит и может изменять этот пользователь",
+    "scope_description": "Ограничивает, какие устройства этот пользователь видит и может изменять. Оставьте все фильтры пустыми для неограниченного доступа (в рамках его роли). Не действует для администраторов.",
+    "scope_updated": "Область устройств обновлена",
+    "scope_failed": "Не удалось обновить область устройств"
   },
   "auditLogs": {
     "title": "Журнал аудита",
@@ -694,7 +718,9 @@
     "weeks": "недель",
     "months": "месяцев",
     "deleting": "Удаление...",
-    "detected_at": "Обнаружено"
+    "detected_at": "Обнаружено",
+    "saving": "Сохранение...",
+    "apply": "Применить"
   },
   "config_viewer": {
     "default_title": "Конфигурация",
@@ -707,5 +733,137 @@
     "save": "Сохранить",
     "save_changes": "Сохранить изменения",
     "unsaved_changes": "Есть несохранённые изменения"
+  },
+  "notificationRules": {
+    "nav_title": "Уведомления",
+    "subtitle": "Правила маршрутизации оповещений на email, Telegram или webhook, и журнал доставки",
+    "title": "Правила уведомлений",
+    "create": "Создать правило",
+    "edit": "Изменить правило",
+    "name": "Название",
+    "description": "Описание",
+    "trigger": "Триггер",
+    "channel": "Канал",
+    "is_active": "Активно",
+    "inactive": "Неактивно",
+    "scoped": "С ограничением",
+    "device_filters": "Применяется к устройствам",
+    "email_recipients": "Получатели email",
+    "email_recipients_help": "Через запятую. Оставьте пустым, чтобы использовать адрес администратора по умолчанию.",
+    "telegram_chat_ids": "ID чатов Telegram",
+    "telegram_chat_ids_help": "Через запятую. Оставьте пустым, чтобы использовать глобально настроенный чат.",
+    "webhook_url": "URL webhook",
+    "rule_created": "Правило уведомления создано",
+    "rule_updated": "Правило уведомления обновлено",
+    "rule_deleted": "Правило уведомления удалено",
+    "failed_load": "Не удалось загрузить правила уведомлений",
+    "failed_save": "Не удалось сохранить правило уведомления",
+    "failed_delete": "Не удалось удалить правило уведомления",
+    "no_rules": "Правила уведомлений не настроены",
+    "create_first": "Создайте правило для маршрутизации оповещений сверх стандартных настроек email/Telegram",
+    "confirm_delete": "Удалить правило уведомления",
+    "triggers": {
+      "backup_failed": "Бэкап не удался",
+      "backup_success": "Бэкап успешен",
+      "device_offline": "Устройство недоступно",
+      "config_changed": "Конфигурация изменена",
+      "critical_change": "Критичное изменение"
+    },
+    "channels": {
+      "email": "Email",
+      "telegram": "Telegram",
+      "webhook": "Webhook"
+    },
+    "tabs": {
+      "rules": "Правила",
+      "log": "Журнал доставки"
+    },
+    "log": {
+      "title": "Журнал доставки",
+      "rule": "Правило",
+      "recipient": "Получатель",
+      "status": "Статус",
+      "sent_at": "Отправлено",
+      "empty": "Уведомления ещё не отправлялись",
+      "failed_load": "Не удалось загрузить журнал уведомлений",
+      "statuses": {
+        "sent": "Отправлено",
+        "failed": "Ошибка",
+        "pending": "В ожидании"
+      }
+    }
+  },
+  "compliance": {
+    "nav_title": "Соответствие",
+    "subtitle": "Политики на основе шаблонов, проверяемые при каждом новом бэкапе, и найденные нарушения",
+    "policies_title": "Политики соответствия",
+    "violations_title": "Нарушения",
+    "create": "Создать политику",
+    "edit": "Изменить политику",
+    "name": "Название",
+    "description": "Описание",
+    "severity": "Критичность",
+    "severities": {
+      "low": "Низкая",
+      "medium": "Средняя",
+      "high": "Высокая",
+      "critical": "Критическая"
+    },
+    "rules_title": "Правила",
+    "rules_count": "Правил",
+    "rule_type": "Тип",
+    "rule_types": {
+      "must_contain": "Должно содержать",
+      "must_not_contain": "Не должно содержать"
+    },
+    "pattern": "Шаблон",
+    "is_regex": "Regex",
+    "rule_description": "Причина",
+    "rule_description_placeholder": "напр. Telnet должен быть отключён",
+    "add_rule": "Добавить правило",
+    "policy_created": "Политика соответствия создана",
+    "policy_updated": "Политика соответствия обновлена",
+    "policy_deleted": "Политика соответствия удалена",
+    "failed_load": "Не удалось загрузить данные соответствия",
+    "failed_save": "Не удалось сохранить политику соответствия",
+    "failed_delete": "Не удалось удалить политику соответствия",
+    "no_policies": "Политики соответствия не настроены",
+    "create_first": "Создайте политику, чтобы начать проверку бэкапов по шаблонам",
+    "confirm_delete": "Удалить политику соответствия",
+    "open_count": "{{count}} открыто",
+    "device": "Устройство",
+    "detected_at": "Обнаружено",
+    "status": "Статус",
+    "status_open": "Открыто",
+    "status_resolved": "Решено",
+    "status_all": "Все",
+    "filter_status": "Статус",
+    "no_violations": "Нарушений не найдено",
+    "acknowledge": "Подтвердить",
+    "acknowledged": "Нарушение подтверждено",
+    "failed_acknowledge": "Не удалось подтвердить нарушение",
+    "open_total": "Открытых нарушений",
+    "affected_devices": "Затронутых устройств",
+    "tabs": {
+      "violations": "Нарушения",
+      "policies": "Политики"
+    }
+  },
+  "staleBackups": {
+    "title": "Устаревшие бэкапы",
+    "device": "Устройство",
+    "ip_address": "IP адрес",
+    "last_backup": "Последний бэкап",
+    "never": "Никогда",
+    "days_ago": "{{count}} день назад",
+    "days_ago_plural": "{{count}} дн. назад",
+    "and_more": "и ещё {{count}}..."
+  },
+  "deviceFilters": {
+    "tags": "Теги",
+    "tags_placeholder": "core, dc1",
+    "criticality": "Критичность",
+    "empty_means_all": "Фильтры не заданы — применяется ко всем устройствам.",
+    "and_combined": "Все выбранные условия должны совпасть (И)."
   }
 }

@@ -12,6 +12,8 @@ import UsersPage from './pages/UsersPage';
 import AuditLogsPage from './pages/AuditLogsPage';
 import SettingsPage from './pages/SettingsPage';
 import ConfigSearchPage from './pages/ConfigSearchPage';
+import NotificationsPage from './pages/NotificationsPage';
+import CompliancePage from './pages/CompliancePage';
 
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactElement }> = ({ children }) => {
@@ -127,6 +129,24 @@ function App() {
           element={
             <ProtectedRoute>
               <SettingsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/notifications"
+          element={
+            <ProtectedRoute>
+              <NotificationsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/compliance"
+          element={
+            <ProtectedRoute>
+              <CompliancePage />
             </ProtectedRoute>
           }
         />
