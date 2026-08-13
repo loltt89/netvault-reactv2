@@ -66,12 +66,19 @@ jobs:
           pip install -r requirements.txt
           pip install coverage
 
+      # DB_ENGINE=mysql is the one that matters here — without it,
+      # settings.py's DB_ENGINE = os.getenv('DB_ENGINE', 'sqlite3') falls
+      # back to its default, and every test below silently runs against
+      # SQLite instead of the mysql service defined above, despite the
+      # DB_NAME/HOST/PORT values pointing at it. That's exactly what was
+      # happening before this line existed.
       - name: Create .env file
         working-directory: ./backend
         run: |
           cat > .env << EOF
           DEBUG=False
           SECRET_KEY=test-secret-key-for-ci-testing-only
+          DB_ENGINE=mysql
           DB_NAME=netvault_test
           DB_USER=netvault_test
           DB_PASSWORD=testpassword
@@ -93,7 +100,10 @@ jobs:
       - name: Run backend tests with coverage
         working-directory: ./backend
         run: |
-          coverage run --source='.' manage.py test core accounts devices backups notifications
+          # compliance was missing from this list — its 25 tests never
+          # ran in CI at all, not "ran and passed"; added alongside the
+          # other apps' test modules.
+          coverage run --source='.' manage.py test core accounts devices backups notifications compliance
           coverage report --fail-under=50
           coverage xml
 
