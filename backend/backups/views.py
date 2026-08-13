@@ -255,8 +255,10 @@ class BackupViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Get backups
-        backups = Backup.objects.filter(id__in=backup_ids, success=True).select_related('device', 'device__vendor')
+        # get_queryset() (not Backup.objects) — applies device_scope RBAC.
+        # Without this, a scoped user could pass backup_ids belonging to
+        # devices outside their scope and download their configs anyway.
+        backups = self.get_queryset().filter(id__in=backup_ids, success=True).select_related('device', 'device__vendor')
 
         if not backups.exists():
             return Response(
@@ -326,6 +328,7 @@ class BackupViewSet(viewsets.ModelViewSet):
         # Get latest successful backup for each device (optimized to avoid N+1)
         from django.db.models import Max, Subquery, OuterRef
         from devices.models import Device
+        from core.device_filters import get_scoped_device_ids
 
         # Subquery to get latest backup ID for each device
         latest_backup_subquery = Backup.objects.filter(
@@ -337,7 +340,15 @@ class BackupViewSet(viewsets.ModelViewSet):
         MAX_SEARCH_DEVICES = 100
         devices_with_backup = Device.objects.filter(
             backups__success=True
-        ).annotate(
+        )
+        # device_scope RBAC — without this, search_configs() returns
+        # config *content* matches from devices outside a scoped user's
+        # access, not just counts/metadata like the other endpoints fixed
+        # alongside this one.
+        scoped_ids = get_scoped_device_ids(request.user)
+        if scoped_ids is not None:
+            devices_with_backup = devices_with_backup.filter(id__in=scoped_ids)
+        devices_with_backup = devices_with_backup.annotate(
             latest_backup_id=Subquery(latest_backup_subquery)
         ).distinct()[:MAX_SEARCH_DEVICES]
 
@@ -455,15 +466,31 @@ class BackupScheduleViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], throttle_classes=[DeviceBackupNowThrottle])
     def run_now(self, request, pk=None):
-        """Manually trigger a scheduled backup (runs for all devices with backup_enabled=true)"""
+        """Manually trigger a scheduled backup now, for this schedule's own devices"""
         from .tasks import backup_multiple_devices
         from devices.models import Device
+        from core.device_filters import get_scoped_device_ids
 
         schedule = self.get_object()
 
-        # Get all devices with backup_enabled=True
-        # Manual schedule run also respects backup_enabled setting (use device's Backup Now button for override)
-        devices = Device.objects.filter(backup_enabled=True)
+        # Same device-selection rule as the automatic runner
+        # (run_scheduled_backups in tasks.py): a schedule with specific
+        # devices assigned only backs up those; one with none assigned
+        # applies to every backup_enabled device. This used to
+        # unconditionally do the latter regardless of schedule.devices —
+        # "Run Now" on a 3-device schedule was silently backing up every
+        # device in the system.
+        if schedule.devices.exists():
+            devices = schedule.devices.filter(backup_enabled=True)
+        else:
+            devices = Device.objects.filter(backup_enabled=True)
+
+        # device_scope RBAC — without this, an Operator scoped to one
+        # branch's devices could still trigger backups fleet-wide via a
+        # schedule that spans (or defaults to) every device.
+        scoped_ids = get_scoped_device_ids(request.user)
+        if scoped_ids is not None:
+            devices = devices.filter(id__in=scoped_ids)
 
         device_ids = list(devices.values_list('id', flat=True))
 

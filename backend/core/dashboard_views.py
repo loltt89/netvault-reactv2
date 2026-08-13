@@ -15,20 +15,28 @@ from backups.models import Backup
 @permission_classes([IsAuthenticated])
 def dashboard_statistics(request):
     """Get dashboard statistics"""
+    from core.device_filters import get_scoped_device_ids
+
+    devices = Device.objects.all()
+    backups = Backup.objects.all()
+    scoped_ids = get_scoped_device_ids(request.user)
+    if scoped_ids is not None:
+        devices = devices.filter(id__in=scoped_ids)
+        backups = backups.filter(device_id__in=scoped_ids)
 
     # Device statistics
-    total_devices = Device.objects.count()
-    active_devices = Device.objects.filter(status='online').count()
-    inactive_devices = Device.objects.filter(Q(status='offline') | Q(status='unknown')).count()
+    total_devices = devices.count()
+    active_devices = devices.filter(status='online').count()
+    inactive_devices = devices.filter(Q(status='offline') | Q(status='unknown')).count()
 
     # Backup statistics
-    total_backups = Backup.objects.count()
-    successful_backups = Backup.objects.filter(success=True).count()
-    failed_backups = Backup.objects.filter(success=False).count()
+    total_backups = backups.count()
+    successful_backups = backups.filter(success=True).count()
+    failed_backups = backups.filter(success=False).count()
 
     # Backups in last 24 hours
     last_24h = timezone.now() - timedelta(hours=24)
-    backups_last_24h = Backup.objects.filter(created_at__gte=last_24h).count()
+    backups_last_24h = backups.filter(created_at__gte=last_24h).count()
 
     return Response({
         'total_devices': total_devices,
@@ -48,12 +56,19 @@ def backup_trend(request):
     from django.db.models import Count, Q
     from django.db.models.functions import TruncDate
 
+    from core.device_filters import get_scoped_device_ids
+
     days = int(request.query_params.get('days', 7))
     now = timezone.now()
     start_date = now - timedelta(days=days)
 
+    trend_queryset = Backup.objects.all()
+    scoped_ids = get_scoped_device_ids(request.user)
+    if scoped_ids is not None:
+        trend_queryset = trend_queryset.filter(device_id__in=scoped_ids)
+
     # Single optimized query with aggregation
-    trend = Backup.objects.filter(
+    trend = trend_queryset.filter(
         created_at__gte=start_date
     ).annotate(
         date=TruncDate('created_at')
@@ -73,9 +88,13 @@ def backup_trend(request):
     }
 
     # Fill in missing dates with zeros
+    # (days-1-i, not days-i: the window is [today - (days-1)] .. [today],
+    # so the last iteration (i == days-1) must land on offset 0 — today.
+    # The old off-by-one always skipped today, so the trend chart never
+    # showed the current day's backups until the following day.)
     trend_data = []
     for i in range(days):
-        day = (now - timedelta(days=days-i)).date()
+        day = (now - timedelta(days=days-1-i)).date()
         if day in trend_dict:
             trend_data.append({
                 'date': day.strftime('%Y-%m-%d'),
@@ -142,11 +161,16 @@ def stale_backups(request):
 @permission_classes([IsAuthenticated])
 def recent_backups(request):
     """Get recent backups"""
+    from core.device_filters import get_scoped_device_ids
 
     limit = int(request.query_params.get('limit', 10))
 
-    backups = Backup.objects.select_related('device', 'triggered_by')\
-        .order_by('-created_at')[:limit]
+    queryset = Backup.objects.select_related('device', 'triggered_by')
+    scoped_ids = get_scoped_device_ids(request.user)
+    if scoped_ids is not None:
+        queryset = queryset.filter(device_id__in=scoped_ids)
+
+    backups = queryset.order_by('-created_at')[:limit]
 
     from backups.serializers import BackupSerializer
     serializer = BackupSerializer(backups, many=True)

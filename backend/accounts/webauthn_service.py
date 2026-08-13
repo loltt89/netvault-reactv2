@@ -26,6 +26,20 @@ logger = logging.getLogger(__name__)
 
 CHALLENGE_TTL_SECONDS = 150  # comfortably past the 60s timeout given to the browser ceremony itself
 
+# Atomic "get value and delete key" — GETDEL only exists from Redis 6.2+,
+# and this codebase's actual deployed Redis (see core/redis_lock.py's own
+# use of Lua rather than assuming a newer server) can't be assumed to have
+# it. A plain GET-then-DEL as two round trips has a real, if narrow, race:
+# two concurrent requests reusing the same still-valid challenge could
+# both read it before either deletes it, defeating "single-use".
+_POP_SCRIPT = """
+local v = redis.call("get", KEYS[1])
+if v then
+    redis.call("del", KEYS[1])
+end
+return v
+"""
+
 
 class WebAuthnError(Exception):
     """Raised for any registration/authentication failure — caught at the view layer."""
@@ -56,11 +70,10 @@ def _store_challenge(prefix: str, user_id: int, challenge: bytes):
 
 
 def _pop_challenge(prefix: str, user_id: int) -> bytes:
-    """Get-and-delete — a challenge is single-use, whether the ceremony succeeds or not."""
+    """Atomic get-and-delete — a challenge is single-use, whether the ceremony succeeds or not."""
     client = _redis_client()
     key = _challenge_key(prefix, user_id)
-    value = client.get(key)
-    client.delete(key)
+    value = client.eval(_POP_SCRIPT, 1, key)
     if not value:
         raise WebAuthnError('Challenge expired or already used — please try again.')
     return webauthn.helpers.base64url_to_bytes(value)

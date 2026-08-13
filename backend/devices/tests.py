@@ -715,6 +715,23 @@ class DeviceScopeRBACTestCase(APITestCase):
         names = {d['name'] for d in response.data['results']}
         self.assertEqual(names, {'Core-API', 'Edge-API'})
 
+    def test_scoped_viewer_statistics_only_counts_in_scope_devices(self):
+        """
+        Regression test: statistics() used to query Device.objects
+        directly instead of self.get_queryset(), so a scoped user could
+        learn the total/by-vendor/by-criticality counts of devices
+        outside their scope just by calling this endpoint.
+        """
+        self.client.force_authenticate(user=self.scoped_viewer)
+        response = self.client.get('/api/v1/devices/devices/statistics/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['total'], 1)
+
+    def test_unscoped_viewer_statistics_counts_everything(self):
+        self.client.force_authenticate(user=self.unscoped_viewer)
+        response = self.client.get('/api/v1/devices/devices/statistics/')
+        self.assertEqual(response.data['total'], 2)
+
 
 class DeviceValidationTestCase(TestCase):
     """Tests for device validation"""

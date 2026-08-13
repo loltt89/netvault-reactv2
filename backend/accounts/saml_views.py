@@ -140,7 +140,11 @@ class SAMLMetadataView(View):
         except Exception as e:
             # Use logger.error instead of logger.exception to avoid logging SAML config in traceback
             logger.error(f"Error generating SAML metadata: {str(e)}")
-            return HttpResponse(f"Error: {str(e)}", status=500)
+            # The exception text itself — not just the traceback — stays
+            # server-side only. It can carry IdP URLs, file paths, or raw
+            # XML/SAML parsing detail that's none of an unauthenticated
+            # caller's business (this endpoint needs no auth at all).
+            return HttpResponse("SAML metadata generation failed", status=500)
 
 
 class SAMLLoginView(View):
@@ -174,7 +178,7 @@ class SAMLLoginView(View):
             return HttpResponse("python3-saml not installed", status=503)
         except Exception as e:
             logger.error(f"Error initiating SAML login: {str(e)}")
-            return HttpResponse(f"Error: {str(e)}", status=500)
+            return HttpResponse("SAML login initiation failed", status=500)
 
 
 @method_decorator(csrf_exempt, name='dispatch')
@@ -283,7 +287,12 @@ class SAMLACSView(View):
             return HttpResponse("python3-saml not installed", status=503)
         except Exception as e:
             logger.error(f"Error processing SAML response: {str(e)}")
-            return HttpResponseRedirect(f'/login?error=saml_error&message={str(e)}')
+            # A generic message, not str(e) — the login page reflects this
+            # error param back to the user, and exception text here can
+            # carry IdP/config/XML-parsing detail that shouldn't leave the
+            # server, regardless of whether the frontend happens to
+            # render it safely today.
+            return HttpResponseRedirect('/login?error=saml_error&message=SAML+authentication+failed')
 
     def _get_attribute(self, attributes, attr_name, default=''):
         """Get attribute value from SAML attributes"""

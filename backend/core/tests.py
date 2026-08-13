@@ -340,6 +340,73 @@ class DashboardStatisticsTestCase(APITestCase):
         self.assertEqual(response.data['failed_backups'], 1)
 
 
+class DashboardScopeRBACTestCase(APITestCase):
+    """
+    Regression tests: dashboard_statistics/backup_trend/recent_backups
+    used to query Device.objects/Backup.objects directly — a device_scope
+    -restricted user could learn counts/trends/recent activity for
+    devices outside their scope just by loading the dashboard.
+    """
+
+    def setUp(self):
+        self.client = APIClient()
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='dash_scope_admin@example.com', username='dash_scope_admin',
+            password='TestPass123!', role='administrator',
+        )
+        self.scoped_viewer = User.objects.create_user(
+            email='dash_scope_viewer@example.com', username='dash_scope_viewer',
+            password='TestPass123!', role='viewer', device_scope={'tags': ['core']},
+        )
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-dash-scope')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-dash-scope')
+        self.core_device = Device.objects.create(
+            name='Core-Dash', ip_address='10.8.0.1', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin,
+            status='online', tags=['core'],
+        )
+        self.edge_device = Device.objects.create(
+            name='Edge-Dash', ip_address='10.8.0.2', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin,
+            status='online', tags=['edge'],
+        )
+        self.core_backup = Backup.objects.create(
+            device=self.core_device, status='success', success=True,
+            configuration_encrypted=encrypt_data('c'), configuration_hash='core-dash-hash',
+        )
+        self.edge_backup = Backup.objects.create(
+            device=self.edge_device, status='success', success=True,
+            configuration_encrypted=encrypt_data('c'), configuration_hash='edge-dash-hash',
+        )
+
+    def test_statistics_scoped_to_device_scope(self):
+        self.client.force_authenticate(user=self.scoped_viewer)
+        response = self.client.get('/api/v1/dashboard/statistics/')
+        self.assertEqual(response.data['total_devices'], 1)
+        self.assertEqual(response.data['total_backups'], 1)
+
+    def test_statistics_admin_sees_everything(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get('/api/v1/dashboard/statistics/')
+        self.assertEqual(response.data['total_devices'], 2)
+        self.assertEqual(response.data['total_backups'], 2)
+
+    def test_backup_trend_scoped_to_device_scope(self):
+        self.client.force_authenticate(user=self.scoped_viewer)
+        response = self.client.get('/api/v1/dashboard/backup-trend/?days=1')
+        today_total = sum(day['total'] for day in response.data)
+        self.assertEqual(today_total, 1)
+
+    def test_recent_backups_scoped_to_device_scope(self):
+        self.client.force_authenticate(user=self.scoped_viewer)
+        response = self.client.get('/api/v1/dashboard/recent-backups/')
+        device_names = {b['device']['name'] for b in response.data}
+        self.assertEqual(device_names, {'Core-Dash'})
+
+
 class BackupTrendTestCase(APITestCase):
     """Tests for backup trend endpoint"""
 

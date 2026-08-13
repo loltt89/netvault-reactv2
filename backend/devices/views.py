@@ -168,12 +168,17 @@ class DeviceViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def statistics(self, request):
         """Get device statistics"""
-        total = Device.objects.count()
-        by_status = dict(Device.objects.values('status').annotate(count=Count('id')).values_list('status', 'count'))
-        by_criticality = dict(Device.objects.values('criticality').annotate(count=Count('id')).values_list('criticality', 'count'))
-        by_vendor = list(Device.objects.values('vendor__name').annotate(count=Count('id')).values('vendor__name', 'count'))
+        # get_queryset() (not Device.objects) — device_scope RBAC applies
+        # to counts/breakdowns the same as it does to the plain list, or a
+        # scoped user could learn the existence/count/vendor mix of
+        # devices outside their scope just by calling this instead.
+        base = self.get_queryset()
+        total = base.count()
+        by_status = dict(base.values('status').annotate(count=Count('id')).values_list('status', 'count'))
+        by_criticality = dict(base.values('criticality').annotate(count=Count('id')).values_list('criticality', 'count'))
+        by_vendor = list(base.values('vendor__name').annotate(count=Count('id')).values('vendor__name', 'count'))
 
-        backup_enabled = Device.objects.filter(backup_enabled=True).count()
+        backup_enabled = base.filter(backup_enabled=True).count()
 
         return Response({
             'total': total,

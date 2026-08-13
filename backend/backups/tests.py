@@ -1463,6 +1463,13 @@ class BackupScopeRBACTestCase(APITestCase):
             email='backup_scope_viewer@example.com', username='backup_scope_viewer',
             password='TestPass123!', role='viewer', device_scope={'tags': ['core']},
         )
+        # download_multiple is a POST action; CanManageBackups only lets
+        # 'operator'+ POST it — a 'viewer' gets 403 there regardless of
+        # scoping, so that regression test needs its own scoped operator.
+        self.scoped_operator = User.objects.create_user(
+            email='backup_scope_operator@example.com', username='backup_scope_operator',
+            password='TestPass123!', role='operator', device_scope={'tags': ['core']},
+        )
 
         self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-backup-scope')
         self.device_type = DeviceType.objects.create(name='Router', slug='router-backup-scope')
@@ -1519,6 +1526,143 @@ class BackupScopeRBACTestCase(APITestCase):
             f'/api/v1/backups/backups/{core_backup2.id}/compare/{self.core_backup.id}/'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_scoped_viewer_download_multiple_excludes_out_of_scope_backup(self):
+        """
+        Regression test: download_multiple() used to fetch from the raw
+        Backup.objects manager — a scoped viewer could pass an
+        out-of-scope backup_id and get its config in the ZIP anyway.
+        """
+        self.client.force_authenticate(user=self.scoped_operator)
+        response = self.client.post('/api/v1/backups/backups/download_multiple/', {
+            'backup_ids': [self.core_backup.id, self.edge_backup.id],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        import zipfile
+        import io
+        content = b''.join(response.streaming_content)
+        with zipfile.ZipFile(io.BytesIO(content)) as zf:
+            names = zf.namelist()
+        self.assertTrue(any('Core-BK' in n for n in names))
+        self.assertFalse(any('Edge-BK' in n for n in names))
+
+    def test_scoped_viewer_search_configs_excludes_out_of_scope_device(self):
+        """
+        Regression test: search_configs() queried Device.objects directly
+        — a scoped viewer could see config *content* matches from devices
+        outside their scope, not just metadata like the other endpoints.
+        """
+        self.core_backup.set_configuration('hostname Core-Router\nntp server 10.0.0.1')
+        self.core_backup.save()
+        self.edge_backup.set_configuration('hostname Edge-Router\nntp server 10.0.0.1')
+        self.edge_backup.save()
+
+        self.client.force_authenticate(user=self.scoped_viewer)
+        response = self.client.get('/api/v1/backups/backups/search_configs/?q=ntp+server')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        device_names = {r['device_name'] for r in response.data['results']}
+        self.assertIn('Core-BK', device_names)
+        self.assertNotIn('Edge-BK', device_names)
+
+
+class BackupScheduleRunNowTestCase(APITestCase):
+    """Tests for BackupScheduleViewSet.run_now — device-selection + device_scope RBAC"""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='run_now_admin@example.com', username='run_now_admin',
+            password='TestPass123!', role='administrator',
+        )
+        self.scoped_operator = User.objects.create_user(
+            email='run_now_scoped@example.com', username='run_now_scoped',
+            password='TestPass123!', role='operator', device_scope={'tags': ['core']},
+        )
+
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-runnow')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-runnow')
+        self.core_device = Device.objects.create(
+            name='Core-RN', ip_address='10.9.1.1', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin, tags=['core'],
+        )
+        self.edge_device = Device.objects.create(
+            name='Edge-RN', ip_address='10.9.1.2', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin, tags=['edge'],
+        )
+        # A third device, not backup_enabled and not in any schedule —
+        # must never be triggered by anything below.
+        self.unrelated_device = Device.objects.create(
+            name='Unrelated-RN', ip_address='10.9.1.3', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin, tags=['edge'],
+        )
+
+    @patch('backups.tasks.backup_multiple_devices.delay')
+    def test_run_now_only_triggers_schedules_own_devices(self, mock_delay):
+        """
+        Regression test: run_now() used to ignore schedule.devices
+        entirely and back up every backup_enabled device in the system.
+        """
+        mock_delay.return_value = MagicMock(id='fake-task-id')
+        schedule = BackupSchedule.objects.create(name='Core Only', frequency='daily')
+        schedule.devices.set([self.core_device])
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(f'/api/v1/backups/schedules/{schedule.id}/run_now/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        triggered_ids = mock_delay.call_args[0][0]
+        self.assertEqual(set(triggered_ids), {self.core_device.id})
+
+    @patch('backups.tasks.backup_multiple_devices.delay')
+    def test_run_now_with_no_devices_assigned_covers_all_backup_enabled(self, mock_delay):
+        """A schedule with no specific devices falls back to every
+        backup_enabled device — matches the automatic runner's own rule."""
+        mock_delay.return_value = MagicMock(id='fake-task-id')
+        schedule = BackupSchedule.objects.create(name='Everything', frequency='daily')
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(f'/api/v1/backups/schedules/{schedule.id}/run_now/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        triggered_ids = set(mock_delay.call_args[0][0])
+        self.assertIn(self.core_device.id, triggered_ids)
+        self.assertIn(self.edge_device.id, triggered_ids)
+        self.assertIn(self.unrelated_device.id, triggered_ids)
+
+    @patch('backups.tasks.backup_multiple_devices.delay')
+    def test_run_now_respects_device_scope(self, mock_delay):
+        """
+        Regression test: a device_scope-restricted operator triggering
+        run_now() on a schedule spanning devices outside their scope must
+        only trigger the in-scope subset — not the whole schedule/fleet.
+        """
+        mock_delay.return_value = MagicMock(id='fake-task-id')
+        schedule = BackupSchedule.objects.create(name='Mixed', frequency='daily')
+        schedule.devices.set([self.core_device, self.edge_device])
+
+        self.client.force_authenticate(user=self.scoped_operator)
+        response = self.client.post(f'/api/v1/backups/schedules/{schedule.id}/run_now/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        triggered_ids = mock_delay.call_args[0][0]
+        self.assertEqual(set(triggered_ids), {self.core_device.id})
+
+    @patch('backups.tasks.backup_multiple_devices.delay')
+    def test_run_now_scoped_operator_with_no_matching_devices_gets_400(self, mock_delay):
+        mock_delay.return_value = MagicMock(id='fake-task-id')
+        schedule = BackupSchedule.objects.create(name='Edge Only', frequency='daily')
+        schedule.devices.set([self.edge_device])
+
+        self.client.force_authenticate(user=self.scoped_operator)
+        response = self.client.post(f'/api/v1/backups/schedules/{schedule.id}/run_now/')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        mock_delay.assert_not_called()
 
 
 class SendStaleBackupDigestTaskTestCase(TestCase):
