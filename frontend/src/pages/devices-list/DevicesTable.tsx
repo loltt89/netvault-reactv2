@@ -64,6 +64,7 @@ const DevicesTable: React.FC<DevicesTableProps> = ({
             <SortHeader field="vendor" label={t('devices.vendor')} sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
             <SortHeader field="device_type" label={t('devices.type')} sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
             <SortHeader field="location" label={t('devices.location')} sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
+            <SortHeader field="tags" label={t('devices.tags')} sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
             <SortHeader field="status" label={t('devices.status')} sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
             <SortHeader field="last_backup" label={t('devices.last_backup')} sortField={sortField} sortDirection={sortDirection} onSort={onSort} />
             <th>{t('devices.actions')}</th>
@@ -114,6 +115,15 @@ const DevicesTable: React.FC<DevicesTableProps> = ({
               <td>{device.vendor_name}</td>
               <td>{device.device_type_name}</td>
               <td>{device.location || '-'}</td>
+              <td>
+                {device.tags && device.tags.length > 0 ? (
+                  <div className="tag-chips">
+                    {device.tags.map((tag) => (
+                      <span key={tag} className="tag-chip">{tag}</span>
+                    ))}
+                  </div>
+                ) : '-'}
+              </td>
               <td>
                 <span className={`status-badge status-${device.status}`}>
                   {device.status}

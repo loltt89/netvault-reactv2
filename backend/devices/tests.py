@@ -1211,6 +1211,50 @@ class DeviceViewSetActionsTestCase(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def test_filter_by_tags_single(self):
+        """?tags=core matches devices whose tag list contains 'core'."""
+        self.device.tags = ['core', 'dc1']
+        self.device.save()
+        other = Device.objects.create(
+            name='Edge-Device', ip_address='192.168.100.9', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin, tags=['edge'],
+        )
+
+        response = self.client.get('/api/v1/devices/devices/?tags=core')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = {d['name'] for d in response.data['results']}
+        self.assertIn('Actions-Device', names)
+        self.assertNotIn(other.name, names)
+
+    def test_filter_by_tags_multiple_is_any_overlap(self):
+        """?tags=core,edge is an OR — matches either tag, not both."""
+        self.device.tags = ['core']
+        self.device.save()
+        edge_device = Device.objects.create(
+            name='Edge-Device-2', ip_address='192.168.100.10', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin, tags=['edge'],
+        )
+        untagged = Device.objects.create(
+            name='Untagged-Device', ip_address='192.168.100.11', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin,
+        )
+
+        response = self.client.get('/api/v1/devices/devices/?tags=core,edge')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = {d['name'] for d in response.data['results']}
+        self.assertIn(self.device.name, names)
+        self.assertIn(edge_device.name, names)
+        self.assertNotIn(untagged.name, names)
+
+    def test_ordering_by_tags_does_not_error(self):
+        response = self.client.get('/api/v1/devices/devices/?ordering=tags')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
     def test_search_devices(self):
         """Test searching devices"""
         response = self.client.get('/api/v1/devices/devices/?search=Actions')

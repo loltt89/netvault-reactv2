@@ -72,6 +72,7 @@
     "offline": "Офлайн",
     "unknown": "Белгісіз",
     "location_placeholder": "Орналасқан жері...",
+    "tags_filter_placeholder": "Тегтер (үтірмен бөлінген)...",
     "clear_filters": "Тазалау",
     "no_devices": "Құрылғылар табылмады",
     "add_first_device": "Бірінші құрылғыны қосыңыз",

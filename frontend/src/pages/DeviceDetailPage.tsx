@@ -374,6 +374,20 @@ const DeviceDetailPage: React.FC = () => {
               <span className="info-value">{device.location || 'N/A'}</span>
             </div>
             <div className="info-row">
+              <span className="info-label">{t('devices.tags')}:</span>
+              <span className="info-value">
+                {device.tags && device.tags.length > 0 ? (
+                  <div className="tag-chips">
+                    {device.tags.map((tag) => (
+                      <span key={tag} className="tag-chip">{tag}</span>
+                    ))}
+                  </div>
+                ) : (
+                  'N/A'
+                )}
+              </span>
+            </div>
+            <div className="info-row">
               <span className="info-label">{t('devices.last_backup')}:</span>
               <span className="info-value">
                 {device.last_backup ? new Date(device.last_backup).toLocaleString() : t('devices.never')}

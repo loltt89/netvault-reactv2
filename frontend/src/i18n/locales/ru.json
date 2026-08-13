@@ -72,6 +72,7 @@
     "offline": "Офлайн",
     "unknown": "Неизвестен",
     "location_placeholder": "Локация...",
+    "tags_filter_placeholder": "Теги (через запятую)...",
     "clear_filters": "Очистить",
     "no_devices": "Устройства не найдены",
     "add_first_device": "Добавьте первое устройство",

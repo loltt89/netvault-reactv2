@@ -200,6 +200,22 @@
   margin: 0 0 0.75rem 0;
 }
 
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.tag-chip {
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: var(--bg-tertiary, rgba(128, 128, 128, 0.15));
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+}
+
 .location-row {
   display: flex;
   align-items: center;

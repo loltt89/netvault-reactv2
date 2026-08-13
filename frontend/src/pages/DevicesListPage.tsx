@@ -55,6 +55,7 @@ const DevicesListPage: React.FC = () => {
   const [filterType, setFilterType] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterLocation, setFilterLocation] = useState('');
+  const [filterTags, setFilterTags] = useState('');
   const [sortField, setSortField] = useState<string>('ip_address');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
@@ -75,7 +76,7 @@ const DevicesListPage: React.FC = () => {
 
   useEffect(() => {
     applyFilters();
-  }, [devices, searchTerm, filterVendor, filterType, filterStatus, filterLocation, sortField, sortDirection]);
+  }, [devices, searchTerm, filterVendor, filterType, filterStatus, filterLocation, filterTags, sortField, sortDirection]);
 
   // Update pageSize when user preference loads
   useEffect(() => {
@@ -161,9 +162,29 @@ const DevicesListPage: React.FC = () => {
       );
     }
 
+    if (filterTags) {
+      // Any-overlap match against the comma-separated filter, same
+      // semantics as device_filters.device_matches_filters's 'tags' key
+      // on the backend (and Bulk Tag Edit's comma-separated input).
+      const wanted = filterTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
+      filtered = filtered.filter(device =>
+        wanted.some(w => (device.tags || []).some(tag => tag.toLowerCase().includes(w)))
+      );
+    }
+
     filtered.sort((a, b) => {
       let aVal: any = a[sortField as keyof Device];
       let bVal: any = b[sortField as keyof Device];
+
+      // Tags is a string[] — sort by its joined, lowercased text rather
+      // than relying on array's implicit toString() coercion below.
+      if (sortField === 'tags') {
+        const aTags = (a.tags || []).slice().sort().join(',').toLowerCase();
+        const bTags = (b.tags || []).slice().sort().join(',').toLowerCase();
+        if (aTags < bTags) return sortDirection === 'asc' ? -1 : 1;
+        if (aTags > bTags) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      }
 
       // Handle IP address sorting naturally
       if (sortField === 'ip_address') {
@@ -209,6 +230,7 @@ const DevicesListPage: React.FC = () => {
     setFilterType('');
     setFilterStatus('');
     setFilterLocation('');
+    setFilterTags('');
   };
 
   const totalPages = Math.ceil(totalCount / pageSize);
@@ -430,6 +452,7 @@ const DevicesListPage: React.FC = () => {
         filterType={filterType}
         filterStatus={filterStatus}
         filterLocation={filterLocation}
+        filterTags={filterTags}
         vendors={vendors}
         deviceTypes={deviceTypes}
         onSearchTermChange={setSearchTerm}
@@ -437,6 +460,7 @@ const DevicesListPage: React.FC = () => {
         onFilterTypeChange={setFilterType}
         onFilterStatusChange={setFilterStatus}
         onFilterLocationChange={setFilterLocation}
+        onFilterTagsChange={setFilterTags}
         onClearFilters={clearFilters}
       />
 

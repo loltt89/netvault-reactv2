@@ -106,7 +106,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, CanManageDevices]
     pagination_class = UserPageSizePagination
     search_fields = ['name', 'ip_address', 'location', 'description']
-    ordering_fields = ['name', 'ip_address', 'created_at', 'last_backup']
+    ordering_fields = ['name', 'ip_address', 'created_at', 'last_backup', 'tags']
     ordering = ['name']
     filterset_fields = ['vendor', 'device_type', 'status', 'backup_enabled', 'protocol']
 
@@ -147,6 +147,21 @@ class DeviceViewSet(viewsets.ModelViewSet):
         criticality = self.request.query_params.get('criticality', None)
         if criticality:
             queryset = queryset.filter(criticality=criticality)
+
+        # Filter by tag — comma-separated, any-overlap (same semantics as
+        # device_filters.device_matches_filters's 'tags' key). tags is a
+        # JSONField list, so a plain __in doesn't apply here; JSON_CONTAINS
+        # (via __contains) checks whether the device's tag list contains
+        # the given single-element list, i.e. "has this tag" — verified
+        # directly against the deployed MariaDB before relying on it.
+        tags_param = self.request.query_params.get('tags', None)
+        if tags_param:
+            requested_tags = [t.strip() for t in tags_param.split(',') if t.strip()]
+            if requested_tags:
+                tag_filter = Q()
+                for tag in requested_tags:
+                    tag_filter |= Q(tags__contains=[tag])
+                queryset = queryset.filter(tag_filter)
 
         # Filter by backup enabled
         backup_enabled = self.request.query_params.get('backup_enabled', None)

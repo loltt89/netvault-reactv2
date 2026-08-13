@@ -73,6 +73,7 @@
     "offline": "Offline",
     "unknown": "Unknown",
     "location_placeholder": "Location...",
+    "tags_filter_placeholder": "Tags (comma-separated)...",
     "clear_filters": "Clear",
     "no_devices": "No devices found",
     "add_first_device": "Add your first device",

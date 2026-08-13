@@ -10,6 +10,7 @@ interface DevicesFiltersProps {
   filterType: string;
   filterStatus: string;
   filterLocation: string;
+  filterTags: string;
   vendors: Vendor[];
   deviceTypes: DeviceType[];
   onSearchTermChange: (value: string) => void;
@@ -17,13 +18,14 @@ interface DevicesFiltersProps {
   onFilterTypeChange: (value: string) => void;
   onFilterStatusChange: (value: string) => void;
   onFilterLocationChange: (value: string) => void;
+  onFilterTagsChange: (value: string) => void;
   onClearFilters: () => void;
 }
 
 const DevicesFilters: React.FC<DevicesFiltersProps> = ({
-  searchTerm, filterVendor, filterType, filterStatus, filterLocation, vendors, deviceTypes,
+  searchTerm, filterVendor, filterType, filterStatus, filterLocation, filterTags, vendors, deviceTypes,
   onSearchTermChange, onFilterVendorChange, onFilterTypeChange, onFilterStatusChange,
-  onFilterLocationChange, onClearFilters,
+  onFilterLocationChange, onFilterTagsChange, onClearFilters,
 }) => {
   const { t } = useTranslation();
 
@@ -77,6 +79,14 @@ const DevicesFilters: React.FC<DevicesFiltersProps> = ({
           placeholder={t('devices.location_placeholder')}
           value={filterLocation}
           onChange={(e) => onFilterLocationChange(e.target.value)}
+          className="search-input"
+        />
+
+        <input
+          type="text"
+          placeholder={t('devices.tags_filter_placeholder')}
+          value={filterTags}
+          onChange={(e) => onFilterTagsChange(e.target.value)}
           className="search-input"
         />
 
