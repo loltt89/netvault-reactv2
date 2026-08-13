@@ -148,20 +148,26 @@ class DeviceViewSet(viewsets.ModelViewSet):
         if criticality:
             queryset = queryset.filter(criticality=criticality)
 
-        # Filter by tag — comma-separated, any-overlap (same semantics as
-        # device_filters.device_matches_filters's 'tags' key). tags is a
-        # JSONField list, so a plain __in doesn't apply here; JSON_CONTAINS
-        # (via __contains) checks whether the device's tag list contains
-        # the given single-element list, i.e. "has this tag" — verified
-        # directly against the deployed MariaDB before relying on it.
+        # Filter by tag — comma-separated, any-overlap. Reuses
+        # device_matches_filters (the same function device_scope and
+        # NotificationRule/CompliancePolicy device_filters use) rather than
+        # a __contains lookup on the tags JSONField: __contains compiles to
+        # JSON_CONTAINS on MySQL/MariaDB (this deployment's real DB — works
+        # fine there) but SQLite's JSONField backend raises
+        # NotSupportedError for it outright, and sqlite3 is this project's
+        # own DEFAULT DB_ENGINE (see settings.py) — so a lookup that only
+        # works on MySQL breaks the default config, not just CI. Evaluating
+        # in Python instead (like get_scoped_device_ids already does) is
+        # slower but identical across every backend.
         tags_param = self.request.query_params.get('tags', None)
         if tags_param:
             requested_tags = [t.strip() for t in tags_param.split(',') if t.strip()]
             if requested_tags:
-                tag_filter = Q()
-                for tag in requested_tags:
-                    tag_filter |= Q(tags__contains=[tag])
-                queryset = queryset.filter(tag_filter)
+                from core.device_filters import device_matches_filters
+                matching_ids = {
+                    d.id for d in queryset if device_matches_filters(d, {'tags': requested_tags})
+                }
+                queryset = queryset.filter(id__in=matching_ids)
 
         # Filter by backup enabled
         backup_enabled = self.request.query_params.get('backup_enabled', None)
