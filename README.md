@@ -198,21 +198,79 @@ Backend API: http://localhost:8000/api/v1/
 
 ## API Endpoints
 
+Ниже — основные и наиболее часто используемые эндпоинты. Полная актуальная
+спецификация (все CRUD-маршруты, параметры, схемы запросов/ответов) всегда
+доступна через Swagger UI (`/api/docs/`) и ReDoc (`/api/redoc/`) на живом
+инстансе — они генерируются автоматически из кода (drf-spectacular), так
+что не расходятся с реальностью в отличие от статического списка ниже.
+
 ### Authentication
 
 - `POST /api/v1/token/` - Получение JWT токена (логин)
 - `POST /api/v1/token/refresh/` - Обновление access токена
 - `POST /api/v1/auth/register/` - Регистрация нового пользователя
 - `POST /api/v1/auth/logout/` - Выход из системы
+- `GET /api/v1/saml/metadata/`, `saml/login/`, `saml/acs/`, `saml/sls/` - SAML SSO (metadata, login redirect, assertion consumer, single logout)
+- `GET/POST /api/v1/saml/settings/`, `GET /api/v1/saml/status/` - Настройка и статус SAML (admin)
+- `POST /api/v1/saml/link-init/` - Явная привязка SAML-identity к существующему локальному аккаунту
 
 ### Users
 
 - `GET /api/v1/users/me/` - Получить профиль текущего пользователя
 - `PATCH /api/v1/users/update_profile/` - Обновить профиль
 - `POST /api/v1/users/change_password/` - Изменить пароль
-- `POST /api/v1/users/enable_2fa/` - Включить 2FA
-- `POST /api/v1/users/verify_2fa/` - Подтвердить 2FA
-- `POST /api/v1/users/disable_2fa/` - Отключить 2FA
+- `POST /api/v1/users/enable_2fa/`, `verify_2fa/`, `disable_2fa/` - Управление TOTP-фактором
+- `POST /api/v1/users/webauthn_register_begin/`, `webauthn_register_complete/` - Регистрация passkey (двухшаговая WebAuthn-церемония)
+- `GET/DELETE /api/v1/webauthn-credentials/` - Список и отзыв своих passkey'ев
+- `PATCH /api/v1/users/{id}/set_device_scope/` - Ограничить пользователя подмножеством устройств (admin)
+- `GET /api/v1/audit-logs/` - Журнал действий (свои логи, либо все — для administrator/auditor)
+
+### Devices
+
+- `GET/POST/PATCH/DELETE /api/v1/devices/devices/` - CRUD устройств
+- `GET /api/v1/devices/devices/statistics/` - Статистика по устройствам (с учётом device_scope)
+- `POST /api/v1/devices/devices/{id}/test_connection/` - Проверить подключение к устройству
+- `POST /api/v1/devices/devices/{id}/backup_now/` - Бэкап конкретного устройства немедленно
+- `POST /api/v1/devices/devices/bulk_backup_now/` - Массовый запуск бэкапа по списку устройств
+- `POST /api/v1/devices/devices/bulk_tag_edit/` - Массовое редактирование тегов
+- `POST /api/v1/devices/devices/bulk_delete/` - Массовое удаление (admin)
+- `GET /api/v1/devices/devices/csv_template/`, `POST csv_preview/`, `POST csv_import/` - CSV-импорт устройств
+- `POST /api/v1/devices/devices/{id}/approve_ssh_host_key/`, `reject_ssh_host_key/` - Подтверждение/отклонение изменившегося SSH host key (admin)
+- `GET/POST /api/v1/devices/vendors/`, `/api/v1/devices/device-types/` - Справочники вендоров и типов устройств
+
+### Backups
+
+- `GET /api/v1/backups/backups/` - Список бэкапов (с учётом device_scope)
+- `GET /api/v1/backups/backups/statistics/`, `grouped/` - Статистика и группировка (по дате/вендору/типу)
+- `GET /api/v1/backups/backups/{id}/configuration/`, `download/` - Просмотр/скачивание конфигурации
+- `GET /api/v1/backups/backups/{id}/compare/{compare_id}/` - Diff двух бэкапов
+- `POST /api/v1/backups/backups/download_multiple/` - Скачать несколько бэкапов ZIP-архивом
+- `GET /api/v1/backups/backups/search_configs/` - Полнотекстовый поиск по содержимому конфигураций
+- `GET/POST/PATCH/DELETE /api/v1/backups/schedules/` - CRUD расписаний бэкапа
+- `POST /api/v1/backups/schedules/{id}/run_now/`, `toggle_active/` - Немедленный запуск / вкл-выкл расписания
+- `GET/POST/PATCH/DELETE /api/v1/backups/retention-policies/` - CRUD retention policy
+- `POST /api/v1/backups/retention-policies/{id}/apply_now/` - Применить retention policy немедленно (admin)
+
+### Notifications
+
+- `GET/POST/PATCH/DELETE /api/v1/notifications/rules/` - CRUD правил уведомлений (email/telegram/webhook, по событию и device_filters)
+- `GET /api/v1/notifications/log/` - Журнал отправленных уведомлений
+
+### Compliance
+
+- `GET/POST/PATCH/DELETE /api/v1/compliance/policies/` - CRUD правил compliance-проверки
+- `GET /api/v1/compliance/violations/`, `statistics/` - Список нарушений и сводка по severity
+- `POST /api/v1/compliance/violations/{id}/acknowledge/` - Отметить нарушение как подтверждённое
+
+### Dashboard
+
+- `GET /api/v1/dashboard/statistics/`, `backup-trend/`, `recent-backups/`, `stale-backups/` - Данные для дашборда (все — с учётом device_scope пользователя)
+
+### System settings & Health
+
+- `GET/POST /api/v1/settings/system/`, `system/update/` - Настройки системы (admin)
+- `POST /api/v1/settings/test-email/`, `test-telegram/` - Тест email/telegram настроек прямо из UI
+- `GET /api/v1/health/`, `health/detailed/`, `health/ready/`, `health/live/` - Health checks (для балансировщика/мониторинга)
 
 ## Структура проекта
 
