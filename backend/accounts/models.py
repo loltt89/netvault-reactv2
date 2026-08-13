@@ -47,6 +47,16 @@ class User(AbstractBaseUser, PermissionsMixin):
     last_name = models.CharField(max_length=150, blank=True)
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default='viewer')
 
+    # Restricts which devices (and their backups/schedules/etc) this user
+    # can see and act on. Same shape as NotificationRule.device_filters —
+    # {"tags": [...]}, {"criticality": [...]}, {"vendor_id": ...},
+    # {"device_type_id": ...}, {"location": ...}, single value or list,
+    # AND'd together. Empty dict (the default) = unrestricted. Ignored
+    # entirely for administrators/superusers — scoping only narrows
+    # operator/auditor/viewer access, it can't be used to grant more than
+    # the role already allows. See core.device_filters.
+    device_scope = models.JSONField(default=dict, blank=True)
+
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     is_superuser = models.BooleanField(default=False)

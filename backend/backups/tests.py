@@ -1403,3 +1403,76 @@ class BackupViewSetActionsTestCase(APITestCase):
         response = self.client.get(f'/api/v1/backups/backups/?date_from={today}&date_to={today}')
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class BackupScopeRBACTestCase(APITestCase):
+    """Tests for device_scope restricting BackupViewSet's queryset, and
+    the compare endpoint's second backup specifically (it used to fetch
+    compare_id from the unscoped Backup.objects manager)."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='backup_scope_admin@example.com', username='backup_scope_admin',
+            password='TestPass123!', role='administrator',
+        )
+        self.scoped_viewer = User.objects.create_user(
+            email='backup_scope_viewer@example.com', username='backup_scope_viewer',
+            password='TestPass123!', role='viewer', device_scope={'tags': ['core']},
+        )
+
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-backup-scope')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-backup-scope')
+        self.core_device = Device.objects.create(
+            name='Core-BK', ip_address='10.3.0.1', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin, tags=['core'],
+        )
+        self.edge_device = Device.objects.create(
+            name='Edge-BK', ip_address='10.3.0.2', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin, tags=['edge'],
+        )
+        self.core_backup = Backup.objects.create(
+            device=self.core_device, status='success', success=True,
+            configuration_encrypted=encrypt_data('core config'), configuration_hash='core-hash',
+        )
+        self.edge_backup = Backup.objects.create(
+            device=self.edge_device, status='success', success=True,
+            configuration_encrypted=encrypt_data('edge config'), configuration_hash='edge-hash',
+        )
+
+    def test_scoped_viewer_list_excludes_out_of_scope_backup(self):
+        self.client.force_authenticate(user=self.scoped_viewer)
+        response = self.client.get('/api/v1/backups/backups/')
+        ids = {b['id'] for b in response.data['results']}
+        self.assertIn(self.core_backup.id, ids)
+        self.assertNotIn(self.edge_backup.id, ids)
+
+    def test_scoped_viewer_cannot_download_out_of_scope_backup(self):
+        self.client.force_authenticate(user=self.scoped_viewer)
+        response = self.client.get(f'/api/v1/backups/backups/{self.edge_backup.id}/download/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_scoped_viewer_cannot_leak_out_of_scope_backup_via_compare(self):
+        """
+        compare_id is a second, attacker-suppliable backup ID on top of
+        the URL's own (correctly scoped-by-get_object) pk — regression
+        test for the fix that made it use the scoped queryset too.
+        """
+        self.client.force_authenticate(user=self.scoped_viewer)
+        response = self.client.get(
+            f'/api/v1/backups/backups/{self.core_backup.id}/compare/{self.edge_backup.id}/'
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_scoped_viewer_can_compare_two_in_scope_backups(self):
+        core_backup2 = Backup.objects.create(
+            device=self.core_device, status='success', success=True,
+            configuration_encrypted=encrypt_data('core config v2'), configuration_hash='core-hash-2',
+        )
+        self.client.force_authenticate(user=self.scoped_viewer)
+        response = self.client.get(
+            f'/api/v1/backups/backups/{core_backup2.id}/compare/{self.core_backup.id}/'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

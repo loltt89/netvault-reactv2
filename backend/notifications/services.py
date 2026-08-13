@@ -6,6 +6,10 @@ from django.core.mail import send_mail, EmailMessage
 from django.core.mail.backends.smtp import EmailBackend
 import requests
 
+# Shared with accounts device-scope RBAC — see core.device_filters for
+# the actual implementation and why this lives there, not here.
+from core.device_filters import device_matches_filters as _device_matches_filters
+
 logger = logging.getLogger(__name__)
 
 
@@ -138,43 +142,6 @@ def send_webhook_notification(url: str, payload: dict):
         logger.error(f"Failed to send webhook to {url}: {e}")
         return False
 
-
-def _device_matches_filters(device, filters: dict) -> bool:
-    """
-    Check whether `device` matches a NotificationRule's device_filters.
-    Supported keys: tags (any overlap), criticality, vendor_id,
-    device_type_id, location — each accepts either a single value or a
-    list of acceptable values. Unrecognized keys are ignored rather than
-    silently excluding every device (a typo in a filter key should not
-    make a rule fire for nobody).
-    """
-    if not filters:
-        return True
-    if device is None:
-        return False
-
-    def _as_list(value):
-        return value if isinstance(value, list) else [value]
-
-    for key, expected in filters.items():
-        if key == 'tags':
-            if not set(device.tags or []) & set(_as_list(expected)):
-                return False
-        elif key == 'criticality':
-            if device.criticality not in _as_list(expected):
-                return False
-        elif key == 'vendor_id':
-            if device.vendor_id not in _as_list(expected):
-                return False
-        elif key == 'device_type_id':
-            if device.device_type_id not in _as_list(expected):
-                return False
-        elif key == 'location':
-            if device.location not in _as_list(expected):
-                return False
-        # unknown key: ignore, don't exclude
-
-    return True
 
 
 def dispatch_rules(trigger: str, device=None, subject: str = '', message: str = '',

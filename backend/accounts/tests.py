@@ -961,6 +961,83 @@ class JWTSigningKeyTestCase(TestCase):
             pyjwt.decode(token, 'a-completely-different-key', algorithms=[settings.SIMPLE_JWT['ALGORITHM']])
 
 
+class UserDeviceScopeTestCase(APITestCase):
+    """Tests for UserViewSet.set_device_scope — admin-only device-scope RBAC"""
+
+    def setUp(self):
+        self.client = APIClient()
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='scope_set_admin@example.com', username='scope_set_admin',
+            password='TestPass123!', role='administrator',
+        )
+        self.operator = User.objects.create_user(
+            email='scope_set_operator@example.com', username='scope_set_operator',
+            password='TestPass123!', role='operator',
+        )
+        self.target = User.objects.create_user(
+            email='scope_set_target@example.com', username='scope_set_target',
+            password='TestPass123!', role='viewer',
+        )
+
+    def test_admin_can_set_device_scope(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(
+            f'/api/v1/users/{self.target.id}/set_device_scope/',
+            {'device_scope': {'tags': ['core']}}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.device_scope, {'tags': ['core']})
+
+    def test_admin_can_clear_device_scope(self):
+        self.target.device_scope = {'tags': ['core']}
+        self.target.save(update_fields=['device_scope'])
+
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(
+            f'/api/v1/users/{self.target.id}/set_device_scope/',
+            {'device_scope': {}}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.device_scope, {})
+
+    def test_non_admin_forbidden(self):
+        self.client.force_authenticate(user=self.operator)
+        response = self.client.patch(
+            f'/api/v1/users/{self.target.id}/set_device_scope/',
+            {'device_scope': {'tags': ['core']}}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_non_dict_scope_rejected(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.patch(
+            f'/api/v1/users/{self.target.id}/set_device_scope/',
+            {'device_scope': ['core']}, format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_user_cannot_clear_own_scope_via_update_profile(self):
+        """
+        device_scope is read_only on UserSerializer/UserUpdateSerializer —
+        regression guard against it ever becoming settable through the
+        self-service profile-update path, which would let a scoped user
+        remove their own restriction.
+        """
+        self.target.device_scope = {'tags': ['core']}
+        self.target.save(update_fields=['device_scope'])
+
+        self.client.force_authenticate(user=self.target)
+        response = self.client.patch('/api/v1/users/update_profile/', {
+            'device_scope': {},
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.device_scope, {'tags': ['core']})
+
+
 class AuthLogoutTestCase(APITestCase):
     """Tests for logout functionality"""
 

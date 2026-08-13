@@ -10,7 +10,7 @@ from .models import User, AuditLog
 from .throttling import LoginRateThrottle, TwoFactorVerifyThrottle
 
 logger = logging.getLogger(__name__)
-from .permissions import CanManageUsers, CanViewAuditLogs
+from .permissions import CanManageUsers, CanViewAuditLogs, IsAdministrator
 from .serializers import (
     CustomTokenObtainPairSerializer, UserSerializer, UserCreateSerializer,
     UserUpdateSerializer, ChangePasswordSerializer, Enable2FASerializer,
@@ -264,6 +264,46 @@ class UserViewSet(viewsets.ModelViewSet):
         """Get current user profile"""
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
+
+    @action(detail=True, methods=['patch'], permission_classes=[permissions.IsAuthenticated, IsAdministrator])
+    def set_device_scope(self, request, pk=None):
+        """
+        Restrict (or unrestrict) which devices a non-administrator user
+        can see/act on, via the same {"tags": [...], "criticality": [...],
+        ...} shape as NotificationRule.device_filters — see
+        core.device_filters. Deliberately a separate admin-only action
+        rather than a writable field on the normal update path: nothing
+        else lets a user touch their own permissions, and device_scope
+        shouldn't be the exception.
+
+        Request body: {"device_scope": {"tags": ["core"]}} — pass {} to
+        clear the restriction (unrestricted access, subject to role).
+        """
+        target_user = self.get_object()
+        scope = request.data.get('device_scope')
+
+        if not isinstance(scope, dict):
+            return Response(
+                {'detail': 'device_scope must be an object, e.g. {"tags": ["core"]} or {} to clear it.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        target_user.device_scope = scope
+        target_user.save(update_fields=['device_scope'])
+
+        AuditLog.objects.create(
+            user=request.user,
+            action='update',
+            resource_type='User',
+            resource_id=target_user.id,
+            resource_name=target_user.email,
+            description=f'Set device_scope for {target_user.email}: {scope!r}',
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        )
+        logger.info(f"device_scope for {target_user.email} set by {request.user.email}: {scope!r}")
+
+        return Response(UserSerializer(target_user).data)
 
     @action(detail=False, methods=['patch'])
     def update_profile(self, request):

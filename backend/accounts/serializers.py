@@ -72,9 +72,16 @@ class UserSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'email', 'username', 'first_name', 'last_name', 'full_name',
             'role', 'is_active', 'two_factor_enabled', 'is_ldap_user', 'is_saml_user',
-            'date_joined', 'last_login', 'preferred_language', 'theme', 'page_size'
+            'date_joined', 'last_login', 'preferred_language', 'theme', 'page_size',
+            'device_scope',
         ]
-        read_only_fields = ['id', 'date_joined', 'last_login', 'is_ldap_user', 'is_saml_user']
+        # device_scope is deliberately read-only here — settable only via
+        # UserViewSet.set_device_scope (admin-only). If it were writable
+        # through the same update path as preferred_language/theme, a
+        # user could clear their own restriction through update_profile.
+        read_only_fields = [
+            'id', 'date_joined', 'last_login', 'is_ldap_user', 'is_saml_user', 'device_scope',
+        ]
 
 
 class UserCreateSerializer(serializers.ModelSerializer):

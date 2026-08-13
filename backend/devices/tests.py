@@ -411,6 +411,67 @@ class DeviceAPITestCase(APITestCase):
         self.assertNotIn('supersecret', str(response.data))
 
 
+class DeviceScopeRBACTestCase(APITestCase):
+    """Tests for device_scope restricting DeviceViewSet's queryset"""
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='scope_admin@example.com', username='scope_admin',
+            password='TestPass123!', role='administrator',
+        )
+        self.scoped_viewer = User.objects.create_user(
+            email='scope_viewer@example.com', username='scope_viewer',
+            password='TestPass123!', role='viewer', device_scope={'tags': ['core']},
+        )
+        self.unscoped_viewer = User.objects.create_user(
+            email='unscoped_viewer@example.com', username='unscoped_viewer',
+            password='TestPass123!', role='viewer',
+        )
+
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-scope-api')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-scope-api')
+        self.core_device = Device.objects.create(
+            name='Core-API', ip_address='10.2.0.1', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin, tags=['core'],
+        )
+        self.edge_device = Device.objects.create(
+            name='Edge-API', ip_address='10.2.0.2', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin, tags=['edge'],
+        )
+
+    def test_scoped_viewer_sees_only_matching_device(self):
+        self.client.force_authenticate(user=self.scoped_viewer)
+        response = self.client.get('/api/v1/devices/devices/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = {d['name'] for d in response.data['results']}
+        self.assertEqual(names, {'Core-API'})
+
+    def test_scoped_viewer_gets_404_for_out_of_scope_device_detail(self):
+        self.client.force_authenticate(user=self.scoped_viewer)
+        response = self.client.get(f'/api/v1/devices/devices/{self.edge_device.id}/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_scoped_viewer_can_still_reach_in_scope_device_detail(self):
+        self.client.force_authenticate(user=self.scoped_viewer)
+        response = self.client.get(f'/api/v1/devices/devices/{self.core_device.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_unscoped_viewer_sees_everything(self):
+        self.client.force_authenticate(user=self.unscoped_viewer)
+        response = self.client.get('/api/v1/devices/devices/')
+        names = {d['name'] for d in response.data['results']}
+        self.assertEqual(names, {'Core-API', 'Edge-API'})
+
+    def test_administrator_always_sees_everything(self):
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.get('/api/v1/devices/devices/')
+        names = {d['name'] for d in response.data['results']}
+        self.assertEqual(names, {'Core-API', 'Edge-API'})
+
+
 class DeviceValidationTestCase(TestCase):
     """Tests for device validation"""
 

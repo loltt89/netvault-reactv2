@@ -9,6 +9,9 @@ from core.redis_lock import DeviceLock, DeviceLockError
 from core.utils import validate_csv_safe, sanitize_csv_value
 from core.crypto import encrypt_data, decrypt_data
 from core.host_validation import _validate_host_allow_private_networks
+from core.device_filters import get_scoped_device_ids
+from django.contrib.auth import get_user_model
+from devices.models import Device, Vendor, DeviceType
 
 
 class DeviceLockTestCase(TestCase):
@@ -1238,3 +1241,55 @@ class HostValidationTestCase(SimpleTestCase):
         self.assertFalse(
             _validate_host_allow_private_networks('not-an-ip.local', []),
         )
+
+
+class GetScopedDeviceIdsTestCase(TestCase):
+    """Tests for accounts device-scope RBAC's core helper"""
+
+    def setUp(self):
+        User = get_user_model()
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-scope')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-scope')
+        self.creator = User.objects.create_user(
+            email='creator@example.com', username='creator', password='pass123',
+        )
+        self.core_device = Device.objects.create(
+            name='Core-1', ip_address='10.1.0.1', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.creator, tags=['core'],
+        )
+        self.edge_device = Device.objects.create(
+            name='Edge-1', ip_address='10.1.0.2', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.creator, tags=['edge'],
+        )
+
+    def test_administrator_is_unrestricted_regardless_of_scope(self):
+        admin = get_user_model().objects.create_user(
+            email='admin_scope@example.com', username='admin_scope', password='pass123',
+            role='administrator', device_scope={'tags': ['core']},
+        )
+        self.assertIsNone(get_scoped_device_ids(admin))
+
+    def test_superuser_is_unrestricted_regardless_of_role(self):
+        su = get_user_model().objects.create_user(
+            email='su_scope@example.com', username='su_scope', password='pass123',
+            role='viewer', is_superuser=True, device_scope={'tags': ['core']},
+        )
+        self.assertIsNone(get_scoped_device_ids(su))
+
+    def test_empty_scope_is_unrestricted(self):
+        viewer = get_user_model().objects.create_user(
+            email='viewer_scope@example.com', username='viewer_scope', password='pass123',
+            role='viewer', device_scope={},
+        )
+        self.assertIsNone(get_scoped_device_ids(viewer))
+
+    def test_scope_restricts_to_matching_devices_only(self):
+        viewer = get_user_model().objects.create_user(
+            email='viewer_scope2@example.com', username='viewer_scope2', password='pass123',
+            role='viewer', device_scope={'tags': ['core']},
+        )
+        ids = get_scoped_device_ids(viewer)
+        self.assertEqual(ids, {self.core_device.id})
+        self.assertNotIn(self.edge_device.id, ids)

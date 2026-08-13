@@ -38,6 +38,12 @@ class BackupViewSet(viewsets.ModelViewSet):
         """Filter queryset based on query params"""
         queryset = super().get_queryset()
 
+        # Device-scope RBAC — see DeviceViewSet.get_queryset for details.
+        from core.device_filters import get_scoped_device_ids
+        scoped_ids = get_scoped_device_ids(self.request.user)
+        if scoped_ids is not None:
+            queryset = queryset.filter(device_id__in=scoped_ids)
+
         # Filter by device
         device_id = self.request.query_params.get('device', None)
         if device_id:
@@ -135,7 +141,13 @@ class BackupViewSet(viewsets.ModelViewSet):
 
         backup1 = self.get_object()
         try:
-            backup2 = Backup.objects.get(id=compare_id)
+            # Scoped queryset, not Backup.objects — compare_id is
+            # attacker-suppliable, and self.get_object() above only
+            # scopes backup1 (from the URL's own pk). Without this,
+            # a device-scoped user could pull the config diff of a
+            # backup belonging to a device outside their scope just by
+            # guessing/enumerating its ID.
+            backup2 = self.get_queryset().get(id=compare_id)
         except Backup.DoesNotExist:
             return Response(
                 {'detail': 'Backup not found'},

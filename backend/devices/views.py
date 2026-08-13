@@ -130,6 +130,14 @@ class DeviceViewSet(viewsets.ModelViewSet):
         """Filter queryset based on query params"""
         queryset = super().get_queryset()
 
+        # Device-scope RBAC: non-administrators with a device_scope set
+        # only see devices matching it. None means unrestricted (admin,
+        # superuser, or no scope configured) — see core.device_filters.
+        from core.device_filters import get_scoped_device_ids
+        scoped_ids = get_scoped_device_ids(self.request.user)
+        if scoped_ids is not None:
+            queryset = queryset.filter(id__in=scoped_ids)
+
         # Filter by status
         status_param = self.request.query_params.get('status', None)
         if status_param:
