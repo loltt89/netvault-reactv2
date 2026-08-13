@@ -857,7 +857,8 @@
     "never": "Never",
     "days_ago": "{{count}} day ago",
     "days_ago_plural": "{{count}} days ago",
-    "and_more": "and {{count}} more..."
+    "and_more": "and {{count}} more...",
+    "all_good": "All devices backed up recently — nothing stale."
   },
   "deviceFilters": {
     "tags": "Tags",

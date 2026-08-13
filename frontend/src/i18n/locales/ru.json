@@ -857,7 +857,8 @@
     "never": "Никогда",
     "days_ago": "{{count}} день назад",
     "days_ago_plural": "{{count}} дн. назад",
-    "and_more": "и ещё {{count}}..."
+    "and_more": "и ещё {{count}}...",
+    "all_good": "Все устройства бэкапились недавно — просроченных нет."
   },
   "deviceFilters": {
     "tags": "Теги",

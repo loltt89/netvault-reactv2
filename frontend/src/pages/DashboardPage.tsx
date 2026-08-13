@@ -261,45 +261,54 @@ const DashboardPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Stale Backups — devices that haven't backed up in 3+ days, or ever */}
-      {staleDevices.length > 0 && (
-        <div className="chart-card full-width" style={{ marginTop: '1.5rem' }}>
-          <h3 className="chart-title">
-            ⏰ {t('staleBackups.title')} ({staleDevices.length})
-          </h3>
-          <div className="table-container" style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ backgroundColor: 'var(--hover-bg)', borderBottom: '2px solid var(--border-color)' }}>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>{t('staleBackups.device')}</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>{t('staleBackups.ip_address')}</th>
-                  <th style={{ padding: '0.75rem', textAlign: 'left' }}>{t('staleBackups.last_backup')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {staleDevices.slice(0, 10).map((d) => (
-                  <tr key={d.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <td style={{ padding: '0.75rem' }}>
-                      <Link to={`/devices/${d.id}`}>{d.name}</Link>
-                    </td>
-                    <td style={{ padding: '0.75rem' }}>{d.ip_address}</td>
-                    <td style={{ padding: '0.75rem' }}>
-                      {d.days_since_backup === null
-                        ? t('staleBackups.never')
-                        : t('staleBackups.days_ago', { count: d.days_since_backup })}
-                    </td>
+      {/* Stale Backups — devices that haven't backed up in 3+ days, or ever.
+          Always rendered, like the stat cards/charts above (which show 0s
+          rather than disappearing on an empty system) — an empty state here
+          reads as "nothing wrong to check", not "widget missing". */}
+      <div className="chart-card full-width" style={{ marginTop: '1.5rem' }}>
+        <h3 className="chart-title">
+          ⏰ {t('staleBackups.title')} {staleDevices.length > 0 && `(${staleDevices.length})`}
+        </h3>
+        {staleDevices.length === 0 ? (
+          <p style={{ color: 'var(--text-secondary)', margin: 0 }}>
+            ✅ {t('staleBackups.all_good')}
+          </p>
+        ) : (
+          <>
+            <div className="table-container" style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ backgroundColor: 'var(--hover-bg)', borderBottom: '2px solid var(--border-color)' }}>
+                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>{t('staleBackups.device')}</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>{t('staleBackups.ip_address')}</th>
+                    <th style={{ padding: '0.75rem', textAlign: 'left' }}>{t('staleBackups.last_backup')}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {staleDevices.length > 10 && (
-            <p style={{ marginTop: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-              {t('staleBackups.and_more', { count: staleDevices.length - 10 })}
-            </p>
-          )}
-        </div>
-      )}
+                </thead>
+                <tbody>
+                  {staleDevices.slice(0, 10).map((d) => (
+                    <tr key={d.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '0.75rem' }}>
+                        <Link to={`/devices/${d.id}`}>{d.name}</Link>
+                      </td>
+                      <td style={{ padding: '0.75rem' }}>{d.ip_address}</td>
+                      <td style={{ padding: '0.75rem' }}>
+                        {d.days_since_backup === null
+                          ? t('staleBackups.never')
+                          : t('staleBackups.days_ago', { count: d.days_since_backup })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {staleDevices.length > 10 && (
+              <p style={{ marginTop: '0.75rem', color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+                {t('staleBackups.and_more', { count: staleDevices.length - 10 })}
+              </p>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 };
