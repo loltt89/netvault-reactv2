@@ -220,7 +220,8 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
                 device_name=device.name,
                 backup_id=backup.id,
                 size_bytes=backup.size_bytes,
-                has_changes=backup.has_changes
+                has_changes=backup.has_changes,
+                device=device,
             )
 
             return {
@@ -251,7 +252,7 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
             logger.error(f"Backup failed for {device.name}: {error_message}")
 
             # Send notification for backup failure
-            notify_backup_failed(device.name, error_message, backup.id)
+            notify_backup_failed(device.name, error_message, backup.id, device=device)
 
             return {'success': False, 'error': error_message}
 
@@ -283,7 +284,7 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
             raise self.retry(exc=e, countdown=60)
 
         # Send notification only after all retries exhausted
-        notify_backup_failed(device.name, str(e), backup.id)
+        notify_backup_failed(device.name, str(e), backup.id, device=device)
 
         return {'success': False, 'error': str(e)}
 

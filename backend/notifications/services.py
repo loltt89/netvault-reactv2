@@ -65,12 +65,16 @@ def send_email_notification(subject: str, message: str, recipient_list: list = N
         return False
 
 
-def send_telegram_notification(message: str):
+def send_telegram_notification(message: str, chat_id: str = None):
     """
     Send Telegram notification using system settings from database
 
     Args:
         message: Message text
+        chat_id: Override the globally configured chat ID (used by
+            per-rule NotificationRule.telegram_chat_ids). The bot token
+            itself is always the one global bot configured in
+            SystemSettings — rules don't get their own bot.
     """
     try:
         # Get system settings from database (cached)
@@ -83,7 +87,7 @@ def send_telegram_notification(message: str):
             return False
 
         bot_token = sys_settings.get_telegram_bot_token()  # Decrypted
-        chat_id = sys_settings.telegram_chat_id
+        chat_id = chat_id or sys_settings.telegram_chat_id
 
         if not bot_token or not chat_id:
             logger.warning("Telegram not configured properly")
@@ -108,7 +112,132 @@ def send_telegram_notification(message: str):
         return False
 
 
-def notify_backup_success(device_name: str, backup_id: int = None, size_bytes: int = 0, has_changes: bool = False):
+def send_webhook_notification(url: str, payload: dict):
+    """
+    POST a JSON payload to an arbitrary webhook URL (NotificationRule.webhook_url).
+
+    Args:
+        url: Destination webhook URL
+        payload: JSON-serializable body (trigger, subject, message, plus
+            whatever event-specific fields the caller adds)
+    """
+    if not url:
+        logger.warning("Webhook rule has no URL configured, skipping notification")
+        return False
+
+    try:
+        response = requests.post(url, json=payload, timeout=10)
+        if 200 <= response.status_code < 300:
+            logger.info(f"Webhook sent to {url}: HTTP {response.status_code}")
+            return True
+
+        logger.error(f"Webhook to {url} returned HTTP {response.status_code}: {response.text[:200]}")
+        return False
+
+    except Exception as e:
+        logger.error(f"Failed to send webhook to {url}: {e}")
+        return False
+
+
+def _device_matches_filters(device, filters: dict) -> bool:
+    """
+    Check whether `device` matches a NotificationRule's device_filters.
+    Supported keys: tags (any overlap), criticality, vendor_id,
+    device_type_id, location — each accepts either a single value or a
+    list of acceptable values. Unrecognized keys are ignored rather than
+    silently excluding every device (a typo in a filter key should not
+    make a rule fire for nobody).
+    """
+    if not filters:
+        return True
+    if device is None:
+        return False
+
+    def _as_list(value):
+        return value if isinstance(value, list) else [value]
+
+    for key, expected in filters.items():
+        if key == 'tags':
+            if not set(device.tags or []) & set(_as_list(expected)):
+                return False
+        elif key == 'criticality':
+            if device.criticality not in _as_list(expected):
+                return False
+        elif key == 'vendor_id':
+            if device.vendor_id not in _as_list(expected):
+                return False
+        elif key == 'device_type_id':
+            if device.device_type_id not in _as_list(expected):
+                return False
+        elif key == 'location':
+            if device.location not in _as_list(expected):
+                return False
+        # unknown key: ignore, don't exclude
+
+    return True
+
+
+def dispatch_rules(trigger: str, device=None, subject: str = '', message: str = '',
+                    telegram_message: str = None, webhook_payload: dict = None):
+    """
+    Fan a notification event out to every active NotificationRule matching
+    `trigger` (and, if the event is device-scoped, matching the rule's
+    device_filters), on top of whatever the flat SystemSettings.notify_on_*
+    toggle already sent. Every attempt is logged to Notification, so the
+    rule system has its own delivery audit trail independent of app logs.
+
+    A deployment that never creates a rule behaves exactly as before —
+    this is purely additive to the existing notify_backup_success/
+    notify_backup_failed/etc functions, not a replacement for them.
+    """
+    from django.utils import timezone
+    from .models import NotificationRule, Notification
+
+    rules = NotificationRule.objects.filter(trigger=trigger, is_active=True)
+
+    for rule in rules:
+        if not _device_matches_filters(device, rule.device_filters):
+            continue
+
+        ok = False
+        recipient_desc = ''
+
+        if rule.channel == 'email':
+            recipients = rule.email_recipients or None
+            ok = send_email_notification(subject, message, recipient_list=recipients)
+            recipient_desc = ', '.join(recipients) if recipients else 'default administrator'
+
+        elif rule.channel == 'telegram':
+            text = telegram_message or message
+            if rule.telegram_chat_ids:
+                ok = all(send_telegram_notification(text, chat_id=cid) for cid in rule.telegram_chat_ids)
+                recipient_desc = ', '.join(rule.telegram_chat_ids)
+            else:
+                ok = send_telegram_notification(text)
+                recipient_desc = 'default chat'
+
+        elif rule.channel == 'webhook':
+            payload = webhook_payload or {'trigger': trigger, 'subject': subject, 'message': message}
+            ok = send_webhook_notification(rule.webhook_url, payload)
+            recipient_desc = rule.webhook_url
+
+        else:
+            continue
+
+        Notification.objects.create(
+            rule=rule,
+            status='sent' if ok else 'failed',
+            title=subject or trigger,
+            message=message,
+            channel=rule.channel,
+            recipient=recipient_desc,
+            sent_at=timezone.now() if ok else None,
+            error_message='' if ok else 'Delivery failed — see application logs for details',
+        )
+
+
+def notify_backup_success(device_name: str, backup_id: int = None, size_bytes: int = 0,
+                           has_changes: bool = False, device=None):
     """
     Send notification when backup succeeds
 
@@ -117,14 +246,10 @@ def notify_backup_success(device_name: str, backup_id: int = None, size_bytes: i
         backup_id: Backup record ID
         size_bytes: Backup size in bytes
         has_changes: Whether config changed
+        device: The Device instance (optional) — enables per-rule
+            device_filters matching in dispatch_rules(); the flat
+            SystemSettings toggle below doesn't need it.
     """
-    # Check if notifications are enabled (from database settings)
-    from core.models import SystemSettings
-    sys_settings = SystemSettings.get_settings()
-
-    if not sys_settings.notify_on_backup_success:
-        return
-
     subject = f"Backup Success: {device_name}"
 
     size_kb = size_bytes / 1024 if size_bytes else 0
@@ -137,12 +262,27 @@ Size: {size_kb:.1f} KB
 Time: {get_current_time()}
 Backup ID: {backup_id if backup_id else 'N/A'}"""
 
-    # Send both email and Telegram
-    send_email_notification(subject, message)
-    send_telegram_notification(f"✅ Backup success: *{device_name}*\n{changes_text} • {size_kb:.1f} KB")
+    telegram_message = f"✅ Backup success: *{device_name}*\n{changes_text} • {size_kb:.1f} KB"
+
+    # Check if notifications are enabled (from database settings)
+    from core.models import SystemSettings
+    sys_settings = SystemSettings.get_settings()
+
+    if sys_settings.notify_on_backup_success:
+        send_email_notification(subject, message)
+        send_telegram_notification(telegram_message)
+
+    dispatch_rules(
+        'backup_success', device=device, subject=subject, message=message,
+        telegram_message=telegram_message,
+        webhook_payload={
+            'trigger': 'backup_success', 'device': device_name, 'backup_id': backup_id,
+            'has_changes': has_changes, 'size_bytes': size_bytes,
+        },
+    )
 
 
-def notify_backup_failed(device_name: str, error_message: str, backup_id: int = None):
+def notify_backup_failed(device_name: str, error_message: str, backup_id: int = None, device=None):
     """
     Send notification when backup fails
 
@@ -150,14 +290,9 @@ def notify_backup_failed(device_name: str, error_message: str, backup_id: int = 
         device_name: Name of the device
         error_message: Error description
         backup_id: Backup record ID
+        device: The Device instance (optional) — enables per-rule
+            device_filters matching in dispatch_rules().
     """
-    # Check if notifications are enabled (from database settings)
-    from core.models import SystemSettings
-    sys_settings = SystemSettings.get_settings()
-
-    if not sys_settings.notify_on_backup_failure:
-        return
-
     subject = f"Backup Failed: {device_name}"
 
     message = f"""Backup failed for device: {device_name}
@@ -169,9 +304,24 @@ Backup ID: {backup_id if backup_id else 'N/A'}
 
 Please check the device status and configuration."""
 
-    # Send both email and Telegram
-    send_email_notification(subject, message)
-    send_telegram_notification(f"❌ Backup failed: *{device_name}*\n{error_message}")
+    telegram_message = f"❌ Backup failed: *{device_name}*\n{error_message}"
+
+    # Check if notifications are enabled (from database settings)
+    from core.models import SystemSettings
+    sys_settings = SystemSettings.get_settings()
+
+    if sys_settings.notify_on_backup_failure:
+        send_email_notification(subject, message)
+        send_telegram_notification(telegram_message)
+
+    dispatch_rules(
+        'backup_failed', device=device, subject=subject, message=message,
+        telegram_message=telegram_message,
+        webhook_payload={
+            'trigger': 'backup_failed', 'device': device_name, 'backup_id': backup_id,
+            'error': error_message,
+        },
+    )
 
 
 def notify_multiple_failures(failed_count: int, total_count: int):
@@ -201,16 +351,19 @@ Please check the audit logs for details."""
     )
 
 
-def notify_device_offline(device_name: str, last_seen: str):
+def notify_device_offline(device_name: str, last_seen: str, device=None):
     """
     Send notification when device goes offline
 
     Args:
         device_name: Name of the device
         last_seen: Last seen timestamp
+        device: The Device instance (optional) — enables per-rule
+            device_filters matching in dispatch_rules(), e.g. a rule
+            scoped to criticality=critical devices only.
     """
     subject = f"Device Offline: {device_name}"
-    
+
     message = f"""Device has gone offline: {device_name}
 
 Last seen: {last_seen}
@@ -218,10 +371,20 @@ Time: {get_current_time()}
 
 Please check the device connectivity."""
 
-    # Only send critical device offline notifications for important devices
-    # (to avoid spam, you can add device.criticality check in caller)
+    telegram_message = f"🔴 Device offline: *{device_name}*"
+
+    # Unlike backup success/failure there's no flat SystemSettings toggle
+    # for this one — it always sends via the global email+Telegram config.
+    # If that's too noisy, scope a device_offline rule to just the
+    # devices that matter (criticality filter) instead of a global switch.
     send_email_notification(subject, message)
-    send_telegram_notification(f"🔴 Device offline: *{device_name}*")
+    send_telegram_notification(telegram_message)
+
+    dispatch_rules(
+        'device_offline', device=device, subject=subject, message=message,
+        telegram_message=telegram_message,
+        webhook_payload={'trigger': 'device_offline', 'device': device_name, 'last_seen': last_seen},
+    )
 
 
 def notify_host_key_mismatch(device_name: str, ip_address: str, expected: str, received: str):

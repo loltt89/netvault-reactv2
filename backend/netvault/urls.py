@@ -23,7 +23,7 @@ urlpatterns = [
     path('api/v1/', include('accounts.urls')),
     path('api/v1/devices/', include('devices.urls')),
     path('api/v1/backups/', include('backups.urls')),
-    # path('api/v1/notifications/', include('notifications.urls')),  # Will create later
+    path('api/v1/notifications/', include('notifications.urls')),
 
     # Dashboard endpoints
     path('api/v1/dashboard/statistics/', dashboard_statistics, name='dashboard-statistics'),
