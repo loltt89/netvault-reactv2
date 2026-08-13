@@ -1039,6 +1039,49 @@ class BackupTasksTestCase(TestCase):
         self.assertIn('backup_id', result)
         mock_notify.assert_called_once()
 
+    @patch('compliance.services.evaluate_backup_compliance')
+    @patch('backups.tasks.backup_device_config')
+    @patch('backups.tasks.DeviceLock')
+    @patch('backups.tasks.get_channel_layer')
+    @patch('backups.tasks.notify_backup_success')
+    def test_backup_device_calls_compliance_check(
+        self, mock_notify, mock_channel, mock_lock_class, mock_backup_config, mock_compliance,
+    ):
+        """A successful backup triggers a compliance re-evaluation of it"""
+        from backups.tasks import backup_device
+
+        mock_lock = MagicMock()
+        mock_lock.acquire.return_value = True
+        mock_lock_class.return_value = mock_lock
+        mock_channel.return_value = None
+        mock_backup_config.return_value = (True, 'hostname Router', None)
+
+        result = backup_device(device_id=self.device.id, triggered_by_id=self.user.id, backup_type='manual')
+
+        self.assertTrue(result['success'])
+        mock_compliance.assert_called_once()
+
+    @patch('compliance.services.evaluate_backup_compliance', side_effect=Exception('boom'))
+    @patch('backups.tasks.backup_device_config')
+    @patch('backups.tasks.DeviceLock')
+    @patch('backups.tasks.get_channel_layer')
+    @patch('backups.tasks.notify_backup_success')
+    def test_compliance_check_failure_does_not_fail_backup(
+        self, mock_notify, mock_channel, mock_lock_class, mock_backup_config, mock_compliance,
+    ):
+        """A broken compliance rule/policy must never fail an otherwise-successful backup"""
+        from backups.tasks import backup_device
+
+        mock_lock = MagicMock()
+        mock_lock.acquire.return_value = True
+        mock_lock_class.return_value = mock_lock
+        mock_channel.return_value = None
+        mock_backup_config.return_value = (True, 'hostname Router', None)
+
+        result = backup_device(device_id=self.device.id, triggered_by_id=self.user.id, backup_type='manual')
+
+        self.assertTrue(result['success'])
+
     @patch('backups.tasks.DeviceLock')
     @patch('backups.tasks.get_channel_layer')
     def test_backup_device_locked(self, mock_channel, mock_lock_class):

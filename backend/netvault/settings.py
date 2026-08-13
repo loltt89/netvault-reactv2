@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     'devices',
     'backups',
     'notifications',
+    'compliance',
 ]
 
 MIDDLEWARE = [

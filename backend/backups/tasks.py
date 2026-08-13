@@ -224,6 +224,15 @@ def backup_device(self, device_id: int, triggered_by_id: int = None, backup_type
                 device=device,
             )
 
+            # Compliance check: re-evaluate every active policy against
+            # this backup. Never let a bug here fail an otherwise-
+            # successful backup.
+            try:
+                from compliance.services import evaluate_backup_compliance
+                evaluate_backup_compliance(backup)
+            except Exception as e:
+                logger.error(f"Compliance evaluation failed for backup {backup.id}: {e}")
+
             return {
                 'success': True,
                 'backup_id': backup.id,
