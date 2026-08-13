@@ -1383,3 +1383,18 @@ class GetScopedDeviceIdsTestCase(TestCase):
         ids = get_scoped_device_ids(viewer)
         self.assertEqual(ids, {self.core_device.id})
         self.assertNotIn(self.edge_device.id, ids)
+
+
+class CeleryTimezoneTestCase(SimpleTestCase):
+    """
+    Regression test: celery.py used to hardcode app.conf.timezone = 'UTC',
+    silently overriding settings.py's CELERY_TIMEZONE = TIME_ZONE (already
+    picked up correctly by config_from_object() a few lines earlier) —
+    every fixed-hour crontab beat entry would fire at the wrong wall-clock
+    hour on any server whose local timezone isn't UTC.
+    """
+
+    def test_celery_app_timezone_follows_django_time_zone(self):
+        from django.conf import settings
+        from netvault.celery import app
+        self.assertEqual(app.conf.timezone, settings.TIME_ZONE)
