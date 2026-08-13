@@ -301,6 +301,42 @@ if os.getenv('CORS_ALLOW_PRIVATE_NETWORKS', 'False') == 'True':
 
 CORS_ALLOW_CREDENTIALS = True
 
+# ---------------------------------------------------------------------------
+# WebAuthn (passkeys) — an alternative/additional 2FA factor to TOTP.
+#
+# The browser flatly refuses to run WebAuthn ceremonies outside a "secure
+# context": HTTPS, or the literal hostname `localhost`. A bare IP address
+# (the exact thing ALLOW_PRIVATE_NETWORK_HOSTS/CORS_ALLOW_PRIVATE_NETWORKS
+# exist to make work for everything *else* in this app) does not qualify —
+# WebAuthn's rp_id must be a real DNS domain, not an IP. So this feature is
+# opt-in via the same domain that install.sh already puts in
+# CORS_ALLOWED_ORIGINS, and simply won't offer itself (frontend
+# feature-detects window.isSecureContext) on an HTTP/IP-only deployment.
+#
+# WEBAUTHN_RP_ID must be exactly the domain the browser sees in its address
+# bar (no scheme, no port) — defaults to the hostname of the first
+# CORS_ALLOWED_ORIGINS entry, which is already install-time-configured to
+# the real deployment domain. Override explicitly via .env if that default
+# is wrong for your setup (e.g. multiple domains, non-default port setups).
+def _default_webauthn_rp_id():
+    from urllib.parse import urlparse
+    for origin in CORS_ALLOWED_ORIGINS:
+        hostname = urlparse(origin).hostname
+        if hostname:
+            return hostname
+    return ''
+
+WEBAUTHN_RP_ID = os.getenv('WEBAUTHN_RP_ID', '').strip() or _default_webauthn_rp_id()
+WEBAUTHN_RP_NAME = os.getenv('WEBAUTHN_RP_NAME', 'NetVault')
+# Origins a WebAuthn response is accepted as having come from — reuse
+# CORS_ALLOWED_ORIGINS by default since that's already the exact set of
+# origins this deployment expects its frontend to be served from.
+_webauthn_origins_env = os.getenv('WEBAUTHN_ORIGINS', '').strip()
+WEBAUTHN_ORIGINS = (
+    [o.strip() for o in _webauthn_origins_env.split(',') if o.strip()]
+    if _webauthn_origins_env else CORS_ALLOWED_ORIGINS
+)
+
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',

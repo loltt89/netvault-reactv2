@@ -8,7 +8,8 @@ from rest_framework import status
 from unittest.mock import patch, MagicMock
 import pyotp
 
-from accounts.models import User, AuditLog, SAMLSettings
+from accounts.models import User, AuditLog, SAMLSettings, WebAuthnCredential
+from accounts import webauthn_service
 from accounts.saml_views import SAMLACSView, SAMLAccountLinkRequired
 
 
@@ -645,6 +646,381 @@ class AuthAPITestCase(APITestCase):
         response = self.client.get('/api/v1/users/me/')
 
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class WebAuthnModelTestCase(TestCase):
+    """Tests for WebAuthnCredential and User.has_second_factor"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='webauthn_model@example.com', username='webauthn_model', password='pass123',
+        )
+
+    def test_no_second_factor_by_default(self):
+        self.assertFalse(self.user.has_second_factor)
+
+    def test_totp_alone_requires_second_factor(self):
+        self.user.two_factor_enabled = True
+        self.user.save()
+        self.assertTrue(self.user.has_second_factor)
+
+    def test_webauthn_alone_requires_second_factor(self):
+        """A passkey alone is enough — two_factor_enabled doesn't need to be True."""
+        WebAuthnCredential.objects.create(
+            user=self.user, name='Test Key', credential_id='cred-1', public_key='pk-1',
+        )
+        self.assertFalse(self.user.two_factor_enabled)
+        self.assertTrue(self.user.has_second_factor)
+
+    def test_str(self):
+        cred = WebAuthnCredential.objects.create(
+            user=self.user, name='YubiKey', credential_id='cred-2', public_key='pk-2',
+        )
+        self.assertIn('YubiKey', str(cred))
+        self.assertIn(self.user.email, str(cred))
+
+
+class WebAuthnServiceTestCase(TestCase):
+    """Tests for accounts/webauthn_service.py — mocks the underlying `webauthn` library"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            email='webauthn_service@example.com', username='webauthn_service', password='pass123',
+        )
+        from django.core.cache import cache
+        cache.clear()
+
+    @override_settings(WEBAUTHN_RP_ID='')
+    def test_not_configured_without_rp_id(self):
+        self.assertFalse(webauthn_service.is_configured())
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    def test_configured_with_rp_id(self):
+        self.assertTrue(webauthn_service.is_configured())
+
+    @override_settings(WEBAUTHN_RP_ID='')
+    def test_build_registration_options_fails_when_not_configured(self):
+        with self.assertRaises(webauthn_service.WebAuthnError):
+            webauthn_service.build_registration_options(self.user)
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    @patch('accounts.webauthn_service.webauthn.options_to_json', return_value='{"fake":"options"}')
+    @patch('accounts.webauthn_service.webauthn.generate_registration_options')
+    def test_build_registration_options_stores_challenge(self, mock_generate, mock_to_json):
+        mock_generate.return_value = MagicMock(challenge=b'fake-challenge-bytes')
+
+        result = webauthn_service.build_registration_options(self.user)
+
+        self.assertEqual(result, '{"fake":"options"}')
+        # Challenge should now be poppable (i.e. it was actually stored)
+        challenge = webauthn_service._pop_challenge('reg', self.user.id)
+        self.assertEqual(challenge, b'fake-challenge-bytes')
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    @patch('accounts.webauthn_service.webauthn.verify_registration_response')
+    def test_complete_registration_creates_credential(self, mock_verify):
+        webauthn_service._store_challenge('reg', self.user.id, b'chal')
+        mock_verify.return_value = MagicMock(
+            credential_id=b'\x01\x02\x03', credential_public_key=b'\x04\x05\x06', sign_count=0,
+        )
+
+        cred = webauthn_service.complete_registration(self.user, {'fake': 'credential'}, 'My Key')
+
+        self.assertEqual(cred.user, self.user)
+        self.assertEqual(cred.name, 'My Key')
+        self.assertTrue(WebAuthnCredential.objects.filter(id=cred.id).exists())
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    def test_complete_registration_without_challenge_fails(self):
+        with self.assertRaises(webauthn_service.WebAuthnError):
+            webauthn_service.complete_registration(self.user, {'fake': 'credential'}, 'My Key')
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    @patch('accounts.webauthn_service.webauthn.verify_registration_response')
+    def test_complete_registration_rejects_duplicate_credential(self, mock_verify):
+        import webauthn as real_webauthn
+        existing_id = real_webauthn.helpers.bytes_to_base64url(b'\x01\x02\x03')
+        WebAuthnCredential.objects.create(
+            user=self.user, name='Existing', credential_id=existing_id, public_key='pk',
+        )
+        webauthn_service._store_challenge('reg', self.user.id, b'chal')
+        mock_verify.return_value = MagicMock(
+            credential_id=b'\x01\x02\x03', credential_public_key=b'\x04\x05\x06', sign_count=0,
+        )
+
+        with self.assertRaises(webauthn_service.WebAuthnError):
+            webauthn_service.complete_registration(self.user, {'fake': 'credential'}, 'Dup')
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    def test_build_authentication_options_fails_with_no_credentials(self):
+        with self.assertRaises(webauthn_service.WebAuthnError):
+            webauthn_service.build_authentication_options(self.user)
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    @patch('accounts.webauthn_service.webauthn.options_to_json', return_value='{"fake":"auth-options"}')
+    @patch('accounts.webauthn_service.webauthn.generate_authentication_options')
+    def test_build_authentication_options_with_registered_credential(self, mock_generate, mock_to_json):
+        WebAuthnCredential.objects.create(
+            user=self.user, name='Key', credential_id='Y3JlZC0x', public_key='pk',
+        )
+        mock_generate.return_value = MagicMock(challenge=b'auth-challenge')
+
+        result = webauthn_service.build_authentication_options(self.user)
+
+        self.assertEqual(result, '{"fake":"auth-options"}')
+        # allow_credentials should have been built from the registered credential
+        _, kwargs = mock_generate.call_args
+        self.assertEqual(len(kwargs['allow_credentials']), 1)
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    @patch('accounts.webauthn_service.webauthn.verify_authentication_response')
+    @patch('accounts.webauthn_service.webauthn.helpers.parse_authentication_credential_json')
+    def test_verify_authentication_success_updates_sign_count(self, mock_parse, mock_verify):
+        import webauthn as real_webauthn
+        cred_id_b64 = real_webauthn.helpers.bytes_to_base64url(b'\x09\x09')
+        stored = WebAuthnCredential.objects.create(
+            user=self.user, name='Key', credential_id=cred_id_b64, public_key='cGs=', sign_count=5,
+        )
+        webauthn_service._store_challenge('auth', self.user.id, b'auth-chal')
+        mock_parse.return_value = MagicMock(raw_id=b'\x09\x09')
+        mock_verify.return_value = MagicMock(new_sign_count=6)
+
+        result = webauthn_service.verify_authentication(self.user, {'fake': 'assertion'})
+
+        self.assertTrue(result)
+        stored.refresh_from_db()
+        self.assertEqual(stored.sign_count, 6)
+        self.assertIsNotNone(stored.last_used_at)
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    @patch('accounts.webauthn_service.webauthn.helpers.parse_authentication_credential_json')
+    def test_verify_authentication_unknown_credential_fails(self, mock_parse):
+        webauthn_service._store_challenge('auth', self.user.id, b'auth-chal')
+        mock_parse.return_value = MagicMock(raw_id=b'\xff\xff')  # not registered
+
+        with self.assertRaises(webauthn_service.WebAuthnError):
+            webauthn_service.verify_authentication(self.user, {'fake': 'assertion'})
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    def test_verify_authentication_without_challenge_fails(self):
+        with self.assertRaises(webauthn_service.WebAuthnError):
+            webauthn_service.verify_authentication(self.user, {'fake': 'assertion'})
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    @patch('accounts.webauthn_service.webauthn.verify_registration_response')
+    def test_challenge_is_single_use(self, mock_verify):
+        """A second completion attempt with the same (now-consumed) challenge must fail."""
+        webauthn_service._store_challenge('reg', self.user.id, b'chal')
+        mock_verify.return_value = MagicMock(
+            credential_id=b'\x01', credential_public_key=b'\x02', sign_count=0,
+        )
+        webauthn_service.complete_registration(self.user, {'fake': 'credential'}, 'First')
+
+        with self.assertRaises(webauthn_service.WebAuthnError):
+            webauthn_service.complete_registration(self.user, {'fake': 'credential'}, 'Second')
+
+
+class WebAuthnCredentialViewSetTestCase(APITestCase):
+    """Tests for listing/deleting passkeys — own-credentials-only"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='webauthn_owner@example.com', username='webauthn_owner', password='pass123',
+        )
+        self.other_user = User.objects.create_user(
+            email='webauthn_other@example.com', username='webauthn_other', password='pass123',
+        )
+        self.own_cred = WebAuthnCredential.objects.create(
+            user=self.user, name='My Key', credential_id='own-cred', public_key='pk',
+        )
+        self.other_cred = WebAuthnCredential.objects.create(
+            user=self.other_user, name='Their Key', credential_id='other-cred', public_key='pk',
+        )
+
+    def test_list_only_shows_own_credentials(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/v1/webauthn-credentials/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {c['id'] for c in response.data['results']}
+        self.assertEqual(ids, {self.own_cred.id})
+
+    def test_cannot_delete_other_users_credential(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.delete(f'/api/v1/webauthn-credentials/{self.other_cred.id}/')
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertTrue(WebAuthnCredential.objects.filter(id=self.other_cred.id).exists())
+
+    def test_can_delete_own_credential(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.delete(f'/api/v1/webauthn-credentials/{self.own_cred.id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(WebAuthnCredential.objects.filter(id=self.own_cred.id).exists())
+
+    def test_credential_id_and_public_key_never_serialized(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/v1/webauthn-credentials/')
+        body = str(response.data)
+        self.assertNotIn('own-cred', body)
+        self.assertNotIn('pk', body)
+
+    def test_unauthenticated_rejected(self):
+        response = self.client.get('/api/v1/webauthn-credentials/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class WebAuthnRegistrationViewsTestCase(APITestCase):
+    """Tests for UserViewSet.webauthn_register_begin/complete"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='webauthn_reg@example.com', username='webauthn_reg', password='pass123',
+        )
+        self.client.force_authenticate(user=self.user)
+
+    def test_register_begin_unauthenticated_rejected(self):
+        self.client.force_authenticate(user=None)
+        response = self.client.post('/api/v1/users/webauthn_register_begin/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    @override_settings(WEBAUTHN_RP_ID='')
+    def test_register_begin_not_configured(self):
+        response = self.client.post('/api/v1/users/webauthn_register_begin/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    @patch('accounts.webauthn_service.webauthn.options_to_json', return_value='{"fake":"options"}')
+    @patch('accounts.webauthn_service.webauthn.generate_registration_options')
+    def test_register_begin_success(self, mock_generate, mock_to_json):
+        mock_generate.return_value = MagicMock(challenge=b'chal')
+        response = self.client.post('/api/v1/users/webauthn_register_begin/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('options', response.data)
+
+    def test_register_complete_without_credential_rejected(self):
+        response = self.client.post('/api/v1/users/webauthn_register_complete/', {}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    @patch('accounts.webauthn_service.webauthn.verify_registration_response')
+    def test_register_complete_success(self, mock_verify):
+        webauthn_service._store_challenge('reg', self.user.id, b'chal')
+        mock_verify.return_value = MagicMock(
+            credential_id=b'\x01\x02', credential_public_key=b'\x03\x04', sign_count=0,
+        )
+        response = self.client.post('/api/v1/users/webauthn_register_complete/', {
+            'credential': {'fake': 'credential'}, 'name': 'My Laptop',
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['name'], 'My Laptop')
+        self.assertTrue(WebAuthnCredential.objects.filter(user=self.user, name='My Laptop').exists())
+
+
+class WebAuthnLoginFlowTestCase(APITestCase):
+    """Tests for CustomTokenObtainPairSerializer's WebAuthn integration"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(
+            email='webauthn_login@example.com', username='webauthn_login', password='TestPass123!',
+        )
+        from django.core.cache import cache
+        cache.clear()
+
+    def test_login_without_second_factor_registered_works_normally(self):
+        response = self.client.post('/api/v1/token/', {
+            'email': 'webauthn_login@example.com', 'password': 'TestPass123!',
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    @patch('accounts.webauthn_service.webauthn.options_to_json', return_value='{"fake":"options"}')
+    @patch('accounts.webauthn_service.webauthn.generate_authentication_options')
+    def test_login_with_passkey_only_requires_second_factor_and_returns_options(self, mock_generate, mock_to_json):
+        WebAuthnCredential.objects.create(
+            user=self.user, name='Key', credential_id='cred', public_key='pk',
+        )
+        mock_generate.return_value = MagicMock(challenge=b'chal')
+
+        response = self.client.post('/api/v1/token/', {
+            'email': 'webauthn_login@example.com', 'password': 'TestPass123!',
+        })
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(response.data.get('two_factor_required'))
+        self.assertIn('webauthn_options', response.data)
+        self.assertFalse(response.data.get('totp_available'))
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    @patch('accounts.webauthn_service.verify_authentication', return_value=True)
+    def test_login_completes_with_valid_webauthn_response(self, mock_verify):
+        WebAuthnCredential.objects.create(
+            user=self.user, name='Key', credential_id='cred', public_key='pk',
+        )
+
+        response = self.client.post('/api/v1/token/', {
+            'email': 'webauthn_login@example.com', 'password': 'TestPass123!',
+            'webauthn_response': {'fake': 'assertion'},
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn('access', response.data)
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    @patch('accounts.webauthn_service.verify_authentication',
+           side_effect=webauthn_service.WebAuthnError('bad assertion'))
+    def test_login_rejects_invalid_webauthn_response(self, mock_verify):
+        WebAuthnCredential.objects.create(
+            user=self.user, name='Key', credential_id='cred', public_key='pk',
+        )
+
+        response = self.client.post('/api/v1/token/', {
+            'email': 'webauthn_login@example.com', 'password': 'TestPass123!',
+            'webauthn_response': {'fake': 'assertion'},
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_login_with_totp_only_unaffected_by_webauthn_changes(self):
+        """Regression guard: a TOTP-only account's existing flow must be untouched."""
+        self.user.two_factor_enabled = True
+        self.user.two_factor_secret = pyotp.random_base32()
+        self.user.save()
+
+        response = self.client.post('/api/v1/token/', {
+            'email': 'webauthn_login@example.com', 'password': 'TestPass123!',
+        })
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(response.data.get('two_factor_required'))
+        self.assertTrue(response.data.get('totp_available'))
+        self.assertNotIn('webauthn_options', response.data)
+
+        totp = pyotp.TOTP(self.user.two_factor_secret)
+        response = self.client.post('/api/v1/token/', {
+            'email': 'webauthn_login@example.com', 'password': 'TestPass123!',
+            'two_factor_token': totp.now(),
+        })
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    @override_settings(WEBAUTHN_RP_ID='netvault.example.com')
+    @patch('accounts.webauthn_service.verify_authentication', return_value=True)
+    def test_user_with_both_factors_can_use_either(self, mock_verify):
+        """User has TOTP *and* a passkey — webauthn_response alone should be enough,
+        without also needing two_factor_token."""
+        self.user.two_factor_enabled = True
+        self.user.two_factor_secret = pyotp.random_base32()
+        self.user.save()
+        WebAuthnCredential.objects.create(
+            user=self.user, name='Key', credential_id='cred', public_key='pk',
+        )
+
+        response = self.client.post('/api/v1/token/', {
+            'email': 'webauthn_login@example.com', 'password': 'TestPass123!',
+            'webauthn_response': {'fake': 'assertion'},
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
 
 class CookieTokenRefreshTestCase(APITestCase):

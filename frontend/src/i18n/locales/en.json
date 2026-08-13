@@ -24,7 +24,10 @@
     "no_account": "Don't have an account?",
     "register": "Register",
     "login_error_generic": "An error occurred. Please try again.",
-    "sso_error": "SSO Error"
+    "sso_error": "SSO Error",
+    "use_passkey": "Use a passkey",
+    "passkey_failed": "Passkey sign-in failed",
+    "passkey_only_unsupported_browser": "This account only has passkeys registered, and this browser/device doesn't support them. Sign in from a device with a supported browser, or ask an administrator to add TOTP as a fallback."
   },
   "dashboard": {
     "title": "Dashboard",
@@ -638,7 +641,21 @@
     "saml_not_linked": "Not linked",
     "saml_link_description": "Link your account to your organization's SAML identity provider to sign in with SSO. You must be logged in for this — SAML can only be linked to the account that requests it, never auto-attached to an existing account by another login.",
     "link_saml_account": "Link SAML account",
-    "failed_saml_link": "Failed to start SAML linking"
+    "failed_saml_link": "Failed to start SAML linking",
+    "passkeys": "Passkeys",
+    "passkeys_description": "Sign in with a fingerprint, face scan, or hardware security key instead of a 2FA code. Works alongside (not instead of) TOTP — either satisfies the second-factor requirement.",
+    "passkeys_unsupported": "This browser or connection doesn't support passkeys (requires HTTPS or localhost).",
+    "passkey_add": "Add a Passkey",
+    "passkey_adding": "Adding...",
+    "passkey_added": "Passkey added",
+    "passkey_failed_add": "Failed to add passkey",
+    "passkey_removed": "Passkey removed",
+    "passkey_failed_remove": "Failed to remove passkey",
+    "passkey_confirm_delete": "Remove passkey",
+    "passkey_name_prompt": "Name this passkey (e.g. \"YubiKey\" or \"MacBook Touch ID\")",
+    "passkey_default_name": "Passkey",
+    "passkey_added_on": "Added {{date}}",
+    "passkey_last_used": "last used {{date}}"
   },
   "tasks": {
     "title": "Tasks",

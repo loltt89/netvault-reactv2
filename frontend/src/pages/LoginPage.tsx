@@ -6,9 +6,11 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
+import { extractErrorMessage } from '../utils/extractErrorMessage';
 import './LoginPage.css';
 
 const LoginPage: React.FC = () => {
@@ -25,7 +27,11 @@ const LoginPage: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [require2FA, setRequire2FA] = useState<boolean>(false);
+  const [totpAvailable, setTotpAvailable] = useState<boolean>(true);
+  const [webauthnOptions, setWebauthnOptions] = useState<string | null>(null);
   const [ssoEnabled, setSsoEnabled] = useState<boolean>(false);
+
+  const webauthnSupported = browserSupportsWebAuthn() && window.isSecureContext;
 
   useEffect(() => {
     // Check if SSO is enabled
@@ -77,6 +83,8 @@ const LoginPage: React.FC = () => {
 
       if (err.twoFactorRequired) {
         setRequire2FA(true);
+        setTotpAvailable(err.totpAvailable !== false);
+        setWebauthnOptions(err.webauthnOptions || null);
         setError(t('auth.two_factor_required'));
       } else if (err.response?.data) {
         const errors = err.response.data;
@@ -91,6 +99,29 @@ const LoginPage: React.FC = () => {
         }
       } else {
         setError(t('auth.login_error_generic'));
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePasskeyLogin = async () => {
+    if (!webauthnOptions) return;
+    setError('');
+    setLoading(true);
+
+    try {
+      const optionsJSON = JSON.parse(webauthnOptions);
+      const credential = await startAuthentication({ optionsJSON });
+
+      await login(formData.email, formData.password, undefined, credential);
+      navigate('/dashboard');
+    } catch (err) {
+      logger.error('Passkey login error:', err);
+      // A cancelled/dismissed browser ceremony throws a NotAllowedError —
+      // the user just changed their mind, not an actual failure.
+      if ((err as { name?: string })?.name !== 'NotAllowedError') {
+        setError(extractErrorMessage(err, t('auth.passkey_failed')));
       }
     } finally {
       setLoading(false);
@@ -136,7 +167,31 @@ const LoginPage: React.FC = () => {
             />
           </div>
 
-          {require2FA && (
+          {require2FA && webauthnOptions && webauthnSupported && (
+            <div className="form-group">
+              <button
+                type="button"
+                className="sso-button"
+                onClick={handlePasskeyLogin}
+                disabled={loading}
+              >
+                🔑 {t('auth.use_passkey')}
+              </button>
+              {totpAvailable && (
+                <div className="login-divider">
+                  <span>{t('auth.or')}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {require2FA && !totpAvailable && !webauthnSupported && (
+            <div className="error-message">
+              {t('auth.passkey_only_unsupported_browser')}
+            </div>
+          )}
+
+          {require2FA && totpAvailable && (
             <div className="form-group">
               <label htmlFor="twoFactorToken">{t('auth.two_factor_code')}</label>
               <input

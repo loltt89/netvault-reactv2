@@ -24,7 +24,10 @@
     "no_account": "Нет аккаунта?",
     "register": "Зарегистрироваться",
     "login_error_generic": "Произошла ошибка. Попробуйте снова.",
-    "sso_error": "Ошибка SSO"
+    "sso_error": "Ошибка SSO",
+    "use_passkey": "Войти по passkey",
+    "passkey_failed": "Не удалось войти по passkey",
+    "passkey_only_unsupported_browser": "На этом аккаунте настроены только passkeys, а этот браузер/устройство их не поддерживает. Войдите с устройства с поддерживаемым браузером, либо попросите администратора добавить TOTP как запасной вариант."
   },
   "dashboard": {
     "title": "Панель управления",
@@ -638,7 +641,21 @@
     "saml_not_linked": "Не привязан",
     "saml_link_description": "Привяжите аккаунт к SAML-провайдеру вашей организации, чтобы входить через SSO. Для этого нужно быть авторизованным сейчас — SAML может быть привязан только к аккаунту, который сам это запросил, и никогда не подключается автоматически к существующему аккаунту при чужом входе.",
     "link_saml_account": "Привязать SAML аккаунт",
-    "failed_saml_link": "Не удалось начать привязку SAML"
+    "failed_saml_link": "Не удалось начать привязку SAML",
+    "passkeys": "Passkeys",
+    "passkeys_description": "Вход по отпечатку пальца, лицу или физическому ключу вместо кода 2FA. Работает вместе с TOTP (не вместо) — любого из двух достаточно для второго фактора.",
+    "passkeys_unsupported": "Этот браузер или соединение не поддерживает passkeys (нужен HTTPS или localhost).",
+    "passkey_add": "Добавить passkey",
+    "passkey_adding": "Добавление...",
+    "passkey_added": "Passkey добавлен",
+    "passkey_failed_add": "Не удалось добавить passkey",
+    "passkey_removed": "Passkey удалён",
+    "passkey_failed_remove": "Не удалось удалить passkey",
+    "passkey_confirm_delete": "Удалить passkey",
+    "passkey_name_prompt": "Название этого passkey (например, \"YubiKey\" или \"Touch ID на MacBook\")",
+    "passkey_default_name": "Passkey",
+    "passkey_added_on": "Добавлен {{date}}",
+    "passkey_last_used": "использован {{date}}"
   },
   "tasks": {
     "title": "Задачи",

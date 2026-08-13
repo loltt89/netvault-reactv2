@@ -148,6 +148,53 @@ class User(AbstractBaseUser, PermissionsMixin):
         # valid_window=1 allows ±30 seconds (industry standard for clock skew)
         return totp.verify(token, valid_window=1)
 
+    @property
+    def has_second_factor(self):
+        """
+        Whether login requires a second factor at all — TOTP and passkeys
+        are independent, alternative factors (registering a passkey alone,
+        with two_factor_enabled still False, is enough to require one).
+        """
+        return self.two_factor_enabled or self.webauthn_credentials.exists()
+
+
+class WebAuthnCredential(models.Model):
+    """
+    A registered passkey (hardware key, or a platform authenticator like
+    Touch ID/Windows Hello) — an alternative second factor to TOTP. See
+    accounts/webauthn_service.py for the actual registration/authentication
+    ceremonies; this model just stores what's needed to verify future
+    assertions against a previously-registered public key.
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='webauthn_credentials')
+    name = models.CharField(
+        max_length=100, blank=True,
+        help_text='User-facing label, e.g. "YubiKey" or "MacBook Touch ID"',
+    )
+    # Both base64url-encoded, per the WebAuthn/py_webauthn convention —
+    # credential_id identifies the authenticator, public_key is its COSE
+    # public key used to verify future signed assertions.
+    credential_id = models.CharField(max_length=255, unique=True, db_index=True)
+    public_key = models.TextField()
+    sign_count = models.BigIntegerField(
+        default=0,
+        help_text='Authenticator-reported use counter — a non-increasing value on '
+                   'a future login flags a possibly cloned authenticator.',
+    )
+    transports = models.JSONField(default=list, blank=True, help_text='e.g. ["usb", "nfc", "internal"]')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'webauthn_credentials'
+        verbose_name = 'WebAuthn Credential'
+        verbose_name_plural = 'WebAuthn Credentials'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name or "Passkey"} ({self.user.email})'
+
 
 class AuditLog(models.Model):
     """Audit log for tracking user actions"""

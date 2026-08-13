@@ -6,15 +6,17 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from .models import User, AuditLog
+from .models import User, AuditLog, WebAuthnCredential
 from .throttling import LoginRateThrottle, TwoFactorVerifyThrottle
+from . import webauthn_service
 
 logger = logging.getLogger(__name__)
 from .permissions import CanManageUsers, CanViewAuditLogs, IsAdministrator
 from .serializers import (
     CustomTokenObtainPairSerializer, UserSerializer, UserCreateSerializer,
     UserUpdateSerializer, ChangePasswordSerializer, Enable2FASerializer,
-    Verify2FASerializer, Disable2FASerializer, AuditLogSerializer
+    Verify2FASerializer, Disable2FASerializer, AuditLogSerializer,
+    WebAuthnCredentialSerializer
 )
 
 
@@ -64,6 +66,34 @@ class CustomTokenObtainPairView(TokenObtainPairView):
     throttle_classes = [LoginRateThrottle]
 
     def post(self, request, *args, **kwargs):
+        # "You need a second factor and haven't supplied one yet" is
+        # handled here, before the normal serializer-validation flow,
+        # specifically so the response body can carry real JSON types.
+        # CustomTokenObtainPairSerializer.validate() raising a
+        # ValidationError with this same payload would silently mangle it:
+        # DRF's ValidationError stringifies every value in a raised dict
+        # (see _get_error_details), turning totp_available=False into the
+        # *string* "False" once rendered — truthy in both Python and JS,
+        # making the field useless for telling the frontend which methods
+        # are actually available.
+        email = request.data.get('email')
+        password = request.data.get('password')
+        if email and password and not request.data.get('two_factor_token') and not request.data.get('webauthn_response'):
+            from django.contrib.auth import authenticate
+            user = authenticate(username=email, password=password)
+            if user and user.is_active and user.has_second_factor:
+                payload = {
+                    'two_factor_required': True,
+                    'message': '2FA token is required',
+                    'totp_available': user.two_factor_enabled,
+                }
+                if user.webauthn_credentials.exists():
+                    try:
+                        payload['webauthn_options'] = webauthn_service.build_authentication_options(user)
+                    except webauthn_service.WebAuthnError:
+                        pass  # TOTP-only fallback if options couldn't be built
+                return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
         response = super().post(request, *args, **kwargs)
 
         if response.status_code == 200:
@@ -400,6 +430,79 @@ class UserViewSet(viewsets.ModelViewSet):
         )
 
         return Response({'detail': '2FA disabled successfully'})
+
+    @action(detail=False, methods=['post'])
+    def webauthn_register_begin(self, request):
+        """
+        Start registering a new passkey for the current user. Returns
+        options JSON for the frontend to feed straight into
+        @simplewebauthn/browser's startRegistration().
+        """
+        try:
+            options = webauthn_service.build_registration_options(request.user)
+        except webauthn_service.WebAuthnError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response({'options': options})
+
+    @action(detail=False, methods=['post'])
+    def webauthn_register_complete(self, request):
+        """
+        Finish passkey registration. Body: {"credential": <attestation
+        response from startRegistration()>, "name": "<label>"}.
+        """
+        credential = request.data.get('credential')
+        name = request.data.get('name', '')
+        if not credential:
+            return Response({'detail': 'credential is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            cred = webauthn_service.complete_registration(request.user, credential, name)
+        except webauthn_service.WebAuthnError as e:
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        AuditLog.objects.create(
+            user=request.user,
+            action='update',
+            resource_type='User',
+            resource_id=request.user.id,
+            resource_name=request.user.email,
+            description=f'Registered passkey: {cred.name}',
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        )
+        logger.info(f"Passkey '{cred.name}' registered for {request.user.email}")
+
+        return Response(WebAuthnCredentialSerializer(cred).data, status=status.HTTP_201_CREATED)
+
+
+class WebAuthnCredentialViewSet(viewsets.ModelViewSet):
+    """
+    Manage the current user's own registered passkeys — list and delete
+    only (registration itself is a two-step ceremony, handled by
+    UserViewSet.webauthn_register_begin/complete above, not plain create).
+    """
+    serializer_class = WebAuthnCredentialSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ['get', 'delete']
+
+    def get_queryset(self):
+        return WebAuthnCredential.objects.filter(user=self.request.user)
+
+    def perform_destroy(self, instance):
+        name = instance.name
+        instance.delete()
+        AuditLog.objects.create(
+            user=self.request.user,
+            action='update',
+            resource_type='User',
+            resource_id=self.request.user.id,
+            resource_name=self.request.user.email,
+            description=f'Removed passkey: {name}',
+            ip_address=self.request.META.get('REMOTE_ADDR'),
+            user_agent=self.request.META.get('HTTP_USER_AGENT', ''),
+        )
+        logger.info(f"Passkey '{name}' removed for {self.request.user.email}")
 
 
 class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):

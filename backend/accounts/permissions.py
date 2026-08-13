@@ -155,7 +155,10 @@ class CanManageUsers(permissions.BasePermission):
             return True
 
         # Users can view and update their own profile
-        if view.action in ['me', 'update_profile', 'change_password', 'enable_2fa', 'verify_2fa', 'disable_2fa']:
+        if view.action in [
+            'me', 'update_profile', 'change_password', 'enable_2fa', 'verify_2fa', 'disable_2fa',
+            'webauthn_register_begin', 'webauthn_register_complete',
+        ]:
             return True
 
         return False

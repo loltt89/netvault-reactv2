@@ -1,6 +1,9 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import CustomTokenObtainPairView, CookieTokenRefreshView, AuthViewSet, UserViewSet, AuditLogViewSet
+from .views import (
+    CustomTokenObtainPairView, CookieTokenRefreshView, AuthViewSet, UserViewSet,
+    AuditLogViewSet, WebAuthnCredentialViewSet,
+)
 from .saml_views import (
     SAMLMetadataView, SAMLLoginView, SAMLACSView, SAMLSLSView,
     SAMLSettingsAPIView, SAMLStatusView, SAMLLinkInitView
@@ -10,6 +13,7 @@ router = DefaultRouter()
 router.register(r'auth', AuthViewSet, basename='auth')
 router.register(r'users', UserViewSet, basename='users')
 router.register(r'audit-logs', AuditLogViewSet, basename='audit-logs')
+router.register(r'webauthn-credentials', WebAuthnCredentialViewSet, basename='webauthn-credentials')
 
 urlpatterns = [
     # JWT token endpoints

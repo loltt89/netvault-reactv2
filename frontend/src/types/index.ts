@@ -21,6 +21,7 @@ export interface User {
   role: UserRole;
   is_active: boolean;
   two_factor_enabled: boolean;
+  webauthn_credential_count: number;
   is_ldap_user: boolean;
   is_saml_user: boolean;
   date_joined: string;
@@ -29,6 +30,17 @@ export interface User {
   theme: Theme;
   page_size: number;
   device_scope: DeviceFilters;
+}
+
+// A registered passkey — backend/accounts/models.py::WebAuthnCredential.
+// credential_id/public_key never leave the server (see
+// WebAuthnCredentialSerializer), so they're deliberately not here.
+export interface WebAuthnCredential {
+  id: number;
+  name: string;
+  transports: string[];
+  created_at: string;
+  last_used_at: string | null;
 }
 
 export type UserRole = 'administrator' | 'operator' | 'viewer' | 'auditor';
@@ -454,7 +466,7 @@ export interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string, twoFactorToken?: string) => Promise<void>;
+  login: (email: string, password: string, twoFactorToken?: string, webauthnResponse?: object) => Promise<void>;
   logout: () => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;

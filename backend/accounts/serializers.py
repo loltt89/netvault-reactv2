@@ -3,7 +3,7 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import authenticate
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
-from .models import User, AuditLog
+from .models import User, AuditLog, WebAuthnCredential
 import pyotp
 import qrcode
 import io
@@ -11,15 +11,17 @@ import base64
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """Custom JWT token serializer with 2FA support"""
+    """Custom JWT token serializer with 2FA support (TOTP and/or WebAuthn passkeys)"""
 
     two_factor_token = serializers.CharField(required=False, allow_blank=True)
+    webauthn_response = serializers.JSONField(required=False)
 
     def validate(self, attrs):
         # Get credentials
         email = attrs.get('email')
         password = attrs.get('password')
         two_factor_token = attrs.get('two_factor_token', '')
+        webauthn_response = attrs.get('webauthn_response')
 
         # Authenticate user
         user = authenticate(username=email, password=password)
@@ -30,16 +32,32 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         if not user.is_active:
             raise serializers.ValidationError('User account is disabled')
 
-        # Check 2FA if enabled
-        if user.two_factor_enabled:
+        # The "no second factor supplied yet" case is handled earlier, in
+        # CustomTokenObtainPairView.post() — it needs to return real JSON
+        # types (a proper bool, a JSON-string options blob), and raising a
+        # ValidationError here would silently mangle those: DRF stringifies
+        # every value in a raised dict, turning e.g. totp_available=False
+        # into the *string* "False" once actually rendered — truthy in
+        # both Python and JS. By the time validate() runs, either no
+        # second factor is required, or the caller already supplied one
+        # to verify (TOTP and WebAuthn are independent — either satisfies
+        # it, matching User.has_second_factor's own either/or check).
+        if webauthn_response:
+            from . import webauthn_service
+            try:
+                webauthn_service.verify_authentication(user, webauthn_response)
+            except webauthn_service.WebAuthnError as e:
+                raise serializers.ValidationError(str(e))
+        elif user.two_factor_enabled:
             if not two_factor_token:
-                raise serializers.ValidationError({
-                    'two_factor_required': True,
-                    'message': '2FA token is required'
-                })
-
+                raise serializers.ValidationError('2FA token is required')
             if not user.verify_2fa_token(two_factor_token):
                 raise serializers.ValidationError('Invalid 2FA token')
+        elif user.has_second_factor:
+            # WebAuthn-only account reached validate() with neither factor
+            # supplied — shouldn't normally happen (the view's pre-check
+            # covers this), kept as a defensive fallback.
+            raise serializers.ValidationError('2FA token is required')
 
         # Generate tokens
         refresh = self.get_token(user)
@@ -66,12 +84,14 @@ class UserSerializer(serializers.ModelSerializer):
     """User serializer"""
 
     full_name = serializers.CharField(source='get_full_name', read_only=True)
+    webauthn_credential_count = serializers.IntegerField(source='webauthn_credentials.count', read_only=True)
 
     class Meta:
         model = User
         fields = [
             'id', 'email', 'username', 'first_name', 'last_name', 'full_name',
-            'role', 'is_active', 'two_factor_enabled', 'is_ldap_user', 'is_saml_user',
+            'role', 'is_active', 'two_factor_enabled', 'webauthn_credential_count',
+            'is_ldap_user', 'is_saml_user',
             'date_joined', 'last_login', 'preferred_language', 'theme', 'page_size',
             'device_scope',
         ]
@@ -235,6 +255,15 @@ class Disable2FASerializer(serializers.Serializer):
         user.two_factor_secret = ''
         user.save()
         return user
+
+
+class WebAuthnCredentialSerializer(serializers.ModelSerializer):
+    """Read-only — credential_id/public_key never leave the server."""
+
+    class Meta:
+        model = WebAuthnCredential
+        fields = ['id', 'name', 'transports', 'created_at', 'last_used_at']
+        read_only_fields = fields
 
 
 class AuditLogSerializer(serializers.ModelSerializer):

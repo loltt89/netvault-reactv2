@@ -4,10 +4,11 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
 import { QRCodeSVG } from 'qrcode.react';
+import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import { extractErrorMessage } from '../utils/extractErrorMessage';
-import { Language, Theme } from '../types';
+import { Language, Theme, WebAuthnCredential } from '../types';
 import '../styles/UserProfileModal.css';
 
 interface UserProfileModalProps {
@@ -35,6 +36,15 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
   // button is pointless to show otherwise)
   const [samlEnabled, setSamlEnabled] = useState(false);
 
+  // WebAuthn (passkeys) — requires a secure context (HTTPS or literal
+  // `localhost`); browserSupportsWebAuthn() alone doesn't catch a plain-HTTP
+  // LAN deployment, since the API itself still exists, it just throws when
+  // actually invoked. Checking isSecureContext up front avoids offering a
+  // button that would fail with a confusing browser error.
+  const [passkeys, setPasskeys] = useState<WebAuthnCredential[]>([]);
+  const [addingPasskey, setAddingPasskey] = useState(false);
+  const webauthnSupported = browserSupportsWebAuthn() && window.isSecureContext;
+
   // Password change states
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -49,6 +59,16 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
     apiService.saml.status()
       .then((res) => setSamlEnabled(res.enabled))
       .catch(() => setSamlEnabled(false));
+  }, [isOpen]);
+
+  const loadPasskeys = () => {
+    apiService.webauthnCredentials.list()
+      .then((res) => setPasskeys(res.results || res))
+      .catch((error) => logger.error('Error loading passkeys:', error));
+  };
+
+  useEffect(() => {
+    if (isOpen) loadPasskeys();
   }, [isOpen]);
 
   const languages = [
@@ -155,6 +175,45 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
     } catch (error: any) {
       logger.error('Error disabling 2FA:', error);
       toast.error(t('profile.failed_disable_2fa'));
+    }
+  };
+
+  const handleAddPasskey = async () => {
+    setAddingPasskey(true);
+    try {
+      const beginRes = await apiService.users.webauthnRegisterBegin();
+      const optionsJSON = JSON.parse(beginRes.options);
+
+      const credential = await startRegistration({ optionsJSON });
+
+      const name = window.prompt(t('profile.passkey_name_prompt'), t('profile.passkey_default_name')) || undefined;
+      await apiService.users.webauthnRegisterComplete(credential, name);
+
+      loadPasskeys();
+      if (refreshUser) await refreshUser();
+      toast.success(t('profile.passkey_added'));
+    } catch (error) {
+      logger.error('Error adding passkey:', error);
+      // A cancelled/dismissed browser ceremony throws a NotAllowedError —
+      // not a real failure worth an error toast, just a no-op.
+      if ((error as { name?: string })?.name !== 'NotAllowedError') {
+        toast.error(extractErrorMessage(error, t('profile.passkey_failed_add')));
+      }
+    } finally {
+      setAddingPasskey(false);
+    }
+  };
+
+  const handleDeletePasskey = async (passkey: WebAuthnCredential) => {
+    if (!window.confirm(`${t('profile.passkey_confirm_delete')} "${passkey.name}"?`)) return;
+    try {
+      await apiService.webauthnCredentials.delete(passkey.id);
+      loadPasskeys();
+      if (refreshUser) await refreshUser();
+      toast.success(t('profile.passkey_removed'));
+    } catch (error) {
+      logger.error('Error removing passkey:', error);
+      toast.error(t('profile.passkey_failed_remove'));
     }
   };
 
@@ -352,6 +411,49 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
                   </button>
                 </div>
               )}
+
+              {/* Passkeys (WebAuthn) */}
+              <div className="info-card" style={{ marginTop: '1.5rem' }}>
+                <h3>🔑 {t('profile.passkeys')}</h3>
+                <p style={{ margin: '0 0 1rem 0', color: 'var(--text-secondary)' }}>
+                  {t('profile.passkeys_description')}
+                </p>
+
+                {!webauthnSupported ? (
+                  <p style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>
+                    {t('profile.passkeys_unsupported')}
+                  </p>
+                ) : (
+                  <>
+                    {passkeys.length > 0 && (
+                      <div style={{ marginBottom: '1rem' }}>
+                        {passkeys.map((pk) => (
+                          <div
+                            key={pk.id}
+                            className="info-item"
+                            style={{ justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid var(--border-color)' }}
+                          >
+                            <div>
+                              <strong>{pk.name || t('profile.passkey_default_name')}</strong>
+                              <br />
+                              <small style={{ color: 'var(--text-secondary)' }}>
+                                {t('profile.passkey_added_on', { date: new Date(pk.created_at).toLocaleDateString() })}
+                                {pk.last_used_at && ` · ${t('profile.passkey_last_used', { date: new Date(pk.last_used_at).toLocaleDateString() })}`}
+                              </small>
+                            </div>
+                            <button onClick={() => handleDeletePasskey(pk)} className="btn-sm btn-danger">
+                              {t('common.delete')}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <button onClick={handleAddPasskey} className="btn-primary" disabled={addingPasskey}>
+                      {addingPasskey ? t('profile.passkey_adding') : t('profile.passkey_add')}
+                    </button>
+                  </>
+                )}
+              </div>
 
               {/* SAML SSO linking */}
               {samlEnabled && (

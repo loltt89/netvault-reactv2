@@ -65,9 +65,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   /**
    * Login function
    */
-  const login = useCallback(async (email: string, password: string, twoFactorToken?: string) => {
+  const login = useCallback(async (email: string, password: string, twoFactorToken?: string, webauthnResponse?: object) => {
     try {
-      const response = await APIService.auth.login(email, password, twoFactorToken);
+      const response = await APIService.auth.login(email, password, twoFactorToken, webauthnResponse);
 
       // Save tokens
       setTokens(response.access);
@@ -85,6 +85,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         throw {
           twoFactorRequired: true,
           message: error.response.data.message,
+          totpAvailable: error.response.data.totp_available,
+          webauthnOptions: error.response.data.webauthn_options,
         };
       }
 

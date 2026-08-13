@@ -24,7 +24,10 @@
     "no_account": "Тіркелгіңіз жоқ па?",
     "register": "Тіркелу",
     "login_error_generic": "Қате орын алды. Қайталап көріңіз.",
-    "sso_error": "SSO қатесі"
+    "sso_error": "SSO қатесі",
+    "use_passkey": "Passkey арқылы кіру",
+    "passkey_failed": "Passkey арқылы кіру сәтсіз аяқталды",
+    "passkey_only_unsupported_browser": "Бұл аккаунтта тек passkeys тіркелген, ал бұл браузер/құрылғы оларды қолдамайды. Қолдау көрсетілетін браузермен құрылғыдан кіріңіз немесе әкімшіден TOTP қосуды сұраңыз."
   },
   "dashboard": {
     "title": "Басқару тақтасы",
@@ -638,7 +641,21 @@
     "saml_not_linked": "Байланыстырылмаған",
     "saml_link_description": "SSO арқылы кіру үшін аккаунтыңызды ұйымыңыздың SAML провайдеріне байланыстырыңыз. Ол үшін қазір жүйеге кірген болуыңыз керек — SAML тек өзі сұраған аккаунтқа байланыстырылады, басқа кіру арқылы бар аккаунтқа автоматты түрде тіркелмейді.",
     "link_saml_account": "SAML аккаунтын байланыстыру",
-    "failed_saml_link": "SAML байланыстыруын бастау мүмкін болмады"
+    "failed_saml_link": "SAML байланыстыруын бастау мүмкін болмады",
+    "passkeys": "Passkeys",
+    "passkeys_description": "2FA коды орнына саусақ ізі, бет-әлпет немесе физикалық кілт арқылы кіру. TOTP-мен бірге жұмыс істейді (орнына емес) — екеуінің біреуі жеткілікті.",
+    "passkeys_unsupported": "Бұл браузер немесе байланыс passkeys қолдамайды (HTTPS немесе localhost қажет).",
+    "passkey_add": "Passkey қосу",
+    "passkey_adding": "Қосылуда...",
+    "passkey_added": "Passkey қосылды",
+    "passkey_failed_add": "Passkey қосу мүмкін болмады",
+    "passkey_removed": "Passkey жойылды",
+    "passkey_failed_remove": "Passkey жою мүмкін болмады",
+    "passkey_confirm_delete": "Passkey жою",
+    "passkey_name_prompt": "Осы passkey атауы (мыс. \"YubiKey\" немесе \"MacBook Touch ID\")",
+    "passkey_default_name": "Passkey",
+    "passkey_added_on": "Қосылды {{date}}",
+    "passkey_last_used": "соңғы рет қолданылды {{date}}"
   },
   "tasks": {
     "title": "Тапсырмалар",

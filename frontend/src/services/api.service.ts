@@ -203,11 +203,12 @@ class APIService {
    * Authentication endpoints
    */
   auth = {
-    login: async (email: string, password: string, twoFactorToken?: string) => {
+    login: async (email: string, password: string, twoFactorToken?: string, webauthnResponse?: object) => {
       const response = await apiClient.post('/token/', {
         email,
         password,
         two_factor_token: twoFactorToken,
+        webauthn_response: webauthnResponse,
       });
       // Store access token in memory
       if (response.data.access) {
@@ -312,7 +313,19 @@ class APIService {
       });
       return response.data;
     },
+
+    webauthnRegisterBegin: async () => {
+      const response = await apiClient.post('/users/webauthn_register_begin/');
+      return response.data;
+    },
+
+    webauthnRegisterComplete: async (credential: object, name?: string) => {
+      const response = await apiClient.post('/users/webauthn_register_complete/', { credential, name });
+      return response.data;
+    },
   };
+
+  webauthnCredentials = createCrudService('webauthn-credentials');
 
   /**
    * Audit logs endpoints
