@@ -1,5 +1,7 @@
+from datetime import timedelta
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 from core.crypto import EncryptedFieldMixin
 
 
@@ -218,6 +220,30 @@ class Device(EncryptedFieldMixin, models.Model):
         self.save(update_fields=[
             'ssh_host_key_pending_type', 'ssh_host_key_pending_fingerprint', 'ssh_host_key_pending_detected_at',
         ])
+
+    @classmethod
+    def stale(cls, days=3, queryset=None):
+        """
+        backup_enabled devices whose last backup is older than `days` (or
+        that have never been backed up at all) — the failure mode a
+        backup tool most needs to surface, since a device that silently
+        stopped backing up looks identical to one that's fine until the
+        day someone actually needs a backup that isn't there.
+
+        One definition of "stale", shared by the dashboard's
+        stale-backups endpoint and the weekly digest email task, rather
+        than two that could quietly disagree. `queryset` lets a caller
+        pass an already-scoped (device_scope RBAC) or otherwise-filtered
+        base queryset instead of the full table.
+
+        Ordered most-stale first: never-backed-up devices, then oldest
+        last_backup.
+        """
+        cutoff = timezone.now() - timedelta(days=days)
+        base = queryset if queryset is not None else cls.objects.all()
+        return base.filter(backup_enabled=True).filter(
+            models.Q(last_backup__isnull=True) | models.Q(last_backup__lt=cutoff)
+        ).order_by(models.F('last_backup').asc(nulls_first=True))
 
 
 class DeviceCredential(EncryptedFieldMixin, models.Model):

@@ -641,3 +641,49 @@ def test_device_connection(device_id: int):
         return {'success': False, 'message': 'Device not found'}
     except Exception as e:
         return {'success': False, 'message': str(e)}
+
+
+@shared_task
+def send_stale_backup_digest():
+    """
+    Weekly summary email of backup_enabled devices that haven't been
+    backed up in 3+ days (or ever) — the same Device.stale() the
+    dashboard's stale-backups endpoint uses, so the two can't disagree.
+
+    Gated behind SystemSettings.notify_schedule_summary, which existed
+    end-to-end (model, admin, API, frontend checkbox, tests) but had no
+    task anywhere reading it — this is that toggle's first real effect.
+    Silently does nothing if disabled or if nothing is stale, same as
+    the other notify_on_* toggles.
+    """
+    from core.models import SystemSettings
+    from notifications.services import send_email_notification
+
+    sys_settings = SystemSettings.get_settings()
+    if not sys_settings.notify_schedule_summary:
+        return {'sent': False, 'reason': 'notify_schedule_summary disabled'}
+
+    stale = list(Device.stale(days=3))
+    if not stale:
+        logger.info("Stale-backup digest: nothing stale, skipping")
+        return {'sent': False, 'reason': 'no stale devices'}
+
+    max_listed = 50
+    lines = [f"{len(stale)} device(s) haven't backed up in 3+ days (or ever):", ""]
+    for device in stale[:max_listed]:
+        since = f"{(timezone.now() - device.last_backup).days}d ago" if device.last_backup else "never"
+        lines.append(f"  - {device.name} ({device.ip_address}) — last backup: {since}")
+    if len(stale) > max_listed:
+        lines.append(f"  ... and {len(stale) - max_listed} more")
+    lines.append("")
+    lines.append("Full list: NetVault dashboard -> Stale Backups.")
+
+    sent = send_email_notification(
+        f"Weekly backup coverage digest: {len(stale)} device(s) stale",
+        "\n".join(lines),
+    )
+    logger.info(
+        f"Stale-backup digest: {'sent' if sent else 'failed to send'}, "
+        f"{len(stale)} stale device(s)"
+    )
+    return {'sent': sent, 'stale_count': len(stale)}

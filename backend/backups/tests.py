@@ -1476,3 +1476,62 @@ class BackupScopeRBACTestCase(APITestCase):
             f'/api/v1/backups/backups/{core_backup2.id}/compare/{self.core_backup.id}/'
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+class SendStaleBackupDigestTaskTestCase(TestCase):
+    """Tests for the weekly stale-backup digest Celery task"""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            email='digest_admin@example.com', username='digest_admin', password='pass123',
+        )
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-digest')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-digest')
+
+    def _make_device(self, name, last_backup):
+        return Device.objects.create(
+            name=name, ip_address='10.5.0.1', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.user,
+            last_backup=last_backup,
+        )
+
+    @patch('notifications.services.send_email_notification')
+    @patch('core.models.SystemSettings')
+    def test_disabled_toggle_sends_nothing(self, mock_settings, mock_email):
+        mock_settings.get_settings.return_value = MagicMock(notify_schedule_summary=False)
+        self._make_device('Stale4', None)
+
+        from backups.tasks import send_stale_backup_digest
+        result = send_stale_backup_digest()
+
+        mock_email.assert_not_called()
+        self.assertFalse(result['sent'])
+
+    @patch('notifications.services.send_email_notification')
+    @patch('core.models.SystemSettings')
+    def test_no_stale_devices_sends_nothing(self, mock_settings, mock_email):
+        mock_settings.get_settings.return_value = MagicMock(notify_schedule_summary=True)
+        self._make_device('Fresh4', timezone.now())
+
+        from backups.tasks import send_stale_backup_digest
+        result = send_stale_backup_digest()
+
+        mock_email.assert_not_called()
+        self.assertFalse(result['sent'])
+
+    @patch('notifications.services.send_email_notification', return_value=True)
+    @patch('core.models.SystemSettings')
+    def test_stale_devices_trigger_email_with_names(self, mock_settings, mock_email):
+        mock_settings.get_settings.return_value = MagicMock(notify_schedule_summary=True)
+        self._make_device('VeryStaleDevice', timezone.now() - timedelta(days=30))
+
+        from backups.tasks import send_stale_backup_digest
+        result = send_stale_backup_digest()
+
+        mock_email.assert_called_once()
+        subject, body = mock_email.call_args[0][:2]
+        self.assertIn('1', subject)
+        self.assertIn('VeryStaleDevice', body)
+        self.assertTrue(result['sent'])
+        self.assertEqual(result['stale_count'], 1)

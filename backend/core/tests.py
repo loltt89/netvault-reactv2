@@ -466,6 +466,96 @@ class RecentBackupsTestCase(APITestCase):
         self.assertEqual(len(response.data), 5)
 
 
+class StaleBackupsAPITestCase(APITestCase):
+    """Tests for the stale-backups dashboard endpoint"""
+
+    def setUp(self):
+        self.client = APIClient()
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='stale@example.com', username='staleuser', password='TestPass123!',
+        )
+        self.scoped_viewer = User.objects.create_user(
+            email='stale_scoped@example.com', username='stale_scoped', password='TestPass123!',
+            role='viewer', device_scope={'tags': ['core']},
+        )
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-stale')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-stale')
+
+        self.fresh_device = Device.objects.create(
+            name='Fresh', ip_address='10.0.1.1', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.user,
+            last_backup=timezone.now(), tags=['core'],
+        )
+        self.stale_device = Device.objects.create(
+            name='Stale', ip_address='10.0.1.2', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.user,
+            last_backup=timezone.now() - timedelta(days=10), tags=['core'],
+        )
+        self.never_backed_up = Device.objects.create(
+            name='Never', ip_address='10.0.1.3', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.user,
+            last_backup=None, tags=['edge'],
+        )
+        self.disabled_stale_device = Device.objects.create(
+            name='DisabledStale', ip_address='10.0.1.4', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.user,
+            last_backup=timezone.now() - timedelta(days=30), backup_enabled=False, tags=['core'],
+        )
+
+    def test_unauthenticated_rejected(self):
+        response = self.client.get('/api/v1/dashboard/stale-backups/')
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_default_threshold_flags_stale_and_never_backed_up(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/v1/dashboard/stale-backups/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        names = {d['name'] for d in response.data['devices']}
+        self.assertEqual(names, {'Stale', 'Never'})
+        self.assertEqual(response.data['count'], 2)
+
+    def test_fresh_device_excluded(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/v1/dashboard/stale-backups/')
+        names = {d['name'] for d in response.data['devices']}
+        self.assertNotIn('Fresh', names)
+
+    def test_backup_disabled_device_excluded_even_if_ancient(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/v1/dashboard/stale-backups/')
+        names = {d['name'] for d in response.data['devices']}
+        self.assertNotIn('DisabledStale', names)
+
+    def test_custom_days_threshold(self):
+        self.client.force_authenticate(user=self.user)
+        # 10-day-old "Stale" device shouldn't count as stale under a 30-day threshold
+        response = self.client.get('/api/v1/dashboard/stale-backups/?days=30')
+        names = {d['name'] for d in response.data['devices']}
+        self.assertNotIn('Stale', names)
+        self.assertIn('Never', names)  # never-backed-up is always stale
+        self.assertEqual(response.data['threshold_days'], 30)
+
+    def test_never_backed_up_has_null_days_since(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/v1/dashboard/stale-backups/')
+        never_entry = next(d for d in response.data['devices'] if d['name'] == 'Never')
+        self.assertIsNone(never_entry['last_backup'])
+        self.assertIsNone(never_entry['days_since_backup'])
+
+    def test_device_scope_applies(self):
+        """'Never' is tagged 'edge', outside the scoped viewer's {'tags': ['core']}."""
+        self.client.force_authenticate(user=self.scoped_viewer)
+        response = self.client.get('/api/v1/dashboard/stale-backups/')
+        names = {d['name'] for d in response.data['devices']}
+        self.assertEqual(names, {'Stale'})
+
+
 class SystemSettingsAPITestCase(APITestCase):
     """Tests for System Settings API endpoints"""
 

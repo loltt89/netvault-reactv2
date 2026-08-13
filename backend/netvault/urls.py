@@ -7,7 +7,7 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView, SpectacularRedocView
-from core.dashboard_views import dashboard_statistics, backup_trend, recent_backups
+from core.dashboard_views import dashboard_statistics, backup_trend, recent_backups, stale_backups
 from core.system_settings_views import (
     get_system_settings,
     update_system_settings,
@@ -29,6 +29,7 @@ urlpatterns = [
     path('api/v1/dashboard/statistics/', dashboard_statistics, name='dashboard-statistics'),
     path('api/v1/dashboard/backup-trend/', backup_trend, name='dashboard-backup-trend'),
     path('api/v1/dashboard/recent-backups/', recent_backups, name='dashboard-recent-backups'),
+    path('api/v1/dashboard/stale-backups/', stale_backups, name='dashboard-stale-backups'),
 
     # System settings endpoints (admin only)
     path('api/v1/settings/system/', get_system_settings, name='get-system-settings'),

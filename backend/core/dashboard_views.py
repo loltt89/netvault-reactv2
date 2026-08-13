@@ -94,6 +94,52 @@ def backup_trend(request):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+def stale_backups(request):
+    """
+    backup_enabled devices that haven't been backed up in `days` (default
+    3) — or ever. The #1 silent failure mode of any backup tool: nobody
+    notices a device stopped backing up until the day its backup is
+    actually needed.
+    """
+    try:
+        days = int(request.query_params.get('days', 3))
+    except (TypeError, ValueError):
+        days = 3
+    days = max(1, days)
+
+    from core.device_filters import get_scoped_device_ids
+    queryset = Device.objects.select_related('vendor', 'device_type')
+    scoped_ids = get_scoped_device_ids(request.user)
+    if scoped_ids is not None:
+        queryset = queryset.filter(id__in=scoped_ids)
+
+    stale = Device.stale(days=days, queryset=queryset)
+
+    now = timezone.now()
+    results = [
+        {
+            'id': d.id,
+            'name': d.name,
+            'ip_address': d.ip_address,
+            'vendor': d.vendor.name if d.vendor else None,
+            'device_type': d.device_type.name if d.device_type else None,
+            'tags': d.tags,
+            'criticality': d.criticality,
+            'last_backup': d.last_backup.isoformat() if d.last_backup else None,
+            'days_since_backup': (now - d.last_backup).days if d.last_backup else None,
+        }
+        for d in stale
+    ]
+
+    return Response({
+        'threshold_days': days,
+        'count': len(results),
+        'devices': results,
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def recent_backups(request):
     """Get recent backups"""
 

@@ -242,6 +242,64 @@ class DeviceModelTestCase(TestCase):
         self.assertTrue(device.backup_enabled)
 
 
+class DeviceStaleTestCase(TestCase):
+    """Tests for Device.stale() — shared by the dashboard endpoint and the digest task"""
+
+    def setUp(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        self.timezone = timezone
+        self.timedelta = timedelta
+
+        self.user = get_user_model().objects.create_user(
+            email='stale_model@example.com', username='stale_model', password='pass123',
+        )
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-stale-model')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-stale-model')
+
+    def _make(self, name, last_backup, backup_enabled=True):
+        return Device.objects.create(
+            name=name, ip_address=f'10.9.0.{len(name) % 250 + 1}', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.user,
+            last_backup=last_backup, backup_enabled=backup_enabled,
+        )
+
+    def test_never_backed_up_is_stale(self):
+        d = self._make('Never2', None)
+        self.assertIn(d, Device.stale(days=3))
+
+    def test_recently_backed_up_is_not_stale(self):
+        d = self._make('Recent2', self.timezone.now())
+        self.assertNotIn(d, Device.stale(days=3))
+
+    def test_old_backup_is_stale(self):
+        d = self._make('Old2', self.timezone.now() - self.timedelta(days=10))
+        self.assertIn(d, Device.stale(days=3))
+
+    def test_backup_disabled_excluded_regardless_of_age(self):
+        d = self._make('DisabledOld2', self.timezone.now() - self.timedelta(days=100), backup_enabled=False)
+        self.assertNotIn(d, Device.stale(days=3))
+
+    def test_ordering_never_backed_up_first_then_oldest(self):
+        old = self._make('Old3', self.timezone.now() - self.timedelta(days=10))
+        never = self._make('Never3', None)
+        older = self._make('Older3', self.timezone.now() - self.timedelta(days=20))
+
+        ordered = list(Device.stale(days=3))
+        self.assertEqual(ordered[0], never)  # nulls first
+        self.assertEqual(ordered[1], older)  # then oldest last_backup
+        self.assertEqual(ordered[2], old)
+
+    def test_custom_queryset_is_respected(self):
+        matching = self._make('ScopedStale', None)
+        self._make('OutOfScopeStale', None)  # would also be stale, but excluded via queryset
+
+        scoped_qs = Device.objects.filter(id=matching.id)
+        result = list(Device.stale(days=3, queryset=scoped_qs))
+        self.assertEqual(result, [matching])
+
+
 class DeviceCredentialTestCase(TestCase):
     """Tests for DeviceCredential model"""
 

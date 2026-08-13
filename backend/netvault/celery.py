@@ -34,6 +34,10 @@ app.conf.beat_schedule = {
         'task': 'backups.tasks.apply_all_retention_policies',
         'schedule': crontab(hour=3, minute=0),  # Daily at 3 AM, after the cleanup above
     },
+    'stale-backup-digest': {
+        'task': 'backups.tasks.send_stale_backup_digest',
+        'schedule': crontab(day_of_week=1, hour=8, minute=0),  # Monday 08:00 UTC
+    },
 }
 
 app.conf.timezone = 'UTC'
