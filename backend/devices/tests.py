@@ -469,6 +469,192 @@ class DeviceAPITestCase(APITestCase):
         self.assertNotIn('supersecret', str(response.data))
 
 
+class DeviceBulkActionsTestCase(APITestCase):
+    """Tests for bulk_backup_now and bulk_tag_edit"""
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()  # DeviceBackupNowThrottle is cache-backed — see DeviceExpensiveOperationThrottleTestCase
+        self.addCleanup(cache.clear)
+
+        User = get_user_model()
+        self.operator = User.objects.create_user(
+            email='bulk_operator@example.com', username='bulk_operator',
+            password='TestPass123!', role='operator',
+        )
+        self.viewer = User.objects.create_user(
+            email='bulk_viewer@example.com', username='bulk_viewer',
+            password='TestPass123!', role='viewer',
+        )
+        self.scoped_operator = User.objects.create_user(
+            email='bulk_scoped@example.com', username='bulk_scoped',
+            password='TestPass123!', role='operator', device_scope={'tags': ['core']},
+        )
+
+        self.vendor = Vendor.objects.create(name='Cisco', slug='cisco-bulk')
+        self.device_type = DeviceType.objects.create(name='Router', slug='router-bulk')
+        self.core_device = Device.objects.create(
+            name='Core-Bulk', ip_address='10.4.0.1', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.operator,
+            tags=['core'],
+        )
+        self.edge_device = Device.objects.create(
+            name='Edge-Bulk', ip_address='10.4.0.2', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.operator,
+            tags=['edge'],
+        )
+
+    # ---- bulk_backup_now ----
+
+    @patch('backups.tasks.backup_device.delay')
+    def test_bulk_backup_now_triggers_task_per_device(self, mock_delay):
+        mock_delay.return_value = MagicMock(id='fake-task-id')
+        self.client.force_authenticate(user=self.operator)
+
+        response = self.client.post('/api/v1/devices/devices/bulk_backup_now/', {
+            'device_ids': [self.core_device.id, self.edge_device.id],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.data['triggered_count'], 2)
+        self.assertEqual(mock_delay.call_count, 2)
+
+    @patch('backups.tasks.backup_device.delay')
+    def test_bulk_backup_now_reports_not_found_ids(self, mock_delay):
+        mock_delay.return_value = MagicMock(id='fake-task-id')
+        self.client.force_authenticate(user=self.operator)
+
+        response = self.client.post('/api/v1/devices/devices/bulk_backup_now/', {
+            'device_ids': [self.core_device.id, 999999],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.data['triggered_count'], 1)
+        self.assertEqual(response.data['not_found_ids'], [999999])
+
+    @patch('backups.tasks.backup_device.delay')
+    def test_bulk_backup_now_respects_device_scope(self, mock_delay):
+        mock_delay.return_value = MagicMock(id='fake-task-id')
+        self.client.force_authenticate(user=self.scoped_operator)
+
+        response = self.client.post('/api/v1/devices/devices/bulk_backup_now/', {
+            'device_ids': [self.core_device.id, self.edge_device.id],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_202_ACCEPTED)
+        self.assertEqual(response.data['triggered_count'], 1)
+        self.assertEqual(response.data['not_found_ids'], [self.edge_device.id])
+        mock_delay.assert_called_once()
+
+    def test_bulk_backup_now_over_cap_rejected(self):
+        self.client.force_authenticate(user=self.operator)
+        response = self.client.post('/api/v1/devices/devices/bulk_backup_now/', {
+            'device_ids': list(range(1, 52)),  # 51 > MAX_BULK_BACKUP_DEVICES (50)
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_bulk_backup_now_viewer_forbidden(self):
+        self.client.force_authenticate(user=self.viewer)
+        response = self.client.post('/api/v1/devices/devices/bulk_backup_now/', {
+            'device_ids': [self.core_device.id],
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_bulk_backup_now_empty_list_rejected(self):
+        self.client.force_authenticate(user=self.operator)
+        response = self.client.post('/api/v1/devices/devices/bulk_backup_now/', {
+            'device_ids': [],
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # ---- bulk_tag_edit ----
+
+    def test_bulk_tag_add(self):
+        self.client.force_authenticate(user=self.operator)
+        response = self.client.post('/api/v1/devices/devices/bulk_tag_edit/', {
+            'device_ids': [self.core_device.id, self.edge_device.id],
+            'action': 'add', 'tags': ['dc1'],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.core_device.refresh_from_db()
+        self.edge_device.refresh_from_db()
+        self.assertEqual(set(self.core_device.tags), {'core', 'dc1'})
+        self.assertEqual(set(self.edge_device.tags), {'edge', 'dc1'})
+
+    def test_bulk_tag_remove(self):
+        self.client.force_authenticate(user=self.operator)
+        response = self.client.post('/api/v1/devices/devices/bulk_tag_edit/', {
+            'device_ids': [self.core_device.id],
+            'action': 'remove', 'tags': ['core'],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.core_device.refresh_from_db()
+        self.assertEqual(self.core_device.tags, [])
+
+    def test_bulk_tag_set_replaces_entirely(self):
+        self.client.force_authenticate(user=self.operator)
+        response = self.client.post('/api/v1/devices/devices/bulk_tag_edit/', {
+            'device_ids': [self.core_device.id],
+            'action': 'set', 'tags': ['prod', 'dc2'],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.core_device.refresh_from_db()
+        self.assertEqual(set(self.core_device.tags), {'prod', 'dc2'})
+
+    def test_bulk_tag_set_empty_clears_tags(self):
+        self.client.force_authenticate(user=self.operator)
+        response = self.client.post('/api/v1/devices/devices/bulk_tag_edit/', {
+            'device_ids': [self.core_device.id],
+            'action': 'set', 'tags': [],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.core_device.refresh_from_db()
+        self.assertEqual(self.core_device.tags, [])
+
+    def test_bulk_tag_add_empty_tags_rejected(self):
+        self.client.force_authenticate(user=self.operator)
+        response = self.client.post('/api/v1/devices/devices/bulk_tag_edit/', {
+            'device_ids': [self.core_device.id],
+            'action': 'add', 'tags': [],
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_bulk_tag_invalid_action_rejected(self):
+        self.client.force_authenticate(user=self.operator)
+        response = self.client.post('/api/v1/devices/devices/bulk_tag_edit/', {
+            'device_ids': [self.core_device.id],
+            'action': 'nonsense', 'tags': ['x'],
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_bulk_tag_edit_respects_device_scope(self):
+        self.client.force_authenticate(user=self.scoped_operator)
+        response = self.client.post('/api/v1/devices/devices/bulk_tag_edit/', {
+            'device_ids': [self.core_device.id, self.edge_device.id],
+            'action': 'add', 'tags': ['x'],
+        }, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['updated_count'], 1)
+        self.assertEqual(response.data['not_found_ids'], [self.edge_device.id])
+        self.edge_device.refresh_from_db()
+        self.assertNotIn('x', self.edge_device.tags)
+
+    def test_bulk_tag_edit_viewer_forbidden(self):
+        self.client.force_authenticate(user=self.viewer)
+        response = self.client.post('/api/v1/devices/devices/bulk_tag_edit/', {
+            'device_ids': [self.core_device.id],
+            'action': 'add', 'tags': ['x'],
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
 class DeviceScopeRBACTestCase(APITestCase):
     """Tests for device_scope restricting DeviceViewSet's queryset"""
 

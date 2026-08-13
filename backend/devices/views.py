@@ -777,6 +777,137 @@ class DeviceViewSet(viewsets.ModelViewSet):
             logger.error(f"CSV import error: {str(e)}")
             return Response({'detail': f'Failed to import CSV file: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Hard cap on a single bulk_backup_now call — the per-user
+    # DeviceBackupNowThrottle (30/hour) counts *requests*, not devices
+    # triggered, so without this a single bulk call could open SSH/
+    # Telnet sessions to the entire fleet at once, defeating the whole
+    # point of that throttle (see core/throttling.py's docstring).
+    MAX_BULK_BACKUP_DEVICES = 50
+
+    @action(detail=False, methods=['post'], throttle_classes=[DeviceBackupNowThrottle])
+    def bulk_backup_now(self, request):
+        """
+        Trigger an immediate backup for multiple devices at once (same
+        semantics as the single-device backup_now: runs regardless of
+        backup_enabled). Respects device_scope RBAC — device_ids outside
+        a scoped user's access are silently dropped, same as they'd 404
+        individually.
+
+        Request body: {"device_ids": [1, 2, 3]}
+        """
+        from backups.tasks import backup_device
+
+        device_ids = request.data.get('device_ids', [])
+        if not device_ids:
+            return Response({'detail': 'No device IDs provided'}, status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(device_ids, list):
+            return Response({'detail': 'device_ids must be a list'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            device_ids = [int(i) for i in device_ids]
+        except (ValueError, TypeError):
+            return Response({'detail': 'All device IDs must be integers'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if len(device_ids) > self.MAX_BULK_BACKUP_DEVICES:
+            return Response(
+                {'detail': f'Too many devices in one request (max {self.MAX_BULK_BACKUP_DEVICES}).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # get_queryset(), not Device.objects — applies device_scope RBAC
+        devices = list(self.get_queryset().filter(id__in=device_ids))
+        found_ids = {d.id for d in devices}
+        not_found_ids = set(device_ids) - found_ids
+
+        triggered = []
+        for device in devices:
+            task = backup_device.delay(
+                device_id=device.id, triggered_by_id=request.user.id, backup_type='manual',
+            )
+            triggered.append({'device_id': device.id, 'device_name': device.name, 'task_id': task.id})
+
+        from accounts.models import AuditLog
+        AuditLog.objects.create(
+            user=request.user,
+            action='update',
+            resource_type='Device',
+            resource_name=f'Bulk backup: {len(triggered)} devices',
+            description=f'Triggered backups for: {", ".join(d["device_name"] for d in triggered)}',
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        )
+        logger.info(f"User {request.user.email} bulk-triggered backups for {len(triggered)} device(s)")
+
+        return Response({
+            'success': True,
+            'triggered_count': len(triggered),
+            'triggered': triggered,
+            'not_found_ids': list(not_found_ids),
+        }, status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=False, methods=['post'])
+    def bulk_tag_edit(self, request):
+        """
+        Add, remove, or replace tags across multiple devices at once.
+        Respects device_scope RBAC like bulk_backup_now.
+
+        Request body: {"device_ids": [1, 2], "action": "add"|"remove"|"set", "tags": ["core"]}
+        """
+        device_ids = request.data.get('device_ids', [])
+        op = request.data.get('action')
+        tags = request.data.get('tags', [])
+
+        if not device_ids or not isinstance(device_ids, list):
+            return Response({'detail': 'device_ids must be a non-empty list'}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            device_ids = [int(i) for i in device_ids]
+        except (ValueError, TypeError):
+            return Response({'detail': 'All device IDs must be integers'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if op not in ('add', 'remove', 'set'):
+            return Response({'detail': 'action must be "add", "remove", or "set"'}, status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+            return Response({'detail': 'tags must be a list of strings'}, status=status.HTTP_400_BAD_REQUEST)
+        if op != 'set' and not tags:
+            return Response({'detail': f'tags must be non-empty for action "{op}"'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # get_queryset(), not Device.objects — applies device_scope RBAC
+        devices = list(self.get_queryset().filter(id__in=device_ids))
+        found_ids = {d.id for d in devices}
+        not_found_ids = set(device_ids) - found_ids
+
+        updated = []
+        for device in devices:
+            current = set(device.tags or [])
+            if op == 'add':
+                device.tags = sorted(current | set(tags))
+            elif op == 'remove':
+                device.tags = sorted(current - set(tags))
+            else:  # set
+                device.tags = sorted(set(tags))
+            updated.append(device)
+
+        Device.objects.bulk_update(updated, ['tags'])
+
+        from accounts.models import AuditLog
+        AuditLog.objects.create(
+            user=request.user,
+            action='update',
+            resource_type='Device',
+            resource_name=f'Bulk tag {op}: {len(updated)} devices',
+            description=f'{op} tags {tags} on: {", ".join(d.name for d in updated)}',
+            ip_address=request.META.get('REMOTE_ADDR'),
+            user_agent=request.META.get('HTTP_USER_AGENT', ''),
+        )
+        logger.info(f"User {request.user.email} bulk {op} tags {tags} on {len(updated)} device(s)")
+
+        return Response({
+            'success': True,
+            'updated_count': len(updated),
+            'updated': [{'device_id': d.id, 'device_name': d.name, 'tags': d.tags} for d in updated],
+            'not_found_ids': list(not_found_ids),
+        })
+
     @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated, IsAdministrator])
     def bulk_delete(self, request):
         """
