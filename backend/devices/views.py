@@ -385,6 +385,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
             'description': 'Description',
             'backup_enabled': 'Backup Enabled',
             'criticality': 'Criticality',
+            'tags': 'Tags',
         },
         'ru': {
             'name': 'Название',
@@ -400,6 +401,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
             'description': 'Описание',
             'backup_enabled': 'Бэкап включен',
             'criticality': 'Критичность',
+            'tags': 'Теги',
         },
         'kk': {
             'name': 'Атауы',
@@ -415,6 +417,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
             'description': 'Сипаттама',
             'backup_enabled': 'Бэкап қосулы',
             'criticality': 'Маңыздылығы',
+            'tags': 'Тегтер',
         },
     }
 
@@ -459,13 +462,17 @@ class DeviceViewSet(viewsets.ModelViewSet):
             headers['description'],
             headers['backup_enabled'],
             headers['criticality'],
+            headers['tags'],
         ])
 
-        # Write example row
+        # Write example row. Tags go in one cell as a comma-separated list
+        # (same convention as the Tags field on the device form / Bulk Tag
+        # Edit) — the CSV's own delimiter is ';', so a comma inside a cell
+        # doesn't need quoting or escaping.
         examples = {
-            'en': ['Router-Core', '192.168.1.1', 'cisco', 'router', 'ssh', '22', 'admin', 'password123', 'enable123', 'Data Center 1', 'Main core router', 'yes', 'critical'],
-            'ru': ['Роутер-Ядро', '192.168.1.1', 'cisco', 'router', 'ssh', '22', 'admin', 'password123', 'enable123', 'Дата-центр 1', 'Основной роутер', 'да', 'critical'],
-            'kk': ['Роутер-Ядро', '192.168.1.1', 'cisco', 'router', 'ssh', '22', 'admin', 'password123', 'enable123', 'Дата-орталық 1', 'Негізгі роутер', 'иә', 'critical'],
+            'en': ['Router-Core', '192.168.1.1', 'cisco', 'router', 'ssh', '22', 'admin', 'password123', 'enable123', 'Data Center 1', 'Main core router', 'yes', 'critical', 'core, dc1'],
+            'ru': ['Роутер-Ядро', '192.168.1.1', 'cisco', 'router', 'ssh', '22', 'admin', 'password123', 'enable123', 'Дата-центр 1', 'Основной роутер', 'да', 'critical', 'core, dc1'],
+            'kk': ['Роутер-Ядро', '192.168.1.1', 'cisco', 'router', 'ssh', '22', 'admin', 'password123', 'enable123', 'Дата-орталық 1', 'Негізгі роутер', 'иә', 'critical', 'core, dc1'],
         }
         writer.writerow(examples.get(lang, examples['en']))
 
@@ -728,6 +735,15 @@ class DeviceViewSet(viewsets.ModelViewSet):
                     location = mapped_row.get('location', '')
                     description = mapped_row.get('description', '')
 
+                    tags = [t.strip() for t in mapped_row.get('tags', '').split(',') if t.strip()]
+                    # Same CSV-injection guard as username above — tags are
+                    # free text from the uploaded file, same as any other
+                    # cell in it.
+                    bad_tag = next((tag for tag in tags if tag[0] in ('=', '+', '-', '@')), None)
+                    if bad_tag:
+                        errors.append(f'Row {row_num}: Tag "{bad_tag}" cannot start with {bad_tag[0]} (CSV injection risk)')
+                        continue
+
                     device = Device(
                         name=name,
                         ip_address=ip_address,
@@ -739,6 +755,7 @@ class DeviceViewSet(viewsets.ModelViewSet):
                         description=description,
                         backup_enabled=backup_enabled,
                         criticality=mapped_row.get('criticality', 'medium'),
+                        tags=tags,
                         created_by=request.user,
                     )
 

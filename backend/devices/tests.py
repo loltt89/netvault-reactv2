@@ -1412,6 +1412,32 @@ class DeviceCsvImportSecurityTestCase(APITestCase):
         device = Device.objects.get(ip_address='10.0.5.8')
         self.assertEqual(device.name, 'Existing')  # unchanged
 
+    def test_tags_column_parsed_on_import(self):
+        """Comma-separated Tags cell -> Device.tags list, same convention
+        as the device form and Bulk Tag Edit."""
+        body = 'Name;IP Address;Username;Vendor;Device Type;Tags\nTagged-Device;10.0.5.9;admin;cisco;router;core, dc1\n'
+        response = self._upload(body)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['created'], 1)
+        device = Device.objects.get(ip_address='10.0.5.9')
+        self.assertEqual(device.tags, ['core', 'dc1'])
+
+    def test_csv_formula_injection_in_tags_rejected(self):
+        body = 'Name;IP Address;Username;Vendor;Device Type;Tags\nGood-Name;10.0.5.10;admin;cisco;router;=cmd|\' /C calc\'!A1\n'
+        response = self._upload(body)
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['created'], 0)
+        self.assertFalse(Device.objects.filter(ip_address='10.0.5.10').exists())
+
+    def test_csv_template_includes_tags_column(self):
+        response = self.client.get('/api/v1/devices/devices/csv_template/?lang=en')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        content = response.content.decode('utf-8-sig')
+        header_row = content.splitlines()[0]
+        self.assertIn('Tags', header_row.split(';'))
+
 
 # ============================================================
 # Connection Module Tests with Realistic Device Output Mocks

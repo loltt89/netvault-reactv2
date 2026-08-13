@@ -22,6 +22,7 @@ interface DeviceFormData {
   enable_password: string;
   location: string;
   criticality: string;
+  tags: string;
   backup_enabled: boolean;
 }
 
@@ -38,6 +39,7 @@ const EMPTY_FORM: DeviceFormData = {
   enable_password: '',
   location: '',
   criticality: 'medium',
+  tags: '',
   backup_enabled: true,
 };
 
@@ -77,6 +79,9 @@ const DeviceFormModal: React.FC<DeviceFormModalProps> = ({
         enable_password: '*****',
         location: editingDevice.location,
         criticality: editingDevice.criticality,
+        // Same comma-separated free-text editing style as BulkTagEditModal —
+        // parsed back into a string[] on submit.
+        tags: (editingDevice.tags || []).join(', '),
         backup_enabled: editingDevice.backup_enabled,
       });
     } else {
@@ -112,6 +117,7 @@ const DeviceFormModal: React.FC<DeviceFormModalProps> = ({
         username: formData.username,
         location: formData.location,
         criticality: formData.criticality,
+        tags: formData.tags.split(',').map((s) => s.trim()).filter(Boolean),
         backup_enabled: formData.backup_enabled,
       };
 
@@ -325,17 +331,32 @@ const DeviceFormModal: React.FC<DeviceFormModalProps> = ({
               </div>
             </div>
 
-            <div className="form-group">
-              <label>Criticality</label>
-              <select
-                value={formData.criticality}
-                onChange={(e) => setFormData({ ...formData, criticality: e.target.value })}
-              >
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="critical">Critical</option>
-              </select>
+            <div className="form-row">
+              <div className="form-group">
+                <label>Criticality</label>
+                <select
+                  value={formData.criticality}
+                  onChange={(e) => setFormData({ ...formData, criticality: e.target.value })}
+                >
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
+                  <option value="critical">Critical</option>
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label>{t('devices.tags')}</label>
+                <input
+                  type="text"
+                  value={formData.tags}
+                  onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+                  placeholder="core, dc1"
+                />
+                <small style={{ color: 'var(--text-secondary)' }}>
+                  {t('devices.bulk_tag_comma_help')}
+                </small>
+              </div>
             </div>
 
             <div className="form-group">
