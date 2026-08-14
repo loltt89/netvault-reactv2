@@ -400,6 +400,32 @@ def run_scheduled_backups():
                             if not schedule.last_run or schedule.last_run.date() < now.date():
                                 should_run = True
 
+        elif schedule.frequency == 'monthly':
+            # Runs on the 1st day of each month at run_time. The model has
+            # no day-of-month field (run_days is days-of-week, used by the
+            # weekly branch only), so the 1st is the fixed, documented
+            # semantic — the schedule form shows this next to the frequency
+            # selector. Until this branch existed, 'monthly' was offered by
+            # the model/serializer/UI but silently never fired at all.
+            if schedule.run_time and now.day == 1:
+                run_datetime = now.replace(
+                    hour=schedule.run_time.hour,
+                    minute=schedule.run_time.minute,
+                    second=0,
+                    microsecond=0
+                )
+
+                if now >= run_datetime:
+                    time_since_run = (now - run_datetime).total_seconds()
+                    # Same 10-minute window as daily/weekly (2 check cycles)
+                    if time_since_run <= 600:
+                        # localtime, or a last_run at 00:05 on the 1st reads
+                        # back from the DB as the previous month in UTC and
+                        # the schedule double-fires
+                        last = timezone.localtime(schedule.last_run) if schedule.last_run else None
+                        if not last or (last.year, last.month) != (now.year, now.month):
+                            should_run = True
+
         if should_run:
             logger.info(f"Schedule due: {schedule.name}")
 
@@ -447,8 +473,33 @@ def cleanup_old_backups(retention_days: int = None):
 
     cutoff_date = timezone.now() - timedelta(days=retention_days)
 
-    # Delete old backups
     old_backups = Backup.objects.filter(created_at__lt=cutoff_date)
+
+    # Don't fight the GFS retention policies: a policy with keep_monthly=12
+    # promises to keep one backup per month for a year, but this age-based
+    # cleanup (default 90 days) would delete those very keepers as soon as
+    # they crossed the age cutoff. For devices covered by an active
+    # BackupRetentionPolicy, that policy is the authority over *successful*
+    # backups — this task then only clears out failed/partial/stale rows
+    # for them, which GFS deliberately never touches. Devices not covered
+    # by any policy keep the plain age-based behavior. A policy with no
+    # devices assigned covers every device (same rule as
+    # apply_retention_policy above).
+    active_policies = BackupRetentionPolicy.objects.filter(is_active=True).prefetch_related('devices')
+    policy_covers_all = False
+    policy_device_ids = set()
+    for policy in active_policies:
+        ids = [d.id for d in policy.devices.all()]
+        if not ids:
+            policy_covers_all = True
+            break
+        policy_device_ids.update(ids)
+
+    if policy_covers_all:
+        old_backups = old_backups.exclude(status='success')
+    elif policy_device_ids:
+        old_backups = old_backups.exclude(status='success', device_id__in=policy_device_ids)
+
     count = old_backups.count()
     old_backups.delete()
 

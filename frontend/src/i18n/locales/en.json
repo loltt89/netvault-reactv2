@@ -372,7 +372,8 @@
     "confirm_delete": "Delete schedule",
     "select_devices": "Select at least one device or device group",
     "time_required": "Time is required for this frequency",
-    "auto_backup_info": "This schedule will automatically backup all devices with 'Backup Enabled' property set to true. You can manage this setting on each device."
+    "auto_backup_info": "This schedule will automatically backup all devices with 'Backup Enabled' property set to true. You can manage this setting on each device.",
+    "monthly_hint": "Monthly schedules run on the 1st day of each month at the selected time"
   },
   "retention": {
     "title": "Retention Policies",

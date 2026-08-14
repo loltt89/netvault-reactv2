@@ -22,15 +22,29 @@
 // Global password buffer (for secure cleanup before exit)
 static char g_pass_buffer[1024];
 
+// Commands read from stdin when -cmds-stdin is used, instead of the
+// -cmds argv value. Exists because backup_commands can embed a device's
+// enable password directly in the command sequence (Python builds
+// something like "enable|||<enable_password>|||show running-config"
+// before it ever reaches this binary) — as an argv value that string sat
+// in this process's command line for the life of the subprocess, visible
+// to any local user via `ps aux`/`/proc/<pid>/cmdline`. Large enough for
+// a full multi-command backup sequence; a genuinely oversized line is
+// truncated by fgets, no worse than the OS argv length limit -cmds was
+// always subject to.
+static char g_cmds_buffer[16384];
+
 // Secure exit: clear sensitive data from memory before exiting
 void secure_exit(int code) {
     // Use explicit_bzero if available (prevents compiler optimization)
     // Otherwise fall back to memset + memory barrier
 #ifdef __GLIBC__
     explicit_bzero(g_pass_buffer, sizeof(g_pass_buffer));
+    explicit_bzero(g_cmds_buffer, sizeof(g_cmds_buffer));
 #else
     memset(g_pass_buffer, 0, sizeof(g_pass_buffer));
-    __asm__ __volatile__("" : : "r"(g_pass_buffer) : "memory");
+    memset(g_cmds_buffer, 0, sizeof(g_cmds_buffer));
+    __asm__ __volatile__("" : : "r"(g_pass_buffer), "r"(g_cmds_buffer) : "memory");
 #endif
     exit(code);
 }
@@ -372,10 +386,22 @@ int main(int argc, char *argv[]) {
     };
 
     int read_pass_stdin = 0;
+    int read_cmds_stdin = 0;
 
     // Parse arguments
     for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-host") == 0 && i + 1 < argc) {
+        if (strcmp(argv[i], "-caps") == 0) {
+            // Capability probe: report supported features as JSON and exit
+            // immediately, no network I/O, no -host/-user required. Lets a
+            // caller detect (once, cheaply) whether this particular binary
+            // is new enough to support -cmds-stdin before ever relying on
+            // it — older binaries silently ignore this unrecognized flag
+            // and fall through to the "host and user are required" error
+            // below instead, which is itself a reliable "unsupported"
+            // signal since its JSON shape has no "cmds_stdin" key.
+            printf("{\"cmds_stdin\":true}\n");
+            return 0;
+        } else if (strcmp(argv[i], "-host") == 0 && i + 1 < argc) {
             cfg.host = argv[++i];
         } else if (strcmp(argv[i], "-port") == 0 && i + 1 < argc) {
             cfg.port = atoi(argv[++i]);
@@ -396,10 +422,14 @@ int main(int argc, char *argv[]) {
             else if (strcmp(argv[i], "shell") == 0) cfg.mode = MODE_SHELL;
         } else if (strcmp(argv[i], "-cmds") == 0 && i + 1 < argc) {
             cfg.commands = argv[++i];
+        } else if (strcmp(argv[i], "-cmds-stdin") == 0) {
+            read_cmds_stdin = 1;  // Read commands from stdin (keeps an embedded enable-password out of argv/ps)
         }
     }
 
-    // Read password from stdin if -pass-stdin was specified (more secure - not visible in ps)
+    // Read password from stdin if -pass-stdin was specified (more secure - not visible in ps).
+    // Must be read before commands below: the caller writes password first,
+    // commands second, as two newline-terminated lines on the same stdin.
     if (read_pass_stdin) {
         if (fgets(g_pass_buffer, sizeof(g_pass_buffer), stdin) != NULL) {
             // Remove trailing newline
@@ -408,6 +438,19 @@ int main(int argc, char *argv[]) {
                 g_pass_buffer[len - 1] = '\0';
             }
             cfg.pass = g_pass_buffer;
+        }
+    }
+
+    // Read commands from stdin if -cmds-stdin was specified — see
+    // g_cmds_buffer's comment for why this exists. Overrides -cmds if both
+    // are somehow given.
+    if (read_cmds_stdin) {
+        if (fgets(g_cmds_buffer, sizeof(g_cmds_buffer), stdin) != NULL) {
+            size_t len = strlen(g_cmds_buffer);
+            if (len > 0 && g_cmds_buffer[len - 1] == '\n') {
+                g_cmds_buffer[len - 1] = '\0';
+            }
+            cfg.commands = g_cmds_buffer;
         }
     }
 
@@ -563,7 +606,7 @@ auth_success:
             Result r = {0, NULL, output};
             print_json_result(&r);
             free(output);
-            exit(1);
+            secure_exit(1);
         }
         // Use truncated result if output exceeded MAX_OUTPUT limit
         if (output_truncated) {
@@ -574,5 +617,5 @@ auth_success:
         free(output);
     }
 
-    return 0;
+    secure_exit(0);
 }

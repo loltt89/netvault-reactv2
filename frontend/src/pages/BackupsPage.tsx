@@ -74,11 +74,11 @@ const BackupsPage: React.FC = () => {
       case 'yesterday': {
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
-        const dayBeforeYesterday = new Date(yesterday);
-        dayBeforeYesterday.setDate(dayBeforeYesterday.getDate() - 1);
+        // Backend filters created_at__lte=date_to (inclusive), so the upper
+        // bound is the last millisecond of yesterday, not today's midnight.
         return {
-          date_from: dayBeforeYesterday.toISOString(),
-          date_to: yesterday.toISOString()
+          date_from: yesterday.toISOString(),
+          date_to: new Date(today.getTime() - 1).toISOString()
         };
       }
       case 'last7days': {

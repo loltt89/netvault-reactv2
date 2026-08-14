@@ -2240,6 +2240,184 @@ class SSHBinaryMockTestCase(TestCase):
         self.assertIn('timeout', result['error'].lower())
 
 
+class CmdsStdinSupportDetectionTestCase(TestCase):
+    """
+    Tests for _binary_supports_cmds_stdin() — static byte-scan detection
+    of whether a netvault-ssh binary was built from source new enough to
+    support -cmds-stdin (commands read from stdin instead of argv, so an
+    embedded enable password doesn't sit in `ps aux` for the life of the
+    subprocess). Deliberately NOT a subprocess probe — see the function's
+    docstring for why: this suite includes tests that mock
+    devices.connection.subprocess.run to script exact response sequences,
+    and an extra unrelated subprocess call here would silently consume
+    one of those.
+    """
+
+    def setUp(self):
+        from devices.connection import _CMDS_STDIN_SUPPORT_CACHE
+        # Cache is a module-level dict shared across the whole test run —
+        # isolate each test from whatever earlier tests already resolved
+        # for these same binary paths.
+        _CMDS_STDIN_SUPPORT_CACHE.clear()
+
+    def tearDown(self):
+        from devices.connection import _CMDS_STDIN_SUPPORT_CACHE
+        _CMDS_STDIN_SUPPORT_CACHE.clear()
+
+    def test_detects_support_when_string_present(self):
+        from devices.connection import _binary_supports_cmds_stdin
+
+        with patch('builtins.open', MagicMock(
+            return_value=MagicMock(
+                __enter__=MagicMock(return_value=MagicMock(read=MagicMock(
+                    return_value=b'...\x00-cmds-stdin\x00...'
+                ))),
+                __exit__=MagicMock(return_value=False),
+            )
+        )):
+            self.assertTrue(_binary_supports_cmds_stdin('/fake/path/netvault-ssh'))
+
+    def test_no_support_when_string_absent(self):
+        from devices.connection import _binary_supports_cmds_stdin
+
+        with patch('builtins.open', MagicMock(
+            return_value=MagicMock(
+                __enter__=MagicMock(return_value=MagicMock(read=MagicMock(
+                    return_value=b'...\x00-cmds\x00...'
+                ))),
+                __exit__=MagicMock(return_value=False),
+            )
+        )):
+            self.assertFalse(_binary_supports_cmds_stdin('/fake/path/netvault-ssh'))
+
+    def test_fails_closed_when_binary_missing(self):
+        from devices.connection import _binary_supports_cmds_stdin
+
+        self.assertFalse(_binary_supports_cmds_stdin('/definitely/does/not/exist/netvault-ssh'))
+
+    def test_result_is_cached_per_binary_path(self):
+        from devices.connection import _binary_supports_cmds_stdin, _CMDS_STDIN_SUPPORT_CACHE
+
+        mock_open = MagicMock(return_value=MagicMock(
+            __enter__=MagicMock(return_value=MagicMock(read=MagicMock(return_value=b'-cmds-stdin'))),
+            __exit__=MagicMock(return_value=False),
+        ))
+        with patch('builtins.open', mock_open):
+            self.assertTrue(_binary_supports_cmds_stdin('/fake/path/a'))
+            self.assertTrue(_binary_supports_cmds_stdin('/fake/path/a'))
+
+        # Second call for the same path must have hit the cache, not
+        # re-opened the file.
+        self.assertEqual(mock_open.call_count, 1)
+        self.assertEqual(_CMDS_STDIN_SUPPORT_CACHE['/fake/path/a'], True)
+
+    def test_current_repo_binaries_are_not_yet_rebuilt(self):
+        """
+        Sanity check against the real, checked-in binaries: as of this
+        fix, netvault-ssh.c gained -cmds-stdin support but the prebuilt
+        binaries in tools/netvault-ssh/ have not been rebuilt from it yet
+        (no supported rebuild path exists in this repo for the -modern
+        one; see install.sh). Detection must correctly report False for
+        both today — and will correctly flip to True on its own, with no
+        further code changes, the moment either binary is rebuilt from
+        the updated source.
+        """
+        from devices.connection import (
+            _binary_supports_cmds_stdin, NETVAULT_SSH_BIN, NETVAULT_SSH_MODERN_BIN,
+        )
+        self.assertFalse(_binary_supports_cmds_stdin(NETVAULT_SSH_BIN))
+        self.assertFalse(_binary_supports_cmds_stdin(NETVAULT_SSH_MODERN_BIN))
+
+
+class SSHBinaryCmdsStdinPathTestCase(TestCase):
+    """
+    Tests for _run_ssh_binary()'s behavior once a binary IS detected as
+    supporting -cmds-stdin — the argv-leak fix's actual effect. Mocks
+    _binary_supports_cmds_stdin directly (rather than relying on a real
+    rebuilt binary, which doesn't exist in this repo yet) so this is
+    exercised independently of the detection mechanism itself, which
+    CmdsStdinSupportDetectionTestCase covers separately.
+    """
+
+    @patch('devices.connection._binary_supports_cmds_stdin', return_value=True)
+    @patch('devices.connection.subprocess.run')
+    def test_commands_sent_via_stdin_not_argv(self, mock_run, mock_supports):
+        from devices.connection import SSHConnection
+
+        mock_run.return_value = MagicMock(
+            stdout='{"success":true,"output":"hostname Router\\n!"}',
+            returncode=0,
+        )
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'mypassword', device_id=1)
+        conn._use_binary = True
+
+        commands = 'enable|||SUPER_SECRET_ENABLE_PW|||show running-config'
+        result = conn._run_ssh_binary(mode='shell', commands=commands)
+
+        self.assertTrue(result['success'])
+
+        called_argv = mock_run.call_args.args[0]
+        self.assertIn('-cmds-stdin', called_argv)
+        self.assertNotIn('-cmds', called_argv)
+        # The whole point of the fix: the enable password must never
+        # appear as its own argv token.
+        for arg in called_argv:
+            self.assertNotIn('SUPER_SECRET_ENABLE_PW', arg)
+
+        stdin_payload = mock_run.call_args.kwargs['input']
+        self.assertEqual(stdin_payload, 'mypassword\n' + commands + '\n')
+
+    @patch('devices.connection._binary_supports_cmds_stdin', return_value=False)
+    @patch('devices.connection.subprocess.run')
+    def test_falls_back_to_argv_when_binary_unsupported(self, mock_run, mock_supports):
+        """Old, still-default behavior for binaries that haven't been rebuilt."""
+        from devices.connection import SSHConnection
+
+        mock_run.return_value = MagicMock(
+            stdout='{"success":true,"output":"hostname Router\\n!"}',
+            returncode=0,
+        )
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'mypassword', device_id=1)
+        conn._use_binary = True
+
+        commands = 'enable|||SUPER_SECRET_ENABLE_PW|||show running-config'
+        result = conn._run_ssh_binary(mode='shell', commands=commands)
+
+        self.assertTrue(result['success'])
+
+        called_argv = mock_run.call_args.args[0]
+        self.assertIn('-cmds', called_argv)
+        self.assertIn(commands, called_argv)
+        self.assertNotIn('-cmds-stdin', called_argv)
+
+        stdin_payload = mock_run.call_args.kwargs['input']
+        self.assertEqual(stdin_payload, 'mypassword')
+
+    @patch('devices.connection._binary_supports_cmds_stdin', return_value=True)
+    @patch('devices.connection.subprocess.run')
+    def test_test_mode_unaffected_no_commands_to_send(self, mock_run, mock_supports):
+        """mode='test' never has commands — -cmds-stdin must not appear."""
+        from devices.connection import SSHConnection
+
+        mock_run.return_value = MagicMock(
+            stdout='{"success":true,"output":"Connection successful"}',
+            returncode=0,
+        )
+
+        conn = SSHConnection('192.168.1.1', 22, 'admin', 'mypassword', device_id=1)
+        conn._use_binary = True
+
+        result = conn._run_ssh_binary(mode='test')
+        self.assertTrue(result['success'])
+
+        called_argv = mock_run.call_args.args[0]
+        self.assertNotIn('-cmds-stdin', called_argv)
+        self.assertNotIn('-cmds', called_argv)
+        self.assertEqual(mock_run.call_args.kwargs['input'], 'mypassword')
+
+
 class TargetHostValidationTestCase(TestCase):
     """Tests for SSRF protection in validate_target_host"""
 

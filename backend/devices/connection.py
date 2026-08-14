@@ -41,6 +41,61 @@ ERR_AUTH_FAILED = 10   # Authentication failed
 ERR_TIMEOUT = 11       # Connection timeout
 ERR_CHANNEL = 12       # Channel error
 
+# Per-binary-path cache for _binary_supports_cmds_stdin() — the probe is a
+# cheap local subprocess (no network I/O) but there's no reason to repeat
+# it on every single backup/test_connection call when the answer can't
+# change within this process's lifetime (the binary on disk isn't going to
+# be rebuilt mid-run).
+_CMDS_STDIN_SUPPORT_CACHE: dict = {}
+
+
+def _binary_supports_cmds_stdin(ssh_bin: str) -> bool:
+    """
+    Detect whether this netvault-ssh binary understands -cmds-stdin (reads
+    shell/exec commands from stdin instead of argv).
+
+    Exists because backup_commands can embed a device's enable password
+    directly in the command sequence built for the binary (see
+    SSHConnection.get_config()'s all_commands.extend(['enable',
+    self.enable_password]) below) — passed via -cmds, that string sat in
+    this process's argv for the life of the subprocess, visible to any
+    local user via `ps aux`/`/proc/<pid>/cmdline`. -cmds-stdin (like the
+    existing -pass-stdin) keeps it out of argv entirely, but only binaries
+    rebuilt from the updated netvault-ssh.c source support it — older
+    prebuilt binaries silently ignore the unrecognized flag and would
+    just never read a commands line from stdin at all.
+
+    Detection is a static scan of the binary's own bytes for the literal
+    "-cmds-stdin" argv-matching string, rather than executing it: that
+    string is only ever embedded (as a C string literal compiled into
+    .rodata, unconditionally, since it's compared against in a live
+    strcmp) in a binary built from the updated source. Deliberately not
+    an actual subprocess probe — this function has to be safe to call on
+    every SSH attempt, including from unit tests that mock
+    devices.connection.subprocess.run to script exact response sequences
+    for the *real* connection attempt; spawning an extra, unrelated
+    subprocess call here would silently consume one of those scripted
+    responses out from under the real call. A plain file read has no
+    such interaction. Fails closed (False, i.e. keep using the old -cmds
+    argv path) if the file can't be read at all.
+    """
+    if ssh_bin in _CMDS_STDIN_SUPPORT_CACHE:
+        return _CMDS_STDIN_SUPPORT_CACHE[ssh_bin]
+
+    supported = False
+    try:
+        with open(ssh_bin, 'rb') as f:
+            supported = b'-cmds-stdin' in f.read()
+    except OSError as e:
+        logger.debug(f"Could not inspect {ssh_bin} for -cmds-stdin support (assuming unsupported): {e}")
+        supported = False
+
+    _CMDS_STDIN_SUPPORT_CACHE[ssh_bin] = supported
+    if supported:
+        logger.info(f"{ssh_bin} supports -cmds-stdin; enable/setup commands will no longer appear in argv")
+    return supported
+
+
 # ===== Compiled Regex Patterns (for performance) =====
 ANSI_ESCAPE_PATTERN = re.compile(r'\x1b\[[0-9;]*m')
 CARRIAGE_RETURN_PATTERN = re.compile(r'\r')
@@ -758,8 +813,22 @@ class SSHConnection:
             '-mode', mode,
         ]
 
-        if commands:
+        # commands can embed the device's enable password (get_config()
+        # below builds sequences like "enable|||<enable_password>|||...").
+        # -cmds-stdin keeps that out of argv the same way -pass-stdin
+        # already does for the login password — see
+        # _binary_supports_cmds_stdin()'s docstring. Only used when this
+        # particular binary is confirmed to understand it; otherwise fall
+        # back to the previous -cmds argv behavior unchanged.
+        cmds_via_stdin = bool(commands) and _binary_supports_cmds_stdin(ssh_bin)
+        if commands and not cmds_via_stdin:
             cmd.extend(['-cmds', commands])
+        elif cmds_via_stdin:
+            cmd.append('-cmds-stdin')
+
+        stdin_payload = self.password + '\n' if cmds_via_stdin else self.password
+        if cmds_via_stdin:
+            stdin_payload += commands + '\n'
 
         try:
             # For test mode use shorter subprocess timeout
@@ -769,7 +838,7 @@ class SSHConnection:
                 capture_output=True,
                 timeout=proc_timeout,
                 text=True,
-                input=self.password  # Pass password via stdin
+                input=stdin_payload
             )
 
             # Parse JSON output

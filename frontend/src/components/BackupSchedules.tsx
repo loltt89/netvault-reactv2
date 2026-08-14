@@ -310,6 +310,12 @@ const BackupSchedulesComponent: React.FC = () => {
                   )}
                 </div>
 
+                {formData.frequency === 'monthly' && (
+                  <p className="form-hint" style={{ fontSize: '0.85rem', opacity: 0.75, marginTop: '-0.5rem' }}>
+                    {t('schedules.monthly_hint')}
+                  </p>
+                )}
+
                 {formData.frequency === 'weekly' && (
                   <div className="form-group">
                     <label>{t('schedules.run_days')}</label>

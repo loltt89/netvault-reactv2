@@ -1722,3 +1722,193 @@ class SendStaleBackupDigestTaskTestCase(TestCase):
         self.assertIn('VeryStaleDevice', body)
         self.assertTrue(result['sent'])
         self.assertEqual(result['stale_count'], 1)
+
+
+from datetime import timezone as dt_timezone
+
+
+class RunScheduledBackupsMonthlyTestCase(TestCase):
+    """
+    Tests for the 'monthly' branch of run_scheduled_backups — this frequency
+    was offered by the model/serializer/UI but the scheduler had no branch
+    for it, so monthly schedules silently never fired.
+
+    Monthly semantics: fire on the 1st day of each month at run_time
+    (10-minute window, same as daily/weekly), at most once per month.
+    """
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='monthly@example.com', username='monthlyuser', password='pass123'
+        )
+        self.vendor = Vendor.objects.create(name='Cisco-M', slug='cisco-m')
+        self.device_type = DeviceType.objects.create(name='Router-M', slug='router-m')
+        self.device = Device.objects.create(
+            name='Monthly-Router',
+            ip_address='192.168.1.50',
+            vendor=self.vendor,
+            device_type=self.device_type,
+            username='admin',
+            password_encrypted=encrypt_data('pass'),
+            backup_enabled=True,
+            created_by=self.user,
+        )
+        self.schedule = BackupSchedule.objects.create(
+            name='Monthly Backup',
+            frequency='monthly',
+            run_time='03:00:00',
+            is_active=True,
+        )
+        self.schedule.devices.add(self.device)
+
+    def _run_at(self, fake_now):
+        """Run run_scheduled_backups with timezone.now() pinned to fake_now (UTC)."""
+        from backups.tasks import run_scheduled_backups
+        with self.settings(TIME_ZONE='UTC'):
+            with patch('backups.tasks.timezone.now', return_value=fake_now):
+                with patch('backups.tasks.backup_multiple_devices') as mock_task:
+                    result = run_scheduled_backups()
+        return result, mock_task
+
+    def test_fires_on_first_of_month_at_run_time(self):
+        fake_now = datetime(2026, 3, 1, 3, 4, 0, tzinfo=dt_timezone.utc)
+        result, mock_task = self._run_at(fake_now)
+
+        mock_task.delay.assert_called_once()
+        args, kwargs = mock_task.delay.call_args
+        self.assertEqual(args[0], [self.device.id])
+        self.assertEqual(kwargs.get('schedule_id'), self.schedule.id)
+        self.assertEqual(result['backup_count'], 1)
+
+        self.schedule.refresh_from_db()
+        self.assertIsNotNone(self.schedule.last_run)
+        self.assertEqual(self.schedule.total_runs, 1)
+
+    def test_does_not_fire_on_other_days(self):
+        fake_now = datetime(2026, 3, 15, 3, 4, 0, tzinfo=dt_timezone.utc)
+        result, mock_task = self._run_at(fake_now)
+        mock_task.delay.assert_not_called()
+        self.assertEqual(result['backup_count'], 0)
+
+    def test_does_not_fire_outside_time_window(self):
+        # 03:00 schedule checked at 03:20 — past the 10-minute window
+        fake_now = datetime(2026, 3, 1, 3, 20, 0, tzinfo=dt_timezone.utc)
+        result, mock_task = self._run_at(fake_now)
+        mock_task.delay.assert_not_called()
+        self.assertEqual(result['backup_count'], 0)
+
+    def test_does_not_fire_twice_in_same_month(self):
+        self.schedule.last_run = datetime(2026, 3, 1, 3, 2, 0, tzinfo=dt_timezone.utc)
+        self.schedule.save(update_fields=['last_run'])
+
+        fake_now = datetime(2026, 3, 1, 3, 8, 0, tzinfo=dt_timezone.utc)
+        result, mock_task = self._run_at(fake_now)
+        mock_task.delay.assert_not_called()
+        self.assertEqual(result['backup_count'], 0)
+
+    def test_fires_again_next_month(self):
+        self.schedule.last_run = datetime(2026, 3, 1, 3, 2, 0, tzinfo=dt_timezone.utc)
+        self.schedule.save(update_fields=['last_run'])
+
+        fake_now = datetime(2026, 4, 1, 3, 4, 0, tzinfo=dt_timezone.utc)
+        result, mock_task = self._run_at(fake_now)
+        mock_task.delay.assert_called_once()
+        self.assertEqual(result['backup_count'], 1)
+
+
+class CleanupOldBackupsRetentionInterplayTestCase(TestCase):
+    """
+    Tests that the age-based cleanup_old_backups task no longer deletes
+    successful backups an active GFS BackupRetentionPolicy is responsible
+    for — a policy with keep_monthly=12 promises to keep monthly backups
+    for a year, while cleanup_old_backups (default 90 days) used to delete
+    those keepers as soon as they crossed the age cutoff.
+    """
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='cleanup@example.com', username='cleanupuser', password='pass123'
+        )
+        self.vendor = Vendor.objects.create(name='Cisco-C', slug='cisco-c')
+        self.device_type = DeviceType.objects.create(name='Router-C', slug='router-c')
+        self.covered = Device.objects.create(
+            name='Covered-Device', ip_address='10.0.9.70', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.user,
+        )
+        self.uncovered = Device.objects.create(
+            name='Uncovered-Device', ip_address='10.0.9.71', vendor=self.vendor,
+            device_type=self.device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.user,
+        )
+
+    def _make_backup(self, device, days_ago, status='success'):
+        b = Backup.objects.create(
+            device=device, status=status, success=(status == 'success'),
+            configuration_encrypted=encrypt_data('config'),
+            configuration_hash=f'hash-{device.id}-{days_ago}-{status}',
+        )
+        Backup.objects.filter(id=b.id).update(created_at=timezone.now() - timedelta(days=days_ago))
+        return b
+
+    def test_age_cleanup_spares_success_backups_of_policy_covered_devices(self):
+        from backups.tasks import cleanup_old_backups
+
+        policy = BackupRetentionPolicy.objects.create(
+            name='GFS-Covered', keep_last_n=1, keep_daily=0, keep_weekly=0,
+            keep_monthly=12, is_active=True,
+        )
+        policy.devices.add(self.covered)
+
+        old_success_covered = self._make_backup(self.covered, 120)
+        old_failed_covered = self._make_backup(self.covered, 120, status='failed')
+        old_success_uncovered = self._make_backup(self.uncovered, 120)
+        fresh_covered = self._make_backup(self.covered, 5)
+
+        result = cleanup_old_backups(retention_days=90)
+
+        remaining = set(Backup.objects.values_list('id', flat=True))
+        # Successful backup of the policy-covered device survives (the GFS
+        # policy is the authority for it), the failed one and the uncovered
+        # device's old backup are still age-cleaned.
+        self.assertIn(old_success_covered.id, remaining)
+        self.assertNotIn(old_failed_covered.id, remaining)
+        self.assertNotIn(old_success_uncovered.id, remaining)
+        self.assertIn(fresh_covered.id, remaining)
+        self.assertEqual(result['deleted_count'], 2)
+
+    def test_policy_with_no_devices_covers_every_device(self):
+        from backups.tasks import cleanup_old_backups
+
+        BackupRetentionPolicy.objects.create(
+            name='GFS-Global', keep_last_n=1, keep_daily=0, keep_weekly=0,
+            keep_monthly=12, is_active=True,
+        )
+
+        old_success = self._make_backup(self.uncovered, 120)
+        old_failed = self._make_backup(self.uncovered, 120, status='failed')
+
+        result = cleanup_old_backups(retention_days=90)
+
+        remaining = set(Backup.objects.values_list('id', flat=True))
+        self.assertIn(old_success.id, remaining)
+        self.assertNotIn(old_failed.id, remaining)
+        self.assertEqual(result['deleted_count'], 1)
+
+    def test_inactive_policy_does_not_shield_anything(self):
+        from backups.tasks import cleanup_old_backups
+
+        policy = BackupRetentionPolicy.objects.create(
+            name='GFS-Inactive', keep_last_n=1, keep_daily=0, keep_weekly=0,
+            keep_monthly=12, is_active=False,
+        )
+        policy.devices.add(self.covered)
+
+        old_success = self._make_backup(self.covered, 120)
+
+        result = cleanup_old_backups(retention_days=90)
+
+        self.assertNotIn(old_success.id, set(Backup.objects.values_list('id', flat=True)))
+        self.assertEqual(result['deleted_count'], 1)
