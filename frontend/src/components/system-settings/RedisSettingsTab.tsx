@@ -1,8 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
-import apiService from '../../services/api.service';
-import logger from '../../utils/logger';
-import { useToast } from '../../contexts/ToastContext';
 
 export interface RedisSettingsData {
   url: string;
@@ -10,32 +7,20 @@ export interface RedisSettingsData {
 
 interface RedisSettingsTabProps {
   initial: RedisSettingsData;
-  onSaved: () => void;
 }
 
-const RedisSettingsTab: React.FC<RedisSettingsTabProps> = ({ initial, onSaved }) => {
+// Read-only: backend/core/system_settings_views.py explicitly documents
+// this as "read from Django settings, not editable via UI" — the GET
+// response includes it, but update_system_settings has no handler for a
+// 'redis' key at all, so a previous version of this tab that POSTed
+// { redis: ... } and showed a "saved" toast was a no-op the whole time:
+// nothing was ever persisted, and the toast lied. Celery/Channels are
+// also both configured from REDIS_URL at process start, before this UI
+// could ever run, so even a real DB-backed write here couldn't take
+// effect without a restart regardless — .env + restart is the only way
+// to actually change this, which is what the note below says.
+const RedisSettingsTab: React.FC<RedisSettingsTabProps> = ({ initial }) => {
   const { t } = useTranslation();
-  const toast = useToast();
-  const [saving, setSaving] = useState(false);
-  const [redisSettings, setRedisSettings] = useState(initial);
-
-  useEffect(() => {
-    setRedisSettings(initial);
-  }, [initial]);
-
-  const handleSaveRedis = async () => {
-    try {
-      setSaving(true);
-      await apiService.systemSettings.update({ redis: redisSettings });
-      toast.success(t('systemSettings.redis.saved'));
-      onSaved();
-    } catch (error) {
-      logger.error('Error saving Redis settings:', error);
-      toast.error(t('systemSettings.redis.failed_save'));
-    } finally {
-      setSaving(false);
-    }
-  };
 
   return (
     <div className="settings-tab-content">
@@ -47,22 +32,11 @@ const RedisSettingsTab: React.FC<RedisSettingsTabProps> = ({ initial, onSaved })
       </div>
 
       <div className="form-group">
-        <label>{t('systemSettings.redis.url')} *</label>
-        <input
-          type="text"
-          value={redisSettings.url}
-          onChange={(e) => setRedisSettings({ ...redisSettings, url: e.target.value })}
-          placeholder="redis://localhost:6379/0"
-        />
+        <label>{t('systemSettings.redis.url')}</label>
+        <input type="text" value={initial.url} readOnly disabled />
         <small style={{ color: 'var(--text-secondary)' }}>
-          {t('systemSettings.redis.url_help')}
+          {t('systemSettings.redis.read_only_note')}
         </small>
-      </div>
-
-      <div style={{ marginTop: '1.5rem' }}>
-        <button onClick={handleSaveRedis} className="btn-primary" disabled={saving}>
-          {saving ? t('systemSettings.saving') : t('systemSettings.save_settings')}
-        </button>
       </div>
     </div>
   );

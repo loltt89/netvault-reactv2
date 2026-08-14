@@ -10,6 +10,18 @@
 // User.device_scope — one type, not three copies of `Record<string, any>`.
 export type DeviceFilters = Record<string, string | string[]>;
 
+// Vendor.backup_commands / Device.custom_commands — both backend
+// JSONFields default to an empty list ([]) but, once configured, hold a
+// dict validated by devices/serializers.py::validate_backup_commands
+// (backup: string, optional setup/config_start/config_end/skip_patterns/
+// logout: string[], enable_mode/exec_mode: boolean, exec_wrapper:
+// string) — a genuinely different shape from the empty-list default, not
+// modeled as a discriminated union here since nothing in the frontend
+// inspects individual keys (only Object.keys/JSON.stringify/JSON.parse
+// round-trips in the settings UI) — just "some object", which is still
+// meaningfully more accurate than the `string[]` this used to claim.
+export type BackupCommandsConfig = Record<string, unknown>;
+
 // User Types
 export interface User {
   id: number;
@@ -82,6 +94,27 @@ export interface AuthResponse {
 export interface TokenPair {
   access: string;
   refresh: string;
+}
+
+// backend/accounts/views.py::CustomTokenObtainPairView.post — the 400
+// response body when a second factor is required but wasn't supplied yet.
+// webauthn_options is a JSON *string* (webauthn_service.
+// build_authentication_options returns `webauthn.options_to_json(...)`,
+// typed `-> str`) — the caller must JSON.parse() it into
+// PublicKeyCredentialRequestOptionsJSON before passing it to
+// startAuthentication(), which LoginPage.tsx already does.
+export interface TwoFactorRequiredResponse {
+  two_factor_required: true;
+  message: string;
+  totp_available: boolean;
+  webauthn_options?: string;
+}
+
+// backend/accounts/views.py::UserViewSet.webauthn_register_begin.
+// Same JSON-string caveat as TwoFactorRequiredResponse.webauthn_options —
+// build_registration_options is also typed `-> str`.
+export interface WebAuthnRegisterBeginResponse {
+  options: string;
 }
 
 // Audit Log Types
@@ -160,7 +193,7 @@ export interface DeviceDetail {
   backup_count: number;
   backup_enabled: boolean;
   backup_schedule: string;
-  custom_commands: string[];
+  custom_commands: BackupCommandsConfig | never[];
   ssh_host_key_type: string;
   ssh_host_key_fingerprint: string;
   ssh_host_key_verified_at: string | null;
@@ -190,7 +223,7 @@ export interface Vendor {
   description: string;
   logo_url: string;
   is_predefined: boolean;
-  backup_commands: string[];
+  backup_commands: BackupCommandsConfig | never[];
   created_at: string;
   updated_at: string;
 }
@@ -201,6 +234,107 @@ export interface DeviceType {
   slug: string;
   description: string;
   icon: string;
+  is_predefined: boolean;
+}
+
+// backend/devices/views.py::DeviceViewSet.test_connection
+export interface TestConnectionResult {
+  success: boolean;
+  message: string;
+  device_id: number;
+  device_name: string;
+  status?: DeviceStatus;
+  locked?: boolean;
+}
+
+// backend/devices/views.py::DeviceViewSet.backup_now
+export interface BackupNowResult {
+  success: boolean;
+  message: string;
+  device_id: number;
+  task_id: string;
+}
+
+// backend/devices/views.py::DeviceViewSet.approve_ssh_host_key
+export interface ApproveSshHostKeyResult {
+  success: boolean;
+  ssh_host_key_type: string;
+  ssh_host_key_fingerprint: string;
+}
+
+// backend/devices/views.py: bulk_backup_now / bulk_tag_edit / bulk_delete
+export interface BulkBackupNowResult {
+  success: boolean;
+  triggered_count: number;
+  triggered: { device_id: number; device_name: string; task_id: string }[];
+  not_found_ids: number[];
+}
+
+export interface BulkTagEditResult {
+  success: boolean;
+  updated_count: number;
+  updated: { device_id: number; device_name: string; tags: string[] }[];
+  not_found_ids: number[];
+}
+
+export interface BulkDeleteResult {
+  success: boolean;
+  deleted_count: number;
+  deleted_devices: { id: number; name: string; ip_address: string }[];
+  not_found_ids: number[];
+}
+
+// backend/devices/views.py::DeviceViewSet.csv_preview
+export interface CsvPreviewRow {
+  row_number: number;
+  data: Record<string, string>;
+  errors: string[];
+  warnings: string[];
+  valid: boolean;
+}
+
+export interface CsvPreviewResult {
+  total_rows: number;
+  valid_rows: number;
+  duplicate_rows: number;
+  error_rows: number;
+  rows: CsvPreviewRow[];
+  vendors: string[];
+  device_types: string[];
+}
+
+// backend/devices/views.py::DeviceViewSet.csv_import
+export interface CsvImportResult {
+  success: boolean;
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
+}
+
+// What create/update actually return — backend/devices/serializers.py::
+// DeviceCreateSerializer's fields, a third shape distinct from both Device
+// (list) and DeviceDetail (retrieve): vendor/device_type are raw ids (not
+// nested objects, not *_name pairs), and there's no status/last_seen/
+// last_backup/backup_status/vendor_name/device_type_name at all.
+export interface DeviceCreateResponse {
+  id: number;
+  name: string;
+  ip_address: string;
+  description: string;
+  vendor: number;
+  device_type: number;
+  protocol: Protocol;
+  port: number;
+  username: string;
+  location: string;
+  tags: string[];
+  criticality: Criticality;
+  backup_enabled: boolean;
+  backup_schedule: string;
+  custom_commands: BackupCommandsConfig | never[];
+  created_at: string;
+  updated_at: string;
 }
 
 export type Protocol = 'ssh' | 'telnet';
@@ -286,6 +420,83 @@ export interface BackupSchedule {
   created_by_email: string | null;
 }
 
+// Matches backend/backups/serializers.py::BackupRetentionPolicySerializer
+export interface BackupRetentionPolicy {
+  id: number;
+  name: string;
+  description: string;
+  keep_last_n: number;
+  keep_daily: number;
+  keep_weekly: number;
+  keep_monthly: number;
+  is_active: boolean;
+  auto_delete: boolean;
+  devices: number[];
+  devices_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+// backend/backups/tasks.py::apply_retention_policy's result dict, spread
+// into BackupRetentionPolicyViewSet.apply_now's response alongside
+// success/message/policy_id.
+export interface RetentionApplyResult {
+  success: boolean;
+  message: string;
+  policy_id: number;
+  devices_processed: number;
+  deleted_count: number;
+  kept_count: number;
+}
+
+// backend/backups/views.py::BackupViewSet.grouped
+export interface BackupGroup {
+  group: string;
+  count: number;
+  backups: Backup[];
+  total_size: number;
+}
+
+export interface BackupGroupedResponse {
+  group_by: 'date' | 'vendor' | 'device_type';
+  groups: BackupGroup[];
+  total_groups: number;
+  total_backups: number;
+  truncated: boolean;
+}
+
+// backend/backups/views.py::BackupViewSet.compare
+export interface BackupCompareResult {
+  backup1: Backup;
+  backup2: Backup;
+  diff: string;
+}
+
+// backend/backups/views.py::BackupViewSet.search_configs
+export interface ConfigSearchMatch {
+  line_number: number;
+  line: string;
+  context: string;
+}
+
+export interface ConfigSearchResult {
+  device_id: number;
+  device_name: string;
+  device_ip: string;
+  vendor: string | null;
+  backup_id: number;
+  backup_date: string;
+  match_count: number;
+  matches: ConfigSearchMatch[];
+}
+
+export interface ConfigSearchResponse {
+  query: string;
+  total_devices: number;
+  total_matches: number;
+  results: ConfigSearchResult[];
+}
+
 export interface BackupDiff {
   id: number;
   backup_new: number;
@@ -296,6 +507,84 @@ export interface BackupDiff {
   modifications: number;
   created_at: string;
 }
+
+// System Settings — matches backend/core/system_settings_views.py's
+// hand-built (not DRF-serializer-backed) nested response/update shape.
+export interface SystemSettingsResponse {
+  email: {
+    host: string;
+    port: number;
+    use_tls: boolean;
+    host_user: string;
+    from_email: string;
+  };
+  telegram: {
+    enabled: boolean;
+    bot_token: string; // '***' if set, server never returns the real value
+    chat_id: string;
+  };
+  notifications: {
+    notify_on_success: boolean;
+    notify_on_failure: boolean;
+    notify_schedule_summary: boolean;
+  };
+  ldap: {
+    enabled: boolean;
+    server_uri: string;
+    bind_dn: string;
+    user_search_base: string;
+    user_search_filter: string;
+  };
+  backup: {
+    retention_days: number;
+    parallel_workers: number;
+  };
+  jwt: {
+    access_token_lifetime: number;
+    refresh_token_lifetime: number;
+  };
+  redis: {
+    url: string;
+  };
+}
+
+// Update payload — every field optional (only keys present are applied),
+// plus the write-only password fields the GET response never includes.
+export interface SystemSettingsUpdatePayload {
+  email?: Partial<SystemSettingsResponse['email'] & { host_password: string }>;
+  telegram?: Partial<SystemSettingsResponse['telegram']>;
+  notifications?: Partial<SystemSettingsResponse['notifications']>;
+  ldap?: Partial<SystemSettingsResponse['ldap'] & { bind_password: string }>;
+  backup?: Partial<SystemSettingsResponse['backup']>;
+  jwt?: Partial<SystemSettingsResponse['jwt']>;
+}
+
+// backend/accounts/saml_views.py::SAMLSettingsAPIView
+export interface SAMLSettingsResponse {
+  enabled: boolean;
+  sp_entity_id: string;
+  sp_acs_url: string;
+  sp_sls_url: string;
+  sp_metadata_url: string;
+  idp_entity_id: string;
+  idp_sso_url: string;
+  idp_slo_url: string;
+  idp_x509_cert: string;
+  attr_username: string;
+  attr_email: string;
+  attr_first_name: string;
+  attr_last_name: string;
+  auto_create_users: boolean;
+  default_role: UserRole;
+  want_assertions_signed: boolean;
+  want_messages_signed: boolean;
+}
+
+// Update payload — server-computed sp_*_url fields are deliberately not
+// accepted here (SAMLSettingsAPIView.post only reads the config fields).
+export type SAMLSettingsUpdatePayload = Partial<Omit<
+  SAMLSettingsResponse, 'sp_acs_url' | 'sp_sls_url' | 'sp_metadata_url'
+>>;
 
 // Notification Types
 export interface NotificationRule {
@@ -421,6 +710,16 @@ export interface BackupChart {
   date: string;
   successful: number;
   failed: number;
+  total: number;
+}
+
+// backend/devices/views.py::DeviceViewSet.statistics
+export interface DeviceStatistics {
+  total: number;
+  by_status: Record<string, number>;
+  by_criticality: Record<string, number>;
+  by_vendor: { vendor__name: string | null; count: number }[];
+  backup_enabled: number;
 }
 
 // API Response Types
@@ -433,7 +732,7 @@ export interface PaginatedResponse<T> {
 
 export interface ApiError {
   detail?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
 // Form Types
@@ -459,6 +758,21 @@ export interface DeviceForm {
   criticality: Criticality;
   backup_enabled: boolean;
   backup_schedule: string;
+  // Admin-only (DeviceCreateSerializer silently drops this for anyone
+  // else) — see validate_backup_commands in devices/serializers.py for
+  // the expected shape.
+  custom_commands?: Record<string, unknown>;
+}
+
+// Thrown by AuthContext's login() when the backend's 400 response signals
+// a second factor is required — a frontend-normalized (camelCase) version
+// of TwoFactorRequiredResponse, not the same shape (see AuthContext.tsx's
+// login() catch block, which builds this from the raw response).
+export interface LoginTwoFactorRequiredError {
+  twoFactorRequired: true;
+  message: string;
+  totpAvailable: boolean;
+  webauthnOptions?: string;
 }
 
 // Context Types
@@ -466,10 +780,14 @@ export interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string, twoFactorToken?: string, webauthnResponse?: object) => Promise<void>;
+  // Rejects with LoginTwoFactorRequiredError specifically when a second
+  // factor is required and wasn't supplied — callers narrow on
+  // `twoFactorRequired` (see LoginPage.tsx) to tell that apart from a
+  // genuine failure, which rejects with the underlying AxiosError instead.
+  login: (email: string, password: string, twoFactorToken?: string, webauthnResponse?: object) => Promise<AuthResponse>;
   logout: () => Promise<void>;
-  register: (data: RegisterData) => Promise<void>;
-  updateProfile: (data: Partial<User>) => Promise<void>;
+  register: (data: RegisterData) => Promise<AuthResponse>;
+  updateProfile: (data: Partial<User>) => Promise<User>;
   refreshUser: () => Promise<void>;
 }
 

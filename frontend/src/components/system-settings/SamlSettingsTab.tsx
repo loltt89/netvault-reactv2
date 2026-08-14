@@ -4,8 +4,9 @@ import apiService from '../../services/api.service';
 import logger from '../../utils/logger';
 import { extractErrorMessage } from '../../utils/extractErrorMessage';
 import { useToast } from '../../contexts/ToastContext';
+import { SAMLSettingsResponse } from '../../types';
 
-const DEFAULT_SAML_SETTINGS = {
+const DEFAULT_SAML_SETTINGS: SAMLSettingsResponse = {
   enabled: false,
   sp_entity_id: '',
   sp_acs_url: '',
@@ -40,7 +41,7 @@ const SamlSettingsTab: React.FC = () => {
 
   const loadSamlSettings = async () => {
     try {
-      const response = await apiService.request('GET', '/saml/settings/');
+      const response = await apiService.saml.getSettings();
       setSamlSettings(response);
     } catch (error) {
       logger.error('Error loading SAML settings:', error);
@@ -50,9 +51,9 @@ const SamlSettingsTab: React.FC = () => {
   const handleSaveSaml = async () => {
     try {
       setSaving(true);
-      await apiService.request('POST', '/saml/settings/', samlSettings);
+      await apiService.saml.updateSettings(samlSettings);
       toast.success(t('systemSettings.saml.saved'));
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error saving SAML settings:', error);
       toast.error(extractErrorMessage(error, t('systemSettings.saml.failed')));
     } finally {
@@ -221,7 +222,7 @@ const SamlSettingsTab: React.FC = () => {
         <label>{t('systemSettings.saml.default_role')}</label>
         <select
           value={samlSettings.default_role}
-          onChange={(e) => setSamlSettings({ ...samlSettings, default_role: e.target.value })}
+          onChange={(e) => setSamlSettings({ ...samlSettings, default_role: e.target.value as SAMLSettingsResponse['default_role'] })}
           disabled={!samlSettings.enabled}
         >
           <option value="viewer">{t('systemSettings.saml.role_viewer')}</option>

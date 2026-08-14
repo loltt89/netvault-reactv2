@@ -5,7 +5,25 @@
  */
 
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosError } from 'axios';
-import { DeviceFilters } from '../types';
+import {
+  DeviceFilters, PaginatedResponse,
+  User, AuthResponse, RegisterData,
+  Device, DeviceDetail, DeviceCreateResponse, DeviceForm,
+  Vendor, DeviceType, DeviceStatistics,
+  TestConnectionResult, BackupNowResult, ApproveSshHostKeyResult,
+  CsvPreviewResult, CsvImportResult,
+  BulkBackupNowResult, BulkTagEditResult, BulkDeleteResult,
+  Backup, BackupDetail, BackupGroupedResponse, BackupCompareResult, ConfigSearchResponse,
+  BackupSchedule, BackupRetentionPolicy, RetentionApplyResult,
+  SystemSettingsResponse, SystemSettingsUpdatePayload,
+  AuditLog,
+  DashboardStats, BackupChart,
+  WebAuthnCredential, WebAuthnRegisterBeginResponse,
+  NotificationRule, Notification,
+  CompliancePolicy, ComplianceViolation, ComplianceStatistics,
+  StaleBackupsResponse,
+  SAMLSettingsResponse, SAMLSettingsUpdatePayload,
+} from '../types';
 
 // API Base URL
 const API_BASE_URL = import.meta.env.VITE_API_URL || '/api/v1';
@@ -60,17 +78,17 @@ let refreshPromise: Promise<string> | null = null;
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
-    const originalRequest: any = error.config;
+    const originalRequest = error.config as (AxiosRequestConfig & { _retry?: boolean }) | undefined;
 
     // Handle 401 Unauthorized
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry) {
       originalRequest._retry = true;
 
       if (isRefreshing && refreshPromise) {
         // Another request is already refreshing the token, wait for it
         try {
           const newToken = await refreshPromise;
-          if (newToken) {
+          if (newToken && originalRequest.headers) {
             originalRequest.headers.Authorization = `Bearer ${newToken}`;
           }
           return apiClient(originalRequest);
@@ -84,7 +102,7 @@ apiClient.interceptors.response.use(
       refreshPromise = (async () => {
         try {
           // Attempt to refresh using HttpOnly cookie (no body needed)
-          const response = await axios.post(
+          const response = await axios.post<{ access: string }>(
             `${API_BASE_URL}/token/refresh/`,
             {},
             { withCredentials: true }
@@ -112,7 +130,7 @@ apiClient.interceptors.response.use(
 
       try {
         const newToken = await refreshPromise;
-        if (newToken) {
+        if (newToken && originalRequest.headers) {
           originalRequest.headers.Authorization = `Bearer ${newToken}`;
         }
         return apiClient(originalRequest);
@@ -155,42 +173,50 @@ export const isAuthenticated = (): boolean => {
 };
 
 /**
+ * Generic query params bag for list endpoints — filters/search/ordering
+ * vary per resource and are read server-side via request.query_params
+ * (plain strings), not validated against a fixed shape.
+ */
+type ListParams = Record<string, string | number | boolean | undefined>;
+
+/**
  * CRUD Service Factory
  * Creates reusable CRUD methods for resources to avoid code duplication
  */
-interface CrudService {
-  list: (params?: any) => Promise<any>;
-  get: (id: number) => Promise<any>;
-  create: (data: any) => Promise<any>;
-  update: (id: number, data: any) => Promise<any>;
-  delete: (id: number) => Promise<any>;
+interface CrudService<T, TCreate = Partial<T>, TUpdate = Partial<T>> {
+  list: (params?: ListParams) => Promise<T[] | PaginatedResponse<T>>;
+  get: (id: number) => Promise<T>;
+  create: (data: TCreate) => Promise<T>;
+  update: (id: number, data: TUpdate) => Promise<T>;
+  delete: (id: number) => Promise<void>;
 }
 
-function createCrudService(resource: string): CrudService {
+function createCrudService<T, TCreate = Partial<T>, TUpdate = Partial<T>>(
+  resource: string
+): CrudService<T, TCreate, TUpdate> {
   return {
-    list: async (params?: any) => {
-      const response = await apiClient.get(`/${resource}/`, { params });
+    list: async (params?: ListParams) => {
+      const response = await apiClient.get<T[] | PaginatedResponse<T>>(`/${resource}/`, { params });
       return response.data;
     },
 
     get: async (id: number) => {
-      const response = await apiClient.get(`/${resource}/${id}/`);
+      const response = await apiClient.get<T>(`/${resource}/${id}/`);
       return response.data;
     },
 
-    create: async (data: any) => {
-      const response = await apiClient.post(`/${resource}/`, data);
+    create: async (data: TCreate) => {
+      const response = await apiClient.post<T>(`/${resource}/`, data);
       return response.data;
     },
 
-    update: async (id: number, data: any) => {
-      const response = await apiClient.patch(`/${resource}/${id}/`, data);
+    update: async (id: number, data: TUpdate) => {
+      const response = await apiClient.patch<T>(`/${resource}/${id}/`, data);
       return response.data;
     },
 
     delete: async (id: number) => {
-      const response = await apiClient.delete(`/${resource}/${id}/`);
-      return response.data;
+      await apiClient.delete(`/${resource}/${id}/`);
     },
   };
 }
@@ -204,7 +230,7 @@ class APIService {
    */
   auth = {
     login: async (email: string, password: string, twoFactorToken?: string, webauthnResponse?: object) => {
-      const response = await apiClient.post('/token/', {
+      const response = await apiClient.post<AuthResponse>('/token/', {
         email,
         password,
         two_factor_token: twoFactorToken,
@@ -217,8 +243,8 @@ class APIService {
       return response.data;
     },
 
-    register: async (userData: any) => {
-      const response = await apiClient.post('/auth/register/', userData);
+    register: async (userData: RegisterData) => {
+      const response = await apiClient.post<AuthResponse>('/auth/register/', userData);
       // Store access token in memory
       if (response.data.access) {
         accessToken = response.data.access;
@@ -228,7 +254,7 @@ class APIService {
 
     logout: async () => {
       try {
-        const response = await apiClient.post('/auth/logout/', {});
+        const response = await apiClient.post<{ detail: string }>('/auth/logout/', {});
         return response.data;
       } finally {
         clearTokens();
@@ -236,7 +262,7 @@ class APIService {
     },
 
     refreshToken: async () => {
-      const response = await apiClient.post('/token/refresh/', {});
+      const response = await apiClient.post<{ access: string }>('/token/refresh/', {});
       if (response.data.access) {
         accessToken = response.data.access;
       }
@@ -249,17 +275,17 @@ class APIService {
    */
   users = {
     getMe: async () => {
-      const response = await apiClient.get('/users/me/');
+      const response = await apiClient.get<User>('/users/me/');
       return response.data;
     },
 
-    updateProfile: async (data: any) => {
-      const response = await apiClient.patch('/users/update_profile/', data);
+    updateProfile: async (data: Partial<User>) => {
+      const response = await apiClient.patch<User>('/users/update_profile/', data);
       return response.data;
     },
 
     changePassword: async (oldPassword: string, newPassword: string, newPasswordConfirm: string) => {
-      const response = await apiClient.post('/users/change_password/', {
+      const response = await apiClient.post<{ detail: string }>('/users/change_password/', {
         old_password: oldPassword,
         new_password: newPassword,
         new_password_confirm: newPasswordConfirm,
@@ -268,76 +294,81 @@ class APIService {
     },
 
     enable2FA: async () => {
-      const response = await apiClient.post('/users/enable_2fa/');
+      // accounts/serializers.py::Enable2FASerializer.create()'s exact
+      // return shape — qr_code is a data: URI PNG the frontend currently
+      // doesn't render (it builds its own QR client-side from `uri`
+      // via QRCodeSVG instead), included for completeness/future use.
+      const response = await apiClient.post<{ secret: string; qr_code: string; uri: string }>(
+        '/users/enable_2fa/'
+      );
       return response.data;
     },
 
     verify2FA: async (token: string) => {
-      const response = await apiClient.post('/users/verify_2fa/', { token });
+      const response = await apiClient.post<{ detail: string }>('/users/verify_2fa/', { token });
       return response.data;
     },
 
     disable2FA: async (password: string) => {
-      const response = await apiClient.post('/users/disable_2fa/', { password });
+      const response = await apiClient.post<{ detail: string }>('/users/disable_2fa/', { password });
       return response.data;
     },
 
-    list: async (params?: any) => {
-      const response = await apiClient.get('/users/', { params });
+    list: async (params?: ListParams) => {
+      const response = await apiClient.get<User[] | PaginatedResponse<User>>('/users/', { params });
       return response.data;
     },
 
     get: async (id: number) => {
-      const response = await apiClient.get(`/users/${id}/`);
+      const response = await apiClient.get<User>(`/users/${id}/`);
       return response.data;
     },
 
-    create: async (data: any) => {
-      const response = await apiClient.post('/users/', data);
+    create: async (data: Partial<User> & { password: string }) => {
+      const response = await apiClient.post<User>('/users/', data);
       return response.data;
     },
 
-    update: async (id: number, data: any) => {
-      const response = await apiClient.patch(`/users/${id}/`, data);
+    update: async (id: number, data: Partial<User>) => {
+      const response = await apiClient.patch<User>(`/users/${id}/`, data);
       return response.data;
     },
 
     delete: async (id: number) => {
-      const response = await apiClient.delete(`/users/${id}/`);
-      return response.data;
+      await apiClient.delete(`/users/${id}/`);
     },
 
     setDeviceScope: async (id: number, deviceScope: DeviceFilters) => {
-      const response = await apiClient.patch(`/users/${id}/set_device_scope/`, {
+      const response = await apiClient.patch<User>(`/users/${id}/set_device_scope/`, {
         device_scope: deviceScope,
       });
       return response.data;
     },
 
     webauthnRegisterBegin: async () => {
-      const response = await apiClient.post('/users/webauthn_register_begin/');
+      const response = await apiClient.post<WebAuthnRegisterBeginResponse>('/users/webauthn_register_begin/');
       return response.data;
     },
 
     webauthnRegisterComplete: async (credential: object, name?: string) => {
-      const response = await apiClient.post('/users/webauthn_register_complete/', { credential, name });
+      const response = await apiClient.post<WebAuthnCredential>('/users/webauthn_register_complete/', { credential, name });
       return response.data;
     },
   };
 
-  webauthnCredentials = createCrudService('webauthn-credentials');
+  webauthnCredentials = createCrudService<WebAuthnCredential>('webauthn-credentials');
 
   /**
    * Audit logs endpoints
    */
   auditLogs = {
-    list: async (params?: any) => {
-      const response = await apiClient.get('/audit-logs/', { params });
+    list: async (params?: ListParams) => {
+      const response = await apiClient.get<AuditLog[] | PaginatedResponse<AuditLog>>('/audit-logs/', { params });
       return response.data;
     },
 
     get: async (id: number) => {
-      const response = await apiClient.get(`/audit-logs/${id}/`);
+      const response = await apiClient.get<AuditLog>(`/audit-logs/${id}/`);
       return response.data;
     },
   };
@@ -347,17 +378,17 @@ class APIService {
    */
   dashboard = {
     getStatistics: async () => {
-      const response = await apiClient.get('/dashboard/statistics/');
+      const response = await apiClient.get<DashboardStats>('/dashboard/statistics/');
       return response.data;
     },
 
     getBackupTrend: async (days: number = 7) => {
-      const response = await apiClient.get('/dashboard/backup-trend/', { params: { days } });
+      const response = await apiClient.get<BackupChart[]>('/dashboard/backup-trend/', { params: { days } });
       return response.data;
     },
 
     getRecentBackups: async (limit: number = 10) => {
-      const response = await apiClient.get('/dashboard/recent-backups/', { params: { limit } });
+      const response = await apiClient.get<Backup[]>('/dashboard/recent-backups/', { params: { limit } });
       return response.data;
     },
   };
@@ -365,43 +396,69 @@ class APIService {
   /**
    * Vendors endpoints
    */
-  vendors = createCrudService('devices/vendors');
+  vendors = createCrudService<Vendor>('devices/vendors');
 
   /**
    * Device Types endpoints
    */
-  deviceTypes = createCrudService('devices/device-types');
+  deviceTypes = createCrudService<DeviceType>('devices/device-types');
 
   /**
    * Devices endpoints
    */
   devices = {
-    // Standard CRUD operations (via factory)
-    ...createCrudService('devices/devices'),
+    // Standard CRUD operations. Retrieve returns the richer DeviceDetail
+    // shape (nested vendor/device_type, ssh host key fields, etc.) —
+    // genuinely different from the list/create-response shapes, per
+    // devices/serializers.py's get_serializer_class(), so it's typed
+    // separately rather than forced into the generic factory's single T.
+    list: async (params?: ListParams) => {
+      const response = await apiClient.get<Device[] | PaginatedResponse<Device>>('/devices/devices/', { params });
+      return response.data;
+    },
+
+    get: async (id: number) => {
+      const response = await apiClient.get<DeviceDetail>(`/devices/devices/${id}/`);
+      return response.data;
+    },
+
+    create: async (data: DeviceForm) => {
+      const response = await apiClient.post<DeviceCreateResponse>('/devices/devices/', data);
+      return response.data;
+    },
+
+    update: async (id: number, data: Partial<DeviceForm>) => {
+      const response = await apiClient.patch<DeviceCreateResponse>(`/devices/devices/${id}/`, data);
+      return response.data;
+    },
+
+    delete: async (id: number) => {
+      await apiClient.delete(`/devices/devices/${id}/`);
+    },
 
     // Custom device-specific endpoints
     testConnection: async (id: number) => {
-      const response = await apiClient.post(`/devices/devices/${id}/test_connection/`);
+      const response = await apiClient.post<TestConnectionResult>(`/devices/devices/${id}/test_connection/`);
       return response.data;
     },
 
     backupNow: async (id: number) => {
-      const response = await apiClient.post(`/devices/devices/${id}/backup_now/`);
+      const response = await apiClient.post<BackupNowResult>(`/devices/devices/${id}/backup_now/`);
       return response.data;
     },
 
     approveSshHostKey: async (id: number) => {
-      const response = await apiClient.post(`/devices/devices/${id}/approve_ssh_host_key/`);
+      const response = await apiClient.post<ApproveSshHostKeyResult>(`/devices/devices/${id}/approve_ssh_host_key/`);
       return response.data;
     },
 
     rejectSshHostKey: async (id: number) => {
-      const response = await apiClient.post(`/devices/devices/${id}/reject_ssh_host_key/`);
+      const response = await apiClient.post<{ success: boolean }>(`/devices/devices/${id}/reject_ssh_host_key/`);
       return response.data;
     },
 
     statistics: async () => {
-      const response = await apiClient.get('/devices/devices/statistics/');
+      const response = await apiClient.get<DeviceStatistics>('/devices/devices/statistics/');
       return response.data;
     },
 
@@ -415,7 +472,7 @@ class APIService {
     csvPreview: async (file: File) => {
       const formData = new FormData();
       formData.append('file', file);
-      const response = await apiClient.post('/devices/devices/csv_preview/', formData, {
+      const response = await apiClient.post<CsvPreviewResult>('/devices/devices/csv_preview/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       return response.data;
@@ -430,28 +487,28 @@ class APIService {
       if (options.update_existing !== undefined) {
         formData.append('update_existing', String(options.update_existing));
       }
-      const response = await apiClient.post('/devices/devices/csv_import/', formData, {
+      const response = await apiClient.post<CsvImportResult>('/devices/devices/csv_import/', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       return response.data;
     },
 
     bulkDelete: async (deviceIds: number[]) => {
-      const response = await apiClient.post('/devices/devices/bulk_delete/', {
+      const response = await apiClient.post<BulkDeleteResult>('/devices/devices/bulk_delete/', {
         device_ids: deviceIds,
       });
       return response.data;
     },
 
     bulkBackupNow: async (deviceIds: number[]) => {
-      const response = await apiClient.post('/devices/devices/bulk_backup_now/', {
+      const response = await apiClient.post<BulkBackupNowResult>('/devices/devices/bulk_backup_now/', {
         device_ids: deviceIds,
       });
       return response.data;
     },
 
     bulkTagEdit: async (deviceIds: number[], action: 'add' | 'remove' | 'set', tags: string[]) => {
-      const response = await apiClient.post('/devices/devices/bulk_tag_edit/', {
+      const response = await apiClient.post<BulkTagEditResult>('/devices/devices/bulk_tag_edit/', {
         device_ids: deviceIds, action, tags,
       });
       return response.data;
@@ -462,47 +519,46 @@ class APIService {
    * Backups endpoints
    */
   backups = {
-    list: async (params?: any) => {
-      const response = await apiClient.get('/backups/backups/', { params });
+    list: async (params?: ListParams) => {
+      const response = await apiClient.get<Backup[] | PaginatedResponse<Backup>>('/backups/backups/', { params });
       return response.data;
     },
 
     get: async (id: number) => {
-      const response = await apiClient.get(`/backups/backups/${id}/`);
+      const response = await apiClient.get<BackupDetail>(`/backups/backups/${id}/`);
       return response.data;
     },
 
     getConfiguration: async (id: number) => {
-      const response = await apiClient.get(`/backups/backups/${id}/configuration/`);
+      const response = await apiClient.get<{ configuration: string | null }>(`/backups/backups/${id}/configuration/`);
       return response.data;
     },
 
     download: async (id: number) => {
-      const response = await apiClient.get(`/backups/backups/${id}/download/`, {
+      const response = await apiClient.get<Blob>(`/backups/backups/${id}/download/`, {
         responseType: 'blob',
       });
       return response.data;
     },
 
     compare: async (id1: number, id2: number) => {
-      const response = await apiClient.get(`/backups/backups/${id1}/compare/${id2}/`);
+      const response = await apiClient.get<BackupCompareResult>(`/backups/backups/${id1}/compare/${id2}/`);
       return response.data;
     },
 
     delete: async (id: number) => {
-      const response = await apiClient.delete(`/backups/backups/${id}/`);
-      return response.data;
+      await apiClient.delete(`/backups/backups/${id}/`);
     },
 
-    getGrouped: async (groupBy: 'date' | 'vendor' | 'device_type' = 'date', params?: any) => {
-      const response = await apiClient.get('/backups/backups/grouped/', {
+    getGrouped: async (groupBy: 'date' | 'vendor' | 'device_type' = 'date', params?: ListParams) => {
+      const response = await apiClient.get<BackupGroupedResponse>('/backups/backups/grouped/', {
         params: { ...params, group_by: groupBy }
       });
       return response.data;
     },
 
     downloadMultiple: async (backupIds: number[]) => {
-      const response = await apiClient.post('/backups/backups/download_multiple/',
+      const response = await apiClient.post<Blob>('/backups/backups/download_multiple/',
         { backup_ids: backupIds },
         { responseType: 'blob' }
       );
@@ -510,7 +566,7 @@ class APIService {
     },
 
     searchConfigs: async (query: string, options?: { caseSensitive?: boolean; regex?: boolean }) => {
-      const response = await apiClient.get('/backups/backups/search_configs/', {
+      const response = await apiClient.get<ConfigSearchResponse>('/backups/backups/search_configs/', {
         params: {
           q: query,
           case_sensitive: options?.caseSensitive || false,
@@ -526,27 +582,31 @@ class APIService {
    */
   backupSchedules = {
     // Standard CRUD operations (via factory)
-    ...createCrudService('backups/schedules'),
+    ...createCrudService<BackupSchedule>('backups/schedules'),
 
     // Custom schedule-specific endpoints
     toggleActive: async (id: number) => {
-      const response = await apiClient.post(`/backups/schedules/${id}/toggle_active/`);
+      const response = await apiClient.post<{ id: number; is_active: boolean; message: string }>(
+        `/backups/schedules/${id}/toggle_active/`
+      );
       return response.data;
     },
 
     runNow: async (id: number) => {
-      const response = await apiClient.post(`/backups/schedules/${id}/run_now/`);
+      const response = await apiClient.post<{ success: boolean; message: string; device_count?: number }>(
+        `/backups/schedules/${id}/run_now/`
+      );
       return response.data;
     },
   };
 
   retentionPolicies = {
     // Standard CRUD operations (via factory)
-    ...createCrudService('backups/retention-policies'),
+    ...createCrudService<BackupRetentionPolicy>('backups/retention-policies'),
 
     // Custom retention policy-specific endpoint
     applyNow: async (id: number) => {
-      const response = await apiClient.post(`/backups/retention-policies/${id}/apply_now/`);
+      const response = await apiClient.post<RetentionApplyResult>(`/backups/retention-policies/${id}/apply_now/`);
       return response.data;
     },
   };
@@ -556,22 +616,22 @@ class APIService {
    */
   systemSettings = {
     get: async () => {
-      const response = await apiClient.get('/settings/system/');
+      const response = await apiClient.get<SystemSettingsResponse>('/settings/system/');
       return response.data;
     },
 
-    update: async (data: any) => {
-      const response = await apiClient.post('/settings/system/update/', data);
+    update: async (data: SystemSettingsUpdatePayload) => {
+      const response = await apiClient.post<{ detail: string }>('/settings/system/update/', data);
       return response.data;
     },
 
     testEmail: async (email: string) => {
-      const response = await apiClient.post('/settings/test-email/', { email });
+      const response = await apiClient.post<{ success: boolean; message: string }>('/settings/test-email/', { email });
       return response.data;
     },
 
     testTelegram: async (botToken: string, chatId: string) => {
-      const response = await apiClient.post('/settings/test-telegram/', {
+      const response = await apiClient.post<{ success: boolean; message: string }>('/settings/test-telegram/', {
         bot_token: botToken,
         chat_id: chatId,
       });
@@ -580,35 +640,38 @@ class APIService {
   };
 
   /**
-   * Generic request methods
+   * Generic request methods — deliberately untyped passthroughs for
+   * one-off calls that don't have (or don't yet have) a dedicated method
+   * above. Callers should type their own response via
+   * `apiService.get<T>(...)` rather than adding `any` here.
    */
-  get = async (url: string, config?: AxiosRequestConfig) => {
-    const response = await apiClient.get(url, config);
+  get = async <T = unknown>(url: string, config?: AxiosRequestConfig) => {
+    const response = await apiClient.get<T>(url, config);
     return response.data;
   };
 
-  post = async (url: string, data?: any, config?: AxiosRequestConfig) => {
-    const response = await apiClient.post(url, data, config);
+  post = async <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => {
+    const response = await apiClient.post<T>(url, data, config);
     return response.data;
   };
 
-  put = async (url: string, data?: any, config?: AxiosRequestConfig) => {
-    const response = await apiClient.put(url, data, config);
+  put = async <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => {
+    const response = await apiClient.put<T>(url, data, config);
     return response.data;
   };
 
-  patch = async (url: string, data?: any, config?: AxiosRequestConfig) => {
-    const response = await apiClient.patch(url, data, config);
+  patch = async <T = unknown>(url: string, data?: unknown, config?: AxiosRequestConfig) => {
+    const response = await apiClient.patch<T>(url, data, config);
     return response.data;
   };
 
-  delete = async (url: string, config?: AxiosRequestConfig) => {
-    const response = await apiClient.delete(url, config);
+  delete = async <T = unknown>(url: string, config?: AxiosRequestConfig) => {
+    const response = await apiClient.delete<T>(url, config);
     return response.data;
   };
 
-  request = async (method: string, url: string, data?: any, config?: AxiosRequestConfig) => {
-    const response = await apiClient.request({ method, url, data, ...config });
+  request = async <T = unknown>(method: string, url: string, data?: unknown, config?: AxiosRequestConfig) => {
+    const response = await apiClient.request<T>({ method, url, data, ...config });
     return response.data;
   };
 
@@ -617,7 +680,7 @@ class APIService {
    */
   saml = {
     status: async () => {
-      const response = await apiClient.get('/saml/status/');
+      const response = await apiClient.get<{ enabled: boolean; login_url: string | null }>('/saml/status/');
       return response.data;
     },
 
@@ -625,7 +688,17 @@ class APIService {
     // browser to it (window.location.href), not fetch it, since it starts a
     // full SAML redirect round-trip through the IdP. See SAMLLinkInitView.
     linkInit: async () => {
-      const response = await apiClient.post('/saml/link-init/');
+      const response = await apiClient.post<{ link_url: string }>('/saml/link-init/');
+      return response.data;
+    },
+
+    getSettings: async () => {
+      const response = await apiClient.get<SAMLSettingsResponse>('/saml/settings/');
+      return response.data;
+    },
+
+    updateSettings: async (data: SAMLSettingsUpdatePayload) => {
+      const response = await apiClient.post<{ detail: string }>('/saml/settings/', data);
       return response.data;
     },
   };
@@ -633,11 +706,11 @@ class APIService {
   /**
    * Notification Rules + delivery log
    */
-  notificationRules = createCrudService('notifications/rules');
+  notificationRules = createCrudService<NotificationRule>('notifications/rules');
 
   notificationLog = {
     list: async (params?: { status?: string; channel?: string; rule?: number }) => {
-      const response = await apiClient.get('/notifications/log/', { params });
+      const response = await apiClient.get<Notification[] | PaginatedResponse<Notification>>('/notifications/log/', { params });
       return response.data;
     },
   };
@@ -645,21 +718,23 @@ class APIService {
   /**
    * Compliance policies + violations
    */
-  compliancePolicies = createCrudService('compliance/policies');
+  compliancePolicies = createCrudService<CompliancePolicy>('compliance/policies');
 
   complianceViolations = {
     list: async (params?: { status?: 'open' | 'resolved'; policy?: number; device?: number }) => {
-      const response = await apiClient.get('/compliance/violations/', { params });
+      const response = await apiClient.get<ComplianceViolation[] | PaginatedResponse<ComplianceViolation>>(
+        '/compliance/violations/', { params }
+      );
       return response.data;
     },
 
     statistics: async () => {
-      const response = await apiClient.get('/compliance/violations/statistics/');
+      const response = await apiClient.get<ComplianceStatistics>('/compliance/violations/statistics/');
       return response.data;
     },
 
     acknowledge: async (id: number) => {
-      const response = await apiClient.post(`/compliance/violations/${id}/acknowledge/`);
+      const response = await apiClient.post<ComplianceViolation>(`/compliance/violations/${id}/acknowledge/`);
       return response.data;
     },
   };
@@ -669,7 +744,7 @@ class APIService {
    */
   staleBackups = {
     list: async (days: number = 3) => {
-      const response = await apiClient.get('/dashboard/stale-backups/', { params: { days } });
+      const response = await apiClient.get<StaleBackupsResponse>('/dashboard/stale-backups/', { params: { days } });
       return response.data;
     },
   };

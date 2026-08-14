@@ -52,7 +52,7 @@ const EmailSettingsTab: React.FC<EmailSettingsTabProps> = ({ initial, onSaved })
     try {
       const result = await apiService.systemSettings.testEmail(testEmail);
       toast.success(result.message);
-    } catch (error: any) {
+    } catch (error) {
       toast.error(extractErrorMessage(error, t('systemSettings.email.failed_test')));
     }
   };

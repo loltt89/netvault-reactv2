@@ -625,6 +625,59 @@ class BackupRetentionPolicyAPITestCase(APITestCase):
         })
         self.assertIn(response.status_code, [status.HTTP_201_CREATED, status.HTTP_200_OK])
 
+    def test_create_policy_persists_device_scope(self):
+        """
+        Regression test: 'devices' was missing from
+        BackupRetentionPolicySerializer.Meta.fields entirely (only the
+        read-only 'devices_count' was listed) — a device selection made
+        in the create/edit UI was silently dropped by DRF on every
+        create/update, so a policy an admin scoped to specific devices
+        silently applied to every device instead.
+        """
+        vendor = Vendor.objects.create(name='Cisco', slug='cisco-scope-create')
+        device_type = DeviceType.objects.create(name='Router', slug='router-scope-create')
+        device = Device.objects.create(
+            name='Scoped-Device', ip_address='10.0.9.55', vendor=vendor,
+            device_type=device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin,
+        )
+
+        response = self.client.post('/api/v1/backups/retention-policies/', {
+            'name': 'Scoped Policy',
+            'keep_last_n': 5,
+            'devices': [device.id],
+        })
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+        self.assertEqual(response.data['devices'], [device.id])
+        self.assertEqual(response.data['devices_count'], 1)
+
+        policy = BackupRetentionPolicy.objects.get(id=response.data['id'])
+        self.assertEqual(list(policy.devices.values_list('id', flat=True)), [device.id])
+
+    def test_update_policy_changes_device_scope(self):
+        vendor = Vendor.objects.create(name='Cisco', slug='cisco-scope-update')
+        device_type = DeviceType.objects.create(name='Router', slug='router-scope-update')
+        device1 = Device.objects.create(
+            name='Scope-Update-1', ip_address='10.0.9.56', vendor=vendor,
+            device_type=device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin,
+        )
+        device2 = Device.objects.create(
+            name='Scope-Update-2', ip_address='10.0.9.57', vendor=vendor,
+            device_type=device_type, username='admin',
+            password_encrypted=encrypt_data('pw'), created_by=self.admin,
+        )
+        policy = BackupRetentionPolicy.objects.create(name='Update-Scope Policy', keep_last_n=5)
+        policy.devices.add(device1)
+
+        response = self.client.patch(f'/api/v1/backups/retention-policies/{policy.id}/', {
+            'devices': [device2.id],
+        }, format='json')
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        policy.refresh_from_db()
+        self.assertEqual(list(policy.devices.values_list('id', flat=True)), [device2.id])
+
     def test_apply_now_requires_admin(self):
         """apply_now actually deletes data now — must be admin-only, like
         deleting an individual backup already is via CanManageBackups."""

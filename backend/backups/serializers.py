@@ -110,7 +110,16 @@ class BackupRetentionPolicySerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'description',
             'keep_last_n', 'keep_daily', 'keep_weekly', 'keep_monthly',
-            'is_active', 'auto_delete',
+            'is_active', 'auto_delete', 'devices',
             'devices_count', 'created_at', 'updated_at'
         ]
+        # 'devices' was missing from this list entirely (unlike the
+        # otherwise-identical 'devices'/'devices_count' pair on
+        # BackupScheduleSerializer, which does list it) — a device
+        # selection made in the "create/edit policy" UI was silently
+        # dropped by DRF on every create/update (fields not in Meta.fields
+        # are excluded from validated_data, not just read-only), so a
+        # policy an admin scoped to specific devices silently applied to
+        # every device instead (apply_retention_policy's own documented
+        # fallback for an empty devices set).
         read_only_fields = ['id', 'devices_count', 'created_at', 'updated_at']

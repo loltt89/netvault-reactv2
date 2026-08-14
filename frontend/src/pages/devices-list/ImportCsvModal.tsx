@@ -63,7 +63,7 @@ const ImportCsvModal: React.FC<ImportCsvModalProps> = ({ isOpen, onClose, onImpo
     try {
       const preview = await apiService.devices.csvPreview(file);
       setImportPreview(preview);
-    } catch (error: any) {
+    } catch (error) {
       toast.error(extractErrorMessage(error, t('devices.import.preview_error')));
     } finally {
       setImportLoading(false);
@@ -80,7 +80,7 @@ const ImportCsvModal: React.FC<ImportCsvModalProps> = ({ isOpen, onClose, onImpo
       if (result.created > 0 || result.updated > 0) {
         onImported();
       }
-    } catch (error: any) {
+    } catch (error) {
       toast.error(extractErrorMessage(error, t('devices.import.import_error')));
     } finally {
       setImportLoading(false);

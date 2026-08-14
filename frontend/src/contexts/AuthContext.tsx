@@ -5,8 +5,9 @@
  */
 
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import axios from 'axios';
 import APIService, { setTokens, clearTokens, isAuthenticated as checkAuth } from '../services/api.service';
-import { User, AuthContextType, RegisterData } from '../types';
+import { User, AuthContextType, RegisterData, LoginTwoFactorRequiredError, TwoFactorRequiredResponse } from '../types';
 import i18n from '../i18n/config';
 import logger from '../utils/logger';
 
@@ -77,17 +78,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setIsAuthenticated(true);
 
       return response;
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Login failed:', error);
 
       // Check if 2FA is required
-      if (error.response?.data?.two_factor_required) {
-        throw {
+      if (axios.isAxiosError<TwoFactorRequiredResponse>(error) && error.response?.data?.two_factor_required) {
+        const data = error.response.data;
+        const twoFactorError: LoginTwoFactorRequiredError = {
           twoFactorRequired: true,
-          message: error.response.data.message,
-          totpAvailable: error.response.data.totp_available,
-          webauthnOptions: error.response.data.webauthn_options,
+          message: data.message,
+          totpAvailable: data.totp_available,
+          webauthnOptions: data.webauthn_options,
         };
+        throw twoFactorError;
       }
 
       throw error;

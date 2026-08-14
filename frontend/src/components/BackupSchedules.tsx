@@ -6,7 +6,7 @@ import { extractErrorMessage } from '../utils/extractErrorMessage';
 import { useToast } from '../contexts/ToastContext';
 import { useListResource } from '../hooks/useListResource';
 import { useModalForm } from '../hooks/useModalForm';
-import { BackupSchedule } from '../types';
+import { BackupSchedule, ScheduleFrequency } from '../types';
 import '../styles/Devices.css';
 
 const DEFAULT_FORM_DATA = {
@@ -43,10 +43,10 @@ const BackupSchedulesComponent: React.FC = () => {
     e.preventDefault();
 
     try {
-      const scheduleData: any = {
+      const scheduleData: Partial<BackupSchedule> = {
         name: formData.name,
         description: formData.description,
-        frequency: formData.frequency,
+        frequency: formData.frequency as ScheduleFrequency,
         is_active: formData.is_active
       };
 
@@ -72,7 +72,7 @@ const BackupSchedulesComponent: React.FC = () => {
 
       closeModal();
       loadSchedules();
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error saving schedule:', error);
       toast.error(extractErrorMessage(error, t('schedules.failed_save')));
     }

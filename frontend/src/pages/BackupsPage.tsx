@@ -4,17 +4,11 @@ import apiService from '../services/api.service';
 import ConfigViewer from '../components/ConfigViewer';
 import { getConfigLanguage } from '../utils/configLanguage';
 import { getDateRange, DateFilterType } from '../utils/dateRange';
+import { unwrapList } from '../utils/unwrapList';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
-import { Backup } from '../types';
+import { Backup, BackupGroup, Vendor, DeviceType } from '../types';
 import '../styles/Backups.css';
-
-interface BackupGroup {
-  group: string;
-  count: number;
-  backups: Backup[];
-  total_size: number;
-}
 
 type GroupByType = 'date' | 'vendor' | 'device_type';
 
@@ -39,8 +33,8 @@ const BackupsPage: React.FC = () => {
   const [dateTo, setDateTo] = useState<string>('');
   const [vendorFilter, setVendorFilter] = useState<string>('');
   const [deviceTypeFilter, setDeviceTypeFilter] = useState<string>('');
-  const [vendors, setVendors] = useState<any[]>([]);
-  const [deviceTypes, setDeviceTypes] = useState<any[]>([]);
+  const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [deviceTypes, setDeviceTypes] = useState<DeviceType[]>([]);
 
   useEffect(() => {
     loadVendorsAndTypes();
@@ -56,8 +50,8 @@ const BackupsPage: React.FC = () => {
         apiService.vendors.list(),
         apiService.deviceTypes.list()
       ]);
-      setVendors(vendorsData);
-      setDeviceTypes(typesData);
+      setVendors(unwrapList<Vendor>(vendorsData));
+      setDeviceTypes(unwrapList<DeviceType>(typesData));
     } catch (error) {
       logger.error('Error loading vendors and types:', error);
     }
@@ -67,8 +61,9 @@ const BackupsPage: React.FC = () => {
     try {
       setLoading(true);
       const dateRange = getDateRange(dateFilter, new Date(), { dateFrom, dateTo });
-      const params: any = {
-        ...dateRange,
+      const params: Record<string, string> = {
+        ...(dateRange.date_from ? { date_from: dateRange.date_from } : {}),
+        ...(dateRange.date_to ? { date_to: dateRange.date_to } : {}),
       };
 
       if (vendorFilter) {
@@ -107,7 +102,7 @@ const BackupsPage: React.FC = () => {
   const viewConfig = async (backup: Backup) => {
     try {
       const response = await apiService.backups.getConfiguration(backup.id);
-      setConfigContent(response.configuration);
+      setConfigContent(response.configuration || '');
       setSelectedBackup(backup);
       setShowViewer(true);
     } catch (error) {

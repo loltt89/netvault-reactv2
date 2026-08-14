@@ -4,45 +4,23 @@ import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import { unwrapList } from '../utils/unwrapList';
 import { usePolling } from '../hooks/usePolling';
+import { Backup, BackupDetail, BackupDeviceRef } from '../types';
 import './TasksTable.css';
 
-// Deliberately local, not imported from ../types: this mirrors
-// BackupDetailSerializer's nested device shape exactly (see
-// types/index.ts's BackupDetail/BackupDeviceRef comments) but this
-// component's own Task type below doesn't match either Backup or
-// BackupDetail field-for-field, so reusing those would be misleading
-// rather than accurate.
-interface Device {
-  id: number;
-  name: string;
-  ip_address: string;
-  vendor: {
-    id: number;
-    name: string;
-    slug: string;
-  } | null;
-}
+// Task/TaskDetail are Backup/BackupDetail with `device` narrowed from
+// `BackupDeviceRef | null` to non-null. Backup.device is a required
+// (non-nullable) FK on the backend — BackupSerializer.get_device()'s
+// `if obj.device: ... else: None` branch is defensive code for a state
+// that can't actually occur for a required FK, not a real possibility —
+// so asserting non-null here (via toTask/toTaskDetail below, which drop
+// rather than crash on the never-expected null) is more accurate than
+// repeating `| null` through every render site below.
+type Task = Omit<Backup, 'device'> & { device: BackupDeviceRef };
+type TaskDetail = Omit<BackupDetail, 'device'> & { device: NonNullable<BackupDetail['device']> };
 
-interface Task {
-  id: number;
-  device: Device;
-  status: 'pending' | 'running' | 'success' | 'failed' | 'partial';
-  backup_type: 'manual' | 'scheduled' | 'automatic';
-  size_bytes: number;
-  started_at: string;
-  completed_at: string | null;
-  duration_seconds: number | null;
-  success: boolean;
-  error_message: string;
-  has_changes: boolean;
-  changes_summary: string;
-  triggered_by_email: string | null;
-  created_at: string;
-}
-
-interface TaskDetail extends Task {
-  output_log: string;
-  configuration: string | null;
+function toTask(backup: Backup): Task | null {
+  if (!backup.device) return null;
+  return { ...backup, device: backup.device };
 }
 
 interface TasksTableProps {
@@ -71,7 +49,7 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
       setLoading(true);
 
       // Build filter params
-      const params: any = {
+      const params: Record<string, string | number> = {
         page,
         page_size: 50,
         ordering: sortOrder === 'desc' ? `-${sortField}` : sortField,
@@ -87,11 +65,13 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
       }
 
       const response = await apiService.backups.list(params);
-      const newTasks = unwrapList<Task>(response);
+      const newTasks = unwrapList<Backup>(response)
+        .map(toTask)
+        .filter((task): task is Task => task !== null);
       setTasks(newTasks);
 
       // Handle pagination
-      if (response.count) {
+      if ('count' in response && response.count) {
         setTotalPages(Math.ceil(response.count / 50));
       }
     } catch (error) {
@@ -158,7 +138,8 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
     return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
   };
 
-  const formatTimestamp = (timestamp: string) => {
+  const formatTimestamp = (timestamp: string | null) => {
+    if (!timestamp) return '-';
     const date = new Date(timestamp);
     return date.toLocaleString();
   };
@@ -175,7 +156,14 @@ const TasksTable: React.FC<TasksTableProps> = ({ onToggle, isMinimized, isConnec
   const handleRowClick = async (task: Task) => {
     try {
       const response = await apiService.backups.get(task.id);
-      setSelectedTask(response);
+      if (!response.device) {
+        // See the Task/TaskDetail comment above — this shouldn't happen
+        // for a required FK, but don't render a detail view missing its
+        // own device rather than crash on `.name`/`.ip_address`.
+        logger.error(`Backup ${task.id} detail response had no device`);
+        return;
+      }
+      setSelectedTask({ ...response, device: response.device });
     } catch (error) {
       logger.error('Failed to fetch task details:', error);
     }

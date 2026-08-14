@@ -4,6 +4,7 @@ import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from 'recharts';
+import type { PieLabelRenderProps, LegendPayload } from 'recharts';
 import { Link } from 'react-router-dom';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
@@ -189,8 +190,8 @@ const DashboardPage: React.FC = () => {
                 cx="50%"
                 cy="50%"
                 labelLine={true}
-                label={(entry: any) => {
-                  const percent = entry.percent as number;
+                label={(entry: PieLabelRenderProps) => {
+                  const percent = entry.percent ?? 0;
                   // Short label with just percentage
                   return `${(percent * 100).toFixed(0)}%`;
                 }}
@@ -216,7 +217,7 @@ const DashboardPage: React.FC = () => {
               <Legend
                 verticalAlign="bottom"
                 height={36}
-                formatter={(value: string, entry: any) => {
+                formatter={(value: string, _entry: LegendPayload) => {
                   const item = deviceStatus.find(d => d.name === value);
                   return `${value}: ${item?.value || 0}`;
                 }}

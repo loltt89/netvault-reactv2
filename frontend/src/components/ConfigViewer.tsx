@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import Editor from '@monaco-editor/react';
+import Editor, { OnMount } from '@monaco-editor/react';
 import { useTranslation } from 'react-i18next';
 import { useTheme } from '../contexts/ThemeContext';
 import { useToast } from '../contexts/ToastContext';
@@ -28,7 +28,7 @@ const ConfigViewer: React.FC<ConfigViewerProps> = ({
   const [isModified, setIsModified] = useState(false);
   const [editorMounted, setEditorMounted] = useState(false);
   const [wordWrap, setWordWrap] = useState<'off' | 'on'>('off');
-  const editorRef = React.useRef<any>(null);
+  const editorRef = React.useRef<Parameters<OnMount>[0] | null>(null);
 
   // Map our theme to Monaco theme
   const getMonacoTheme = () => {
@@ -73,7 +73,7 @@ const ConfigViewer: React.FC<ConfigViewerProps> = ({
     }
   };
 
-  const handleEditorMount = (editor: any) => {
+  const handleEditorMount: OnMount = (editor) => {
     editorRef.current = editor;
     setEditorMounted(true);
     // Manual layout on mount to avoid ResizeObserver issues
@@ -85,7 +85,7 @@ const ConfigViewer: React.FC<ConfigViewerProps> = ({
   const handleSearch = () => {
     // Trigger find dialog (Ctrl+F)
     if (editorRef.current) {
-      editorRef.current.trigger('', 'actions.find');
+      editorRef.current.trigger('', 'actions.find', null);
     }
   };
 

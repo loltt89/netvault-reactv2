@@ -591,9 +591,10 @@
     },
     "redis": {
       "title": "Redis Settings:",
-      "description": "Configure Redis connection for task queues and caching. Changes require application restart to take effect.",
+      "description": "Redis connection used for task queues and caching.",
       "url": "Redis URL",
       "url_help": "Full Redis connection URL (e.g., redis://localhost:6379/0).",
+      "read_only_note": "Read-only: set via REDIS_URL in the server's .env file and applied at startup. Celery workers and the WebSocket layer are already configured from it by the time the app is running, so a change made here couldn't take effect without a restart anyway — edit .env and restart the application instead.",
       "saved": "Redis settings saved successfully! Please restart the application.",
       "failed_save": "Failed to save Redis settings"
     }

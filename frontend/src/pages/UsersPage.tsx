@@ -6,7 +6,7 @@ import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import { unwrapList } from '../utils/unwrapList';
 import { extractErrorMessage } from '../utils/extractErrorMessage';
-import { User, DeviceFilters } from '../types';
+import { User, DeviceFilters, UserRole } from '../types';
 import DeviceFiltersEditor from '../components/DeviceFiltersEditor';
 import '../styles/Devices.css';
 
@@ -22,7 +22,15 @@ const UsersPage: React.FC = () => {
   const [scopingUser, setScopingUser] = useState<User | null>(null);
   const [scopeFormData, setScopeFormData] = useState<DeviceFilters>({});
   const [scopeSaving, setScopeSaving] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    email: string;
+    username: string;
+    first_name: string;
+    last_name: string;
+    role: UserRole;
+    password: string;
+    is_active: boolean;
+  }>({
     email: '',
     username: '',
     first_name: '',
@@ -112,7 +120,7 @@ const UsersPage: React.FC = () => {
     try {
       if (editingUser) {
         // Update user
-        const updateData: any = {
+        const updateData: Partial<User> & { password?: string } = {
           first_name: formData.first_name,
           last_name: formData.last_name,
           role: formData.role,
@@ -135,7 +143,7 @@ const UsersPage: React.FC = () => {
 
       setShowModal(false);
       loadUsers();
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error saving user:', error);
       toast.error(extractErrorMessage(error, t('users.failed_save')));
     }
@@ -339,7 +347,7 @@ const UsersPage: React.FC = () => {
                   <label>{t('users.role')} *</label>
                   <select
                     value={formData.role}
-                    onChange={(e) => setFormData({...formData, role: e.target.value})}
+                    onChange={(e) => setFormData({...formData, role: e.target.value as UserRole})}
                     required
                   >
                     <option value="viewer">{t('users.role_viewer')}</option>

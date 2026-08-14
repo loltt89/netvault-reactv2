@@ -5,7 +5,7 @@ import logger from '../../utils/logger';
 import { extractErrorMessage } from '../../utils/extractErrorMessage';
 import { useToast } from '../../contexts/ToastContext';
 import { useListResource } from '../../hooks/useListResource';
-import { Vendor } from '../../types';
+import { Vendor, BackupCommandsConfig } from '../../types';
 
 // Self-contained: owns its own vendor list (via useListResource) instead of
 // depending on the parent's shared systemSettings.get() payload — vendors
@@ -40,7 +40,7 @@ const VendorsTab: React.FC = () => {
 
     try {
       setSaving(true);
-      let parsedCommands = {};
+      let parsedCommands: BackupCommandsConfig = {};
 
       if (vendorCommands.trim()) {
         try {
@@ -77,7 +77,7 @@ const VendorsTab: React.FC = () => {
     try {
       setSaving(true);
 
-      let parsedCommands = {};
+      let parsedCommands: BackupCommandsConfig = {};
       if (vendorForm.backup_commands.trim()) {
         try {
           parsedCommands = JSON.parse(vendorForm.backup_commands);
@@ -99,7 +99,7 @@ const VendorsTab: React.FC = () => {
       toast.success(t('systemSettings.vendors.created'));
       setShowVendorModal(false);
       await loadVendors();
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error creating vendor:', error);
       toast.error(extractErrorMessage(error, t('systemSettings.vendors.failed_create')));
     } finally {
@@ -143,7 +143,7 @@ const VendorsTab: React.FC = () => {
       </div>
 
       <div style={{ display: 'grid', gap: '1rem' }}>
-        {vendors.map((vendor: any) => (
+        {vendors.map((vendor) => (
           <div key={vendor.id} style={{
             border: '1px solid var(--border-color)',
             borderRadius: '8px',

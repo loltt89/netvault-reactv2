@@ -93,18 +93,12 @@ const DevicesListPage: React.FC = () => {
         page: currentPage,
         page_size: pageSize
       });
-      // Handle paginated response
-      if (response.results) {
-        setDevices(response.results);
-        setTotalCount(response.count || 0);
-      } else if (Array.isArray(response)) {
-        // Fallback for non-paginated response
-        setDevices(response);
-        setTotalCount(response.length);
-      } else {
-        setDevices([]);
-        setTotalCount(0);
-      }
+      const devicesList = unwrapList<Device>(response);
+      setDevices(devicesList);
+      // Paginated response carries the real total; a plain-array fallback
+      // (non-paginated response) has no separate total, so its own
+      // length is the best available count.
+      setTotalCount('count' in response ? response.count : devicesList.length);
     } catch (error) {
       logger.error('Error loading devices:', error);
       // Don't show alert for empty device list - this is normal on fresh install
@@ -173,8 +167,12 @@ const DevicesListPage: React.FC = () => {
     }
 
     filtered.sort((a, b) => {
-      let aVal: any = a[sortField as keyof Device];
-      let bVal: any = b[sortField as keyof Device];
+      // The only array-valued Device field ('tags') is handled by its own
+      // early-return branch above, so by this point the dynamic-keyed
+      // read is always one of Device's remaining, genuinely comparable
+      // field types — never string[].
+      let aVal: string | number | boolean | null = a[sortField as keyof Device] as string | number | boolean | null;
+      let bVal: string | number | boolean | null = b[sortField as keyof Device] as string | number | boolean | null;
 
       // Tags is a string[] — sort by its joined, lowercased text rather
       // than relying on array's implicit toString() coercion below.
@@ -189,8 +187,10 @@ const DevicesListPage: React.FC = () => {
       // Handle IP address sorting naturally
       if (sortField === 'ip_address') {
         const parseIP = (ip: string) => ip.split('.').map(n => parseInt(n, 10));
-        const aIP = parseIP(aVal || '0.0.0.0');
-        const bIP = parseIP(bVal || '0.0.0.0');
+        // sortField === 'ip_address' guarantees these came from Device's
+        // own ip_address field, which is always a string.
+        const aIP = parseIP((aVal as string) || '0.0.0.0');
+        const bIP = parseIP((bVal as string) || '0.0.0.0');
         for (let i = 0; i < 4; i++) {
           if (aIP[i] !== bIP[i]) {
             return sortDirection === 'asc' ? aIP[i] - bIP[i] : bIP[i] - aIP[i];
@@ -202,7 +202,7 @@ const DevicesListPage: React.FC = () => {
       if (aVal == null) aVal = '';
       if (bVal == null) bVal = '';
 
-      if (typeof aVal === 'string') {
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
         aVal = aVal.toLowerCase();
         bVal = bVal.toLowerCase();
       }
@@ -320,7 +320,7 @@ const DevicesListPage: React.FC = () => {
       toast.success(t('devices.bulk_delete_success', { count: result.deleted_count }));
       setSelectedDevices(new Set());
       loadDevices();
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error bulk deleting devices:', error);
       toast.error(extractErrorMessage(error, t('devices.bulk_delete_failed')));
     } finally {
@@ -366,7 +366,7 @@ const DevicesListPage: React.FC = () => {
       // Queue backup task - real-time progress will be shown in TaskTerminal
       await apiService.devices.backupNow(device.id);
       // No toast - logs will appear in TaskTerminal
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error initiating backup:', error);
       toast.error(extractErrorMessage(error, 'Failed to queue backup task'));
     }
@@ -383,7 +383,7 @@ const DevicesListPage: React.FC = () => {
       }
       // Reload devices to update status
       loadDevices();
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error testing connection:', error);
       toast.error('Connection test failed');
     }

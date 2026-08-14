@@ -6,27 +6,10 @@ import { extractErrorMessage } from '../utils/extractErrorMessage';
 import { useToast } from '../contexts/ToastContext';
 import { useListResource } from '../hooks/useListResource';
 import { useModalForm } from '../hooks/useModalForm';
+import { BackupRetentionPolicy, Device } from '../types';
 import '../styles/Devices.css';
 
-interface RetentionPolicy {
-  id: number;
-  name: string;
-  description: string;
-  keep_last_n: number;
-  keep_daily: number;
-  keep_weekly: number;
-  keep_monthly: number;
-  is_active: boolean;
-  auto_delete: boolean;
-  created_at: string;
-  updated_at: string;
-  devices: number[];
-}
-
-interface Device {
-  id: number;
-  name: string;
-}
+type RetentionPolicy = BackupRetentionPolicy;
 
 const DEFAULT_FORM_DATA = {
   name: '',
@@ -92,7 +75,7 @@ const BackupRetentionPoliciesComponent: React.FC = () => {
 
       closeModal();
       loadPolicies();
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error saving retention policy:', error);
       toast.error(extractErrorMessage(error, t('retention.failed_save')));
     }

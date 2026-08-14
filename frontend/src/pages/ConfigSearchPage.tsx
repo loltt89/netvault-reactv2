@@ -59,7 +59,7 @@ const ConfigSearchPage: React.FC = () => {
       });
       setResults(data);
       setExpandedDevices(new Set());
-    } catch (err: any) {
+    } catch (err) {
       setError(extractErrorMessage(err, t('config_search.search_error')));
     } finally {
       setLoading(false);

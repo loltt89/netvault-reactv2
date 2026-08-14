@@ -86,7 +86,7 @@ const DeviceDetailPage: React.FC = () => {
       // Queue backup task - WebSocket in Layout will show real-time progress
       await apiService.devices.backupNow(device.id);
       startBackupPolling();
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error initiating backup:', error);
       toast.error(extractErrorMessage(error, 'Failed to queue backup task'));
     }
@@ -102,7 +102,7 @@ const DeviceDetailPage: React.FC = () => {
       } else {
         toast.error(result.message);
       }
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error testing connection:', error);
       toast.error('Connection test failed');
     }
@@ -117,7 +117,7 @@ const DeviceDetailPage: React.FC = () => {
       const refreshed = await apiService.devices.get(device.id);
       setDevice(refreshed);
       toast.success(t('devices.host_key_approved'));
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error approving SSH host key:', error);
       toast.error(extractErrorMessage(error, t('devices.failed_approve_host_key')));
     }
@@ -132,7 +132,7 @@ const DeviceDetailPage: React.FC = () => {
       const refreshed = await apiService.devices.get(device.id);
       setDevice(refreshed);
       toast.success(t('devices.host_key_rejected'));
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error rejecting SSH host key:', error);
       toast.error(extractErrorMessage(error, t('devices.failed_reject_host_key')));
     }
@@ -141,7 +141,7 @@ const DeviceDetailPage: React.FC = () => {
   const viewBackupConfig = async (backup: Backup) => {
     try {
       const response = await apiService.backups.getConfiguration(backup.id);
-      setConfigContent(response.configuration);
+      setConfigContent(response.configuration || '');
       setSelectedBackup(backup);
       setShowViewer(true);
     } catch (error) {

@@ -6,12 +6,18 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
+import axios from 'axios';
 import { startAuthentication, browserSupportsWebAuthn } from '@simplewebauthn/browser';
 import { useAuth } from '../contexts/AuthContext';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import { extractErrorMessage } from '../utils/extractErrorMessage';
+import { LoginTwoFactorRequiredError } from '../types';
 import './LoginPage.css';
+
+function isTwoFactorRequiredError(error: unknown): error is LoginTwoFactorRequiredError {
+  return typeof error === 'object' && error !== null && (error as { twoFactorRequired?: boolean }).twoFactorRequired === true;
+}
 
 const LoginPage: React.FC = () => {
   const { t } = useTranslation();
@@ -78,15 +84,15 @@ const LoginPage: React.FC = () => {
         require2FA ? formData.twoFactorToken : undefined
       );
       navigate('/dashboard');
-    } catch (err: any) {
+    } catch (err) {
       logger.error('Login error:', err);
 
-      if (err.twoFactorRequired) {
+      if (isTwoFactorRequiredError(err)) {
         setRequire2FA(true);
         setTotpAvailable(err.totpAvailable !== false);
         setWebauthnOptions(err.webauthnOptions || null);
         setError(t('auth.two_factor_required'));
-      } else if (err.response?.data) {
+      } else if (axios.isAxiosError(err) && err.response?.data) {
         const errors = err.response.data;
         if (typeof errors === 'string') {
           setError(errors);

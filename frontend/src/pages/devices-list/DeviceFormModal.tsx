@@ -4,7 +4,7 @@ import apiService from '../../services/api.service';
 import logger from '../../utils/logger';
 import { extractErrorMessage } from '../../utils/extractErrorMessage';
 import { useToast } from '../../contexts/ToastContext';
-import { Device } from '../../types';
+import { Device, DeviceForm as DeviceFormPayload, Protocol, Criticality } from '../../types';
 
 interface Vendor { id: number; name: string; }
 interface DeviceType { id: number; name: string; }
@@ -106,17 +106,21 @@ const DeviceFormModal: React.FC<DeviceFormModalProps> = ({
     e.preventDefault();
 
     try {
-      const payload: any = {
+      // Partial while being built up below (password/enable_password are
+      // added conditionally) — the create-mode branch always ends up
+      // setting `password` unconditionally before calling create(), which
+      // is what the cast at that call site below relies on.
+      const payload: Partial<DeviceFormPayload> = {
         name: formData.name,
         ip_address: formData.ip_address,
         description: formData.description,
         vendor: parseInt(formData.vendor),
         device_type: parseInt(formData.device_type),
-        protocol: formData.protocol,
+        protocol: formData.protocol as Protocol,
         port: parseInt(formData.port),
         username: formData.username,
         location: formData.location,
-        criticality: formData.criticality,
+        criticality: formData.criticality as Criticality,
         tags: formData.tags.split(',').map((s) => s.trim()).filter(Boolean),
         backup_enabled: formData.backup_enabled,
       };
@@ -146,12 +150,15 @@ const DeviceFormModal: React.FC<DeviceFormModalProps> = ({
         if (formData.enable_password) {
           payload.enable_password = formData.enable_password;
         }
-        await apiService.devices.create(payload);
+        // Every other DeviceForm field was already set when payload was
+        // built above; password is guaranteed set on the line just
+        // above — this branch's payload is complete.
+        await apiService.devices.create(payload as DeviceFormPayload);
         toast.success(t('devices.device_created'));
       }
 
       onSaved();
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error saving device:', error);
       toast.error(extractErrorMessage(error, t('devices.failed_save')));
     }

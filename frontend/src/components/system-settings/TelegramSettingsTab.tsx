@@ -47,7 +47,7 @@ const TelegramSettingsTab: React.FC<TelegramSettingsTabProps> = ({ initial, onSa
         telegramSettings.chat_id
       );
       toast.success(result.message);
-    } catch (error: any) {
+    } catch (error) {
       toast.error(extractErrorMessage(error, t('systemSettings.telegram.failed_test')));
     }
   };

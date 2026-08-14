@@ -8,6 +8,7 @@ import { startRegistration, browserSupportsWebAuthn } from '@simplewebauthn/brow
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import { extractErrorMessage } from '../utils/extractErrorMessage';
+import { unwrapList } from '../utils/unwrapList';
 import { Language, Theme, WebAuthnCredential } from '../types';
 import '../styles/UserProfileModal.css';
 
@@ -63,7 +64,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
 
   const loadPasskeys = () => {
     apiService.webauthnCredentials.list()
-      .then((res) => setPasskeys(res.results || res))
+      .then((res) => setPasskeys(unwrapList<WebAuthnCredential>(res)))
       .catch((error) => logger.error('Error loading passkeys:', error));
   };
 
@@ -157,7 +158,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
       setVerificationCode('');
       if (refreshUser) await refreshUser();
       toast.success(t('profile.2fa_enabled'));
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error verifying 2FA:', error);
       toast.error(t('profile.invalid_verification'));
     }
@@ -172,7 +173,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
       setTwoFAEnabled(false);
       if (refreshUser) await refreshUser();
       toast.success(t('profile.2fa_disabled'));
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error disabling 2FA:', error);
       toast.error(t('profile.failed_disable_2fa'));
     }
@@ -248,7 +249,7 @@ const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) 
       setOldPassword('');
       setNewPassword('');
       setConfirmPassword('');
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error changing password:', error);
       toast.error(extractErrorMessage(error, t('profile.failed_change_password')));
     }

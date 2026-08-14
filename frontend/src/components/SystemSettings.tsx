@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import axios from 'axios';
 import apiService from '../services/api.service';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
+import { SystemSettingsResponse } from '../types';
 import EmailSettingsTab from './system-settings/EmailSettingsTab';
 import TelegramSettingsTab from './system-settings/TelegramSettingsTab';
 import NotificationsSettingsTab from './system-settings/NotificationsSettingsTab';
@@ -20,49 +22,18 @@ import DeviceTypesTab from './system-settings/DeviceTypesTab';
 // that email/telegram/notifications/ldap/jwt/redis all slice from (SAML/
 // vendors/device-types were always independently loaded, so those three
 // tabs are fully self-contained — see their own files).
-interface SystemSettingsData {
-  email: {
-    host: string;
-    port: number;
-    use_tls: boolean;
-    host_user: string;
-  };
-  telegram: {
-    bot_token: string;
-    chat_id: string;
-    enabled: boolean;
-  };
-  notifications: {
-    notify_on_success: boolean;
-    notify_on_failure: boolean;
-    notify_schedule_summary: boolean;
-  };
-  ldap: {
-    enabled: boolean;
-    server_uri: string;
-    bind_dn: string;
-    user_search_base: string;
-  };
-  redis: {
-    url: string;
-  };
-  jwt: {
-    access_token_lifetime: number;
-    refresh_token_lifetime: number;
-  };
-}
-
 type TabId = 'email' | 'telegram' | 'notifications' | 'ldap' | 'saml' | 'jwt' | 'redis' | 'vendors' | 'devicetypes';
 
 // Matches the original per-tab useState defaults exactly — if
 // loadSettings() fails, the tabs render with these instead of getting
 // stuck behind the loading spinner forever (the toast in the catch block
 // below already tells the admin the load failed).
-const DEFAULT_SETTINGS: SystemSettingsData = {
-  email: { host: '', port: 587, use_tls: true, host_user: '' },
+const DEFAULT_SETTINGS: SystemSettingsResponse = {
+  email: { host: '', port: 587, use_tls: true, host_user: '', from_email: '' },
   telegram: { enabled: false, bot_token: '', chat_id: '' },
   notifications: { notify_on_success: false, notify_on_failure: true, notify_schedule_summary: false },
-  ldap: { enabled: false, server_uri: '', bind_dn: '', user_search_base: '' },
+  ldap: { enabled: false, server_uri: '', bind_dn: '', user_search_base: '', user_search_filter: '' },
+  backup: { retention_days: 90, parallel_workers: 5 },
   redis: { url: 'redis://localhost:6379/0' },
   jwt: { access_token_lifetime: 60, refresh_token_lifetime: 1440 },
 };
@@ -70,7 +41,7 @@ const DEFAULT_SETTINGS: SystemSettingsData = {
 const SystemSettings: React.FC = () => {
   const { t } = useTranslation();
   const toast = useToast();
-  const [settings, setSettings] = useState<SystemSettingsData>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<SystemSettingsResponse>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<TabId>('email');
 
@@ -83,9 +54,9 @@ const SystemSettings: React.FC = () => {
       setLoading(true);
       const data = await apiService.systemSettings.get();
       setSettings(data);
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error loading system settings:', error);
-      if (error.response?.status === 403) {
+      if (axios.isAxiosError(error) && error.response?.status === 403) {
         toast.error(t('systemSettings.access_denied'));
       } else {
         toast.error(t('systemSettings.failed_load'));
@@ -148,7 +119,7 @@ const SystemSettings: React.FC = () => {
       {activeTab === 'ldap' && <LdapSettingsTab initial={settings.ldap} onSaved={loadSettings} />}
       {activeTab === 'saml' && <SamlSettingsTab />}
       {activeTab === 'jwt' && <JwtSettingsTab initial={settings.jwt} onSaved={loadSettings} />}
-      {activeTab === 'redis' && <RedisSettingsTab initial={settings.redis} onSaved={loadSettings} />}
+      {activeTab === 'redis' && <RedisSettingsTab initial={settings.redis} />}
       {activeTab === 'vendors' && <VendorsTab />}
       {activeTab === 'devicetypes' && <DeviceTypesTab />}
     </div>

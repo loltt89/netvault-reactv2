@@ -43,7 +43,7 @@ const DeviceTypesTab: React.FC = () => {
       toast.success(t('systemSettings.device_types.created'));
       closeModal();
       await loadDeviceTypes();
-    } catch (error: any) {
+    } catch (error) {
       logger.error('Error creating device type:', error);
       toast.error(extractErrorMessage(error, t('systemSettings.device_types.failed_create')));
     } finally {
@@ -82,7 +82,7 @@ const DeviceTypesTab: React.FC = () => {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '1rem' }}>
-        {deviceTypes.map((deviceType: any) => (
+        {deviceTypes.map((deviceType) => (
           <div key={deviceType.id} style={{
             border: '1px solid var(--border-color)',
             borderRadius: '8px',
