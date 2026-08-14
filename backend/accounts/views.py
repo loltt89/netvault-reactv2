@@ -7,7 +7,7 @@ from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from .models import User, AuditLog, WebAuthnCredential
-from .throttling import LoginRateThrottle, TwoFactorVerifyThrottle
+from .throttling import LoginRateThrottle, RegisterRateThrottle, TwoFactorVerifyThrottle
 from . import webauthn_service
 
 logger = logging.getLogger(__name__)
@@ -180,7 +180,7 @@ class AuthViewSet(viewsets.GenericViewSet):
 
     permission_classes = [permissions.AllowAny]
 
-    @action(detail=False, methods=['post'])
+    @action(detail=False, methods=['post'], throttle_classes=[RegisterRateThrottle])
     def register(self, request):
         """Register a new user (only if ALLOW_PUBLIC_REGISTRATION=True)"""
         from django.conf import settings

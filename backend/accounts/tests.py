@@ -1710,3 +1710,84 @@ class PermissionClassesTestCase(TestCase):
         request.user = self.viewer
         request.method = 'GET'
         self.assertTrue(perm.has_permission(request, None))
+
+
+class SAMLViewRateLimitTestCase(APITestCase):
+    """
+    Tests for the rate-limit fix on SAMLLoginView/SAMLACSView.
+
+    Both are plain Django View subclasses, not DRF APIView — DRF's
+    DEFAULT_THROTTLE_CLASSES (the blanket 'anon' scope everything else
+    gets) never applied to them at all before this fix, leaving
+    SAMLACSView's real XML-assertion processing completely unbounded.
+    The rate-limit check runs before any SAML-specific logic in both
+    views, so these tests don't need a working/enabled SAML IdP
+    configured — only that repeated calls eventually 429.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def test_saml_login_is_rate_limited(self):
+        from accounts.saml_views import SAML_RATE_LIMIT
+
+        responses = [
+            self.client.get('/api/v1/saml/login/')
+            for _ in range(SAML_RATE_LIMIT + 5)
+        ]
+        statuses = [r.status_code for r in responses]
+        self.assertIn(429, statuses, f"Expected a 429 among {statuses} — SAML login rate limit never engaged")
+
+    def test_saml_acs_is_rate_limited(self):
+        from accounts.saml_views import SAML_RATE_LIMIT
+
+        responses = [
+            self.client.post('/api/v1/saml/acs/', {})
+            for _ in range(SAML_RATE_LIMIT + 5)
+        ]
+        statuses = [r.status_code for r in responses]
+        self.assertIn(429, statuses, f"Expected a 429 among {statuses} — SAML ACS rate limit never engaged")
+
+    def test_saml_login_and_acs_limits_are_independent(self):
+        """Exhausting SAMLLoginView's limit must not affect SAMLACSView's — different view_name in the cache key."""
+        from accounts.saml_views import SAML_RATE_LIMIT
+
+        for _ in range(SAML_RATE_LIMIT + 5):
+            self.client.get('/api/v1/saml/login/')
+
+        response = self.client.post('/api/v1/saml/acs/', {})
+        self.assertNotEqual(response.status_code, 429)
+
+
+class RegisterThrottleTestCase(APITestCase):
+    """
+    Tests for the dedicated 'register' throttle scope — previously
+    self-registration was covered only by the blanket 'anon' scope
+    (10000/hour, effectively no limit), despite doing real work (password
+    hashing, a DB write, an audit log entry) and being a natural target
+    for account-enumeration/mass fake-account creation.
+
+    DRF applies throttle checks in dispatch() before the view body runs,
+    so these fire (and can be asserted) even with
+    ALLOW_PUBLIC_REGISTRATION left at its default False — every call
+    still counts against the throttle before ever reaching the
+    "registration disabled" 403.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def test_register_is_throttled_separately_from_blanket_anon_scope(self):
+        responses = [
+            self.client.post('/api/v1/auth/register/', {
+                'email': f'flood{i}@example.com', 'username': f'flood{i}', 'password': 'x',
+            })
+            for i in range(35)  # over the 30/hour 'register' scope
+        ]
+        statuses = [r.status_code for r in responses]
+        self.assertIn(status.HTTP_429_TOO_MANY_REQUESTS, statuses,
+                       f"Expected a 429 among {statuses} — register throttle never engaged")

@@ -138,18 +138,39 @@ class Device(EncryptedFieldMixin, models.Model):
         return f'{self.name} ({self.ip_address})'
 
     def clean(self):
-        """Sanitize fields to prevent CSV injection"""
+        """
+        Reject (not silently rewrite) text fields that would be dangerous
+        if ever exported to CSV — same policy DeviceCreateSerializer
+        already enforces on the API create/update path and devices/views.py
+        csv_import enforces on the CSV-import path (both call
+        core.utils.validate_csv_safe explicitly, so the database only ever
+        stores what was actually submitted, never a silently-modified
+        version of it — this model-level check exists as a backstop for
+        any path that creates/updates a Device directly without going
+        through either of those, not as the primary defense).
+        Previously this method *mutated* the field (prepending a quote)
+        instead of rejecting, which — besides silently storing something
+        the caller didn't submit — was never actually reachable in
+        practice: every real entry point already rejects the same input
+        earlier, via validate_csv_safe, before a Device instance with a
+        dangerous value could reach save()/clean() at all.
+        """
         from django.core.exceptions import ValidationError
+        from core.utils import validate_csv_safe
 
-        # Sanitize text fields that could be exported to CSV
-        if self.name and isinstance(self.name, str) and self.name[0] in ('=', '+', '-', '@', '\t', '\r'):
-            self.name = "'" + self.name
+        errors = {}
+        for field_name, field_label in (
+            ('name', 'Name'), ('location', 'Location'), ('description', 'Description'),
+        ):
+            value = getattr(self, field_name)
+            if value and isinstance(value, str):
+                try:
+                    validate_csv_safe(value, field_name=field_label)
+                except ValueError as e:
+                    errors[field_name] = str(e)
 
-        if self.location and isinstance(self.location, str) and self.location[0] in ('=', '+', '-', '@', '\t', '\r'):
-            self.location = "'" + self.location
-
-        if self.description and isinstance(self.description, str) and self.description[0] in ('=', '+', '-', '@', '\t', '\r'):
-            self.description = "'" + self.description
+        if errors:
+            raise ValidationError(errors)
 
     def save(self, *args, **kwargs):
         """Override save to call clean()"""

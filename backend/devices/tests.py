@@ -193,7 +193,15 @@ class DeviceModelTestCase(TestCase):
         self.assertEqual(commands, ['show running-config'])
 
     def test_csv_injection_prevention_name(self):
-        """Test CSV injection characters are sanitized in name"""
+        """
+        Device.clean() rejects (does not silently rewrite) a dangerous
+        name — the model-level backstop for any direct-creation path that
+        bypasses DeviceCreateSerializer's own validate_csv_safe check.
+        See Device.clean()'s docstring for why this changed from silent
+        mutation to rejection.
+        """
+        from django.core.exceptions import ValidationError
+
         device = Device(
             name='=CMD|calc|',
             ip_address='10.0.0.6',
@@ -203,12 +211,16 @@ class DeviceModelTestCase(TestCase):
             password_encrypted=encrypt_data('pass'),
             created_by=self.user
         )
-        device.clean()
-
-        self.assertTrue(device.name.startswith("'"))
+        with self.assertRaises(ValidationError) as ctx:
+            device.clean()
+        self.assertIn('name', ctx.exception.message_dict)
+        # Rejected, not silently rewritten.
+        self.assertEqual(device.name, '=CMD|calc|')
 
     def test_csv_injection_prevention_location(self):
-        """Test CSV injection characters are sanitized in location"""
+        """Same as test_csv_injection_prevention_name, for location."""
+        from django.core.exceptions import ValidationError
+
         device = Device(
             name='Safe-Device',
             ip_address='10.0.0.7',
@@ -219,9 +231,28 @@ class DeviceModelTestCase(TestCase):
             location='+1-555-1234',
             created_by=self.user
         )
-        device.clean()
+        with self.assertRaises(ValidationError) as ctx:
+            device.clean()
+        self.assertIn('location', ctx.exception.message_dict)
+        self.assertEqual(device.location, '+1-555-1234')
 
-        self.assertTrue(device.location.startswith("'"))
+    def test_clean_passes_through_safe_values_unchanged(self):
+        """A device with no CSV-dangerous fields cleans without raising or rewriting anything."""
+        device = Device(
+            name='Safe-Device-2',
+            ip_address='10.0.0.9',
+            vendor=self.vendor,
+            device_type=self.device_type,
+            username='admin',
+            password_encrypted=encrypt_data('pass'),
+            location='Rack 4',
+            description='A perfectly normal description.',
+            created_by=self.user
+        )
+        device.clean()  # must not raise
+        self.assertEqual(device.name, 'Safe-Device-2')
+        self.assertEqual(device.location, 'Rack 4')
+        self.assertEqual(device.description, 'A perfectly normal description.')
 
     def test_default_values(self):
         """Test default field values"""
@@ -1848,6 +1879,46 @@ Password:
         )
         is_valid, error = validate_backup_config(config)
         self.assertTrue(is_valid, error)
+
+    def test_validate_backup_config_error_colon_mid_line_not_falsely_rejected(self):
+        """
+        'error:' appearing mid-line as part of legitimate config content
+        (a logging severity directive, a description/banner remnant) must
+        NOT be treated as a device error signature — only a line that
+        actually STARTS with "error:" (optionally after a leading '%',
+        matching real CLI failure output) counts. Regression test for the
+        fix: this used to reject real, successful backups whenever a
+        vendor's config happened to contain the word for an unrelated
+        reason.
+        """
+        from devices.connection import validate_backup_config
+        config = (
+            "hostname Router\n!\n"
+            "logging trap error: escalate to NOC immediately\n"
+            "description WAN uplink - error: contact ISP if flapping\n"
+            "!\n"
+            "interface GigabitEthernet0/1\n"
+            " ip address 10.0.0.1 255.255.255.0\n"
+            "!\nend\n"
+        )
+        is_valid, error = validate_backup_config(config)
+        self.assertTrue(is_valid, error)
+
+    def test_validate_backup_config_error_colon_at_line_start_rejected(self):
+        """A line that actually starts with "error:" is a real device error response."""
+        from devices.connection import validate_backup_config
+        is_valid, error = validate_backup_config(
+            "Router#show running-config\nError: Invalid input detected\nRouter#"
+        )
+        self.assertFalse(is_valid)
+
+    def test_validate_backup_config_percent_error_colon_prefix_rejected(self):
+        """"% Error:" — the common CLI error-prefix marker — is also a real error response."""
+        from devices.connection import validate_backup_config
+        is_valid, error = validate_backup_config(
+            "Router#show running-config\n% Error: ambiguous command\nRouter#"
+        )
+        self.assertFalse(is_valid)
 
     def test_clean_device_output_cisco(self):
         """Test Cisco output cleaning"""

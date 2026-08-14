@@ -19,6 +19,24 @@ class LoginRateThrottle(AnonRateThrottle):
     scope = 'login'
 
 
+class RegisterRateThrottle(AnonRateThrottle):
+    """
+    Rate limiting for public self-registration, by IP.
+
+    Previously covered only by the blanket 'anon' scope (10000/hour) —
+    generous enough to be effectively no limit for an endpoint that does
+    real, non-trivial work (password hashing, a DB write, an audit log
+    entry) and is a natural target for account-enumeration or mass
+    fake-account creation whenever ALLOW_PUBLIC_REGISTRATION is enabled.
+    The blanket 'anon' scope is deliberately left generous rather than
+    tightened globally — it also covers the health/readiness/liveness
+    probes in core/health_views.py, which legitimate Docker/Kubernetes
+    monitoring can poll every few seconds; a low blanket limit there
+    would risk flagging real infrastructure as abusive.
+    """
+    scope = 'register'
+
+
 class TwoFactorVerifyThrottle(UserRateThrottle):
     """
     Rate limiting for confirming a TOTP code (verify_2fa), by user id.

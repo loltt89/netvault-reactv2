@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import apiService from '../services/api.service';
 import ConfigViewer from '../components/ConfigViewer';
 import { getConfigLanguage } from '../utils/configLanguage';
+import { getDateRange, DateFilterType } from '../utils/dateRange';
 import logger from '../utils/logger';
 import { useToast } from '../contexts/ToastContext';
 import { Backup } from '../types';
@@ -16,8 +17,6 @@ interface BackupGroup {
 }
 
 type GroupByType = 'date' | 'vendor' | 'device_type';
-
-type DateFilterType = 'all' | 'today' | 'yesterday' | 'last7days' | 'last30days' | 'custom';
 
 const BackupsPage: React.FC = () => {
   const { t } = useTranslation();
@@ -64,47 +63,10 @@ const BackupsPage: React.FC = () => {
     }
   };
 
-  const getDateRange = (filter: DateFilterType): { date_from?: string; date_to?: string } => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-
-    switch (filter) {
-      case 'today':
-        return { date_from: today.toISOString() };
-      case 'yesterday': {
-        const yesterday = new Date(today);
-        yesterday.setDate(yesterday.getDate() - 1);
-        // Backend filters created_at__lte=date_to (inclusive), so the upper
-        // bound is the last millisecond of yesterday, not today's midnight.
-        return {
-          date_from: yesterday.toISOString(),
-          date_to: new Date(today.getTime() - 1).toISOString()
-        };
-      }
-      case 'last7days': {
-        const last7 = new Date(today);
-        last7.setDate(last7.getDate() - 7);
-        return { date_from: last7.toISOString() };
-      }
-      case 'last30days': {
-        const last30 = new Date(today);
-        last30.setDate(last30.getDate() - 30);
-        return { date_from: last30.toISOString() };
-      }
-      case 'custom':
-        return {
-          date_from: dateFrom ? new Date(dateFrom).toISOString() : undefined,
-          date_to: dateTo ? new Date(dateTo).toISOString() : undefined
-        };
-      default:
-        return {};
-    }
-  };
-
   const loadBackups = async () => {
     try {
       setLoading(true);
-      const dateRange = getDateRange(dateFilter);
+      const dateRange = getDateRange(dateFilter, new Date(), { dateFrom, dateTo });
       const params: any = {
         ...dateRange,
       };

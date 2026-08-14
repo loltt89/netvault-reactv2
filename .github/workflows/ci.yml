@@ -154,6 +154,10 @@ jobs:
         # warning count growing past that baseline, not on the backlog itself.
         run: npx eslint . --max-warnings 86
 
+      - name: Unit tests
+        working-directory: ./frontend
+        run: npm run test
+
       - name: Check locale files are in sync
         working-directory: ./frontend
         run: npm run check:i18n

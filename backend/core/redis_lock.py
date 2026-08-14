@@ -48,6 +48,27 @@ class DeviceLock:
     end
     """
 
+    # Lua script for atomic lock extension (check token + expire). Mirrors
+    # RELEASE_SCRIPT's shape for the same reason: extend()'s previous
+    # implementation did a plain GET then, separately, EXPIRE — two round
+    # trips with a gap between them. If this token's TTL ran out in that
+    # gap (heartbeat scheduling jitter, a slow Redis call, GC pause) and a
+    # second caller acquired the now-free lock in between, the GET would
+    # still read back a *different* token, so an outright race there
+    # already fails the ownership check as intended. The narrower, real
+    # gap this closes: another caller's SET NX happening in between our
+    # GET and our EXPIRE would go undetected by GET (which already ran)
+    # while our EXPIRE would then blindly refresh whatever key exists at
+    # that moment as though it were still ours. Folding the check and the
+    # write into one atomic script removes that window entirely.
+    EXTEND_SCRIPT = """
+    if redis.call("get", KEYS[1]) == ARGV[1] then
+        return redis.call("expire", KEYS[1], ARGV[2])
+    else
+        return 0
+    end
+    """
+
     def __init__(self, device_id: int, operation: str = 'operation', ttl: int = 120,
                  blocking: bool = False, blocking_timeout: int = 30):
         """
@@ -196,23 +217,29 @@ class DeviceLock:
         try:
             client = self._get_redis_client()
 
-            # Check if we still own the lock
-            current_token = client.get(self.lock_key)
-            if current_token != self.token:
+            # Atomic check-token-then-expire — see EXTEND_SCRIPT's comment
+            # for why a separate GET then EXPIRE isn't safe here.
+            result = client.eval(
+                self.EXTEND_SCRIPT,
+                1,  # Number of keys
+                self.lock_key,  # KEYS[1]
+                self.token,  # ARGV[1]
+                additional_ttl,  # ARGV[2]
+            )
+
+            if result:
+                logger.info(
+                    f"Lock extended: device_id={self.device_id}, "
+                    f"operation={self.operation}, additional_ttl={additional_ttl}s"
+                )
+                return True
+            else:
                 logger.warning(
                     f"Cannot extend lock (not owner): device_id={self.device_id}, "
                     f"operation={self.operation}"
                 )
                 self.acquired = False
                 return False
-
-            # Extend TTL
-            client.expire(self.lock_key, additional_ttl)
-            logger.info(
-                f"Lock extended: device_id={self.device_id}, "
-                f"operation={self.operation}, additional_ttl={additional_ttl}s"
-            )
-            return True
 
         except Exception as e:
             logger.error(f"Error extending lock for device {self.device_id}: {e}")

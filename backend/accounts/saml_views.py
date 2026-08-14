@@ -113,6 +113,30 @@ def prepare_saml_request(request):
     }
 
 
+# SAMLLoginView/SAMLACSView are plain Django View subclasses, not DRF
+# APIView — DRF's DEFAULT_THROTTLE_CLASSES (including the blanket 'anon'
+# scope every other unauthenticated endpoint gets) never applies to them.
+# See core/rate_limit.py's module docstring for the full reasoning.
+# SAMLACSView does real cryptographic/XML work per request and is the
+# more attacker-reachable of the two; SAMLLoginView is cheap (just builds
+# a redirect) but still worth bounding since it's the one a scripted
+# client would actually hit first. 30 per 5 minutes per IP is generous
+# for a real user (including retries after a mistake) while meaningfully
+# bounding a scripted flood of either.
+SAML_RATE_LIMIT = 30
+SAML_RATE_WINDOW_SECONDS = 300
+
+
+def _saml_rate_limited(request, view_name: str) -> bool:
+    """True if this IP has exceeded SAML_RATE_LIMIT for `view_name` in
+    the current window — caller should reject the request."""
+    from core.rate_limit import check_rate_limit
+
+    ip = request.META.get('REMOTE_ADDR', 'unknown')
+    key = f'saml_rl:{view_name}:{ip}'
+    return not check_rate_limit(key, SAML_RATE_LIMIT, SAML_RATE_WINDOW_SECONDS)
+
+
 class SAMLMetadataView(View):
     """Return SP metadata XML"""
 
@@ -151,6 +175,9 @@ class SAMLLoginView(View):
     """Initiate SAML SSO login"""
 
     def get(self, request):
+        if _saml_rate_limited(request, 'login'):
+            return HttpResponse("Too many requests, please try again later", status=429)
+
         try:
             from onelogin.saml2.auth import OneLogin_Saml2_Auth
 
@@ -186,6 +213,9 @@ class SAMLACSView(View):
     """Assertion Consumer Service - process SAML response"""
 
     def post(self, request):
+        if _saml_rate_limited(request, 'acs'):
+            return HttpResponse("Too many requests, please try again later", status=429)
+
         try:
             from onelogin.saml2.auth import OneLogin_Saml2_Auth
 

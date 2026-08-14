@@ -308,11 +308,27 @@ def validate_backup_config(config: str) -> Tuple[bool, str]:
     ERROR_PATTERNS = [
         'access denied', 'permission denied', 'authorization failed',
         'authentication failed', 'invalid command', 'command not found',
-        'unknown command', '% invalid', 'error:', 'login incorrect',
+        'unknown command', '% invalid', 'login incorrect',
         'not authorized', 'insufficient privilege',
         'bad command', 'incomplete command', 'command authorization failed',
         'invalid password', 'password required',
     ]
+
+    # 'error:' is deliberately NOT a plain substring pattern above, unlike
+    # the rest of the list: those are all multi-word CLI failure phrases
+    # essentially never found inside real config content, but "error:"
+    # alone is common enough as a substring of entirely legitimate config
+    # — an IOS `logging trap errors`/severity-level line, a description or
+    # banner remnant mentioning "error: escalate to NOC", an ACL/SNMP
+    # comment — that matching it anywhere on the line rejected real,
+    # successful backups whenever a vendor's config happened to contain
+    # that word for an unrelated reason. A genuine device error response
+    # puts "error:" (optionally after a leading '%', a common CLI
+    # error-prefix marker) at the very start of the line; a config
+    # directive that merely mentions the word doesn't. Checked separately,
+    # anchored to line-start, rather than folded into ERROR_PATTERNS'
+    # substring-anywhere loop below.
+    LINE_START_ERROR_PATTERNS = ['error:']
 
     if not config or not config.strip():
         return False, "Configuration is empty"
@@ -337,6 +353,13 @@ def validate_backup_config(config: str) -> Tuple[bool, str]:
             # denied', 'not authorized' never rejected anything, no matter
             # what the device actually returned).
             return False, f"Error detected: '{line.strip()[:100]}'"
+
+    if any(pattern in config_lower for pattern in LINE_START_ERROR_PATTERNS):
+        for line in config.split('\n'):
+            stripped = line.strip().lower().lstrip('%').strip()
+            for pattern in LINE_START_ERROR_PATTERNS:
+                if stripped.startswith(pattern):
+                    return False, f"Error detected: '{line.strip()[:100]}'"
 
     lines = [l for l in config.strip().split('\n') if l.strip()]
 

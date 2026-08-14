@@ -132,22 +132,63 @@ class DeviceLockTestCase(TestCase):
 
     @patch('core.redis_lock.redis.from_url')
     def test_extend_lock_success(self, mock_redis):
-        """Test extending lock TTL"""
+        """Test extending lock TTL — atomic check-token-then-expire via eval, like release()"""
         mock_client = MagicMock()
         mock_client.set.return_value = True
-        mock_client.get.return_value = None  # Will be set to lock.token
+        mock_client.eval.return_value = 1  # Lua script: token matched, expire applied
         mock_redis.return_value = mock_client
 
         lock = DeviceLock(device_id=self.device_id, operation=self.operation)
         lock.acquire()
 
-        # Mock get to return our token
-        mock_client.get.return_value = lock.token
-
         result = lock.extend(additional_ttl=60)
 
         self.assertTrue(result)
-        mock_client.expire.assert_called_once()
+        self.assertTrue(lock.acquired)
+        mock_client.eval.assert_called_once()
+        script, numkeys, key, token, ttl = mock_client.eval.call_args[0]
+        self.assertEqual(key, lock.lock_key)
+        self.assertEqual(token, lock.token)
+        self.assertEqual(ttl, 60)
+        # Must not fall back to a separate, non-atomic get+expire pair.
+        mock_client.get.assert_not_called()
+        mock_client.expire.assert_not_called()
+
+    @patch('core.redis_lock.redis.from_url')
+    def test_extend_lock_not_owner(self, mock_redis):
+        """
+        Extend must fail (and mark the lock no longer acquired) when the
+        Lua script finds a different token already holding the key —
+        e.g. our TTL lapsed and someone else's acquire() won the race in
+        the gap. Mirrors test_release_lock_not_owned's scenario for the
+        same reason release() already handles it atomically.
+        """
+        mock_client = MagicMock()
+        mock_client.set.return_value = True
+        mock_client.eval.return_value = 0  # Lua script: token mismatch
+        mock_redis.return_value = mock_client
+
+        lock = DeviceLock(device_id=self.device_id, operation=self.operation)
+        lock.acquire()
+
+        result = lock.extend(additional_ttl=60)
+
+        self.assertFalse(result)
+        self.assertFalse(lock.acquired)
+
+    @patch('core.redis_lock.redis.from_url')
+    def test_extend_lock_not_acquired_returns_false_without_calling_redis(self, mock_redis):
+        """extend() on a lock that was never (successfully) acquired is a no-op, not an error."""
+        mock_client = MagicMock()
+        mock_redis.return_value = mock_client
+
+        lock = DeviceLock(device_id=self.device_id, operation=self.operation)
+        # Never call lock.acquire()
+
+        result = lock.extend(additional_ttl=60)
+
+        self.assertFalse(result)
+        mock_client.eval.assert_not_called()
 
 
 class CSVSafetyTestCase(TestCase):
@@ -1465,3 +1506,49 @@ class CeleryTimezoneTestCase(SimpleTestCase):
         from django.conf import settings
         from netvault.celery import app
         self.assertEqual(app.conf.timezone, settings.TIME_ZONE)
+
+
+class RateLimitTestCase(TestCase):
+    """
+    Tests for core.rate_limit.check_rate_limit() — the fixed-window
+    limiter used by accounts/saml_views.py's plain Django View subclasses
+    (SAMLLoginView, SAMLACSView), which fall outside DRF's own throttle
+    framework entirely. See core/rate_limit.py's module docstring.
+    """
+
+    def setUp(self):
+        from django.core.cache import cache
+        cache.clear()
+        self.addCleanup(cache.clear)
+
+    def test_allows_calls_within_limit(self):
+        from core.rate_limit import check_rate_limit
+
+        for _ in range(5):
+            self.assertTrue(check_rate_limit('rl:test:a', limit=5, window_seconds=60))
+
+    def test_rejects_calls_over_limit(self):
+        from core.rate_limit import check_rate_limit
+
+        for _ in range(5):
+            self.assertTrue(check_rate_limit('rl:test:b', limit=5, window_seconds=60))
+        # 6th call in the same window exceeds the limit of 5.
+        self.assertFalse(check_rate_limit('rl:test:b', limit=5, window_seconds=60))
+
+    def test_different_keys_are_independent(self):
+        from core.rate_limit import check_rate_limit
+
+        for _ in range(5):
+            self.assertTrue(check_rate_limit('rl:test:c1', limit=5, window_seconds=60))
+        self.assertFalse(check_rate_limit('rl:test:c1', limit=5, window_seconds=60))
+
+        # A different key's window must not be affected by 'c1' being exhausted.
+        self.assertTrue(check_rate_limit('rl:test:c2', limit=5, window_seconds=60))
+
+    def test_fails_open_on_cache_error(self):
+        """A broken cache backend must not block the request it's protecting."""
+        from unittest.mock import patch
+        from core.rate_limit import check_rate_limit
+
+        with patch('core.rate_limit.cache.get', side_effect=Exception('cache unavailable')):
+            self.assertTrue(check_rate_limit('rl:test:d', limit=1, window_seconds=60))

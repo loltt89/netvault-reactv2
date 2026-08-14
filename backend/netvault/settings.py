@@ -212,9 +212,17 @@ REST_FRAMEWORK = {
         'rest_framework.throttling.UserRateThrottle',
     ],
     'DEFAULT_THROTTLE_RATES': {
+        # Deliberately generous: also covers core/health_views.py's
+        # health/readiness/liveness probes, which legitimate Docker/
+        # Kubernetes monitoring can poll every few seconds — a tight
+        # blanket limit here would risk throttling real infrastructure,
+        # not just abuse. Endpoints that actually do sensitive or
+        # expensive work under this scope (self-registration) get their
+        # own tighter scope instead — see 'register' below.
         'anon': '10000/hour',  # Anonymous users: 10000 requests per hour
         'user': '100000/hour',  # Authenticated users: 100000 per hour
         'login': '200/hour',  # Login attempts: 200 per hour per IP
+        'register': '30/hour',  # Self-registration attempts: 30 per hour per IP (see RegisterRateThrottle)
         'two_factor_verify': '10/hour',  # TOTP confirmation attempts: 10 per hour per user
         # Both of these open a real SSH/Telnet session to a device.
         # DeviceLock already stops two of these racing against the *same*
