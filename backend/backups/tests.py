@@ -1500,6 +1500,58 @@ class BackupViewSetActionsTestCase(APITestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
+    def test_filter_by_status_exact(self):
+        """
+        Regression test: BackupViewSet.filterset_fields lists 'status',
+        but DjangoFilterBackend (the only thing that attribute means
+        anything to) is never installed/configured in this project — only
+        SearchFilter/OrderingFilter are active. ?status=<value> was
+        silently ignored, always returning every status. This is what
+        TasksTable.tsx's "Running"/"Failed" tabs send.
+        """
+        running = Backup.objects.create(
+            device=self.device, status='running', success=False,
+            configuration_encrypted='', configuration_hash='status-filter-running',
+        )
+        Backup.objects.create(
+            device=self.device, status='failed', success=False,
+            configuration_encrypted='', configuration_hash='status-filter-failed',
+        )
+        Backup.objects.create(
+            device=self.device, status='success', success=True,
+            configuration_encrypted=encrypt_data('config'), configuration_hash='status-filter-success',
+        )
+
+        response = self.client.get('/api/v1/backups/backups/?status=running')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data['results'] if 'results' in response.data else response.data
+        returned_ids = {b['id'] for b in results}
+        self.assertEqual(returned_ids, {running.id})
+
+    def test_filter_by_status_in_comma_separated(self):
+        """Same fix, for TasksTable.tsx's "Completed" tab
+        (?status__in=success,partial)."""
+        success = Backup.objects.create(
+            device=self.device, status='success', success=True,
+            configuration_encrypted=encrypt_data('config'), configuration_hash='status-in-success',
+        )
+        partial = Backup.objects.create(
+            device=self.device, status='partial', success=False,
+            configuration_encrypted='', configuration_hash='status-in-partial',
+        )
+        Backup.objects.create(
+            device=self.device, status='failed', success=False,
+            configuration_encrypted='', configuration_hash='status-in-failed',
+        )
+
+        response = self.client.get('/api/v1/backups/backups/?status__in=success,partial')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data['results'] if 'results' in response.data else response.data
+        returned_ids = {b['id'] for b in results}
+        self.assertEqual(returned_ids, {success.id, partial.id})
+
 
 class BackupScopeRBACTestCase(APITestCase):
     """Tests for device_scope restricting BackupViewSet's queryset, and

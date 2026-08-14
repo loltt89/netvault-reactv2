@@ -64,6 +64,27 @@ class BackupViewSet(viewsets.ModelViewSet):
         if success_param is not None:
             queryset = queryset.filter(success=success_param.lower() == 'true')
 
+        # Filter by status (exact) or a comma-separated list of statuses.
+        # filterset_fields above claims 'status' is filterable via
+        # DjangoFilterBackend, but that backend is never actually
+        # installed/configured (see DEFAULT_FILTER_BACKENDS in
+        # settings.py — only SearchFilter/OrderingFilter are active), so
+        # filterset_fields on this ViewSet has always been dead
+        # configuration with no effect on the queryset. TasksTable.tsx's
+        # status tabs (all/running/completed/failed) send ?status=<value>
+        # and ?status__in=<comma-separated> respectively — both were
+        # silently ignored, so every tab returned the same unfiltered
+        # list.
+        status_param = self.request.query_params.get('status', None)
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+
+        status_in_param = self.request.query_params.get('status__in', None)
+        if status_in_param:
+            statuses = [s.strip() for s in status_in_param.split(',') if s.strip()]
+            if statuses:
+                queryset = queryset.filter(status__in=statuses)
+
         # Filter by date range
         date_from = self.request.query_params.get('date_from', None)
         date_to = self.request.query_params.get('date_to', None)
