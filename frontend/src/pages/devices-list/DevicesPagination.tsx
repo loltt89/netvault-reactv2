@@ -6,14 +6,12 @@ interface DevicesPaginationProps {
   totalPages: number;
   pageSize: number;
   totalCount: number;
-  filteredCount: number;
-  totalDeviceCount: number;
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
 }
 
 const DevicesPagination: React.FC<DevicesPaginationProps> = ({
-  currentPage, totalPages, pageSize, totalCount, filteredCount, totalDeviceCount,
+  currentPage, totalPages, pageSize, totalCount,
   onPageChange, onPageSizeChange,
 }) => {
   const { t } = useTranslation();
@@ -32,7 +30,6 @@ const DevicesPagination: React.FC<DevicesPaginationProps> = ({
     }}>
       <div className="pagination-info" style={{ color: 'var(--text-secondary)' }}>
         {t('devices.showing')} {Math.min((currentPage - 1) * pageSize + 1, totalCount)}-{Math.min(currentPage * pageSize, totalCount)} {t('devices.of')} {totalCount}
-        {filteredCount !== totalDeviceCount && ` (${t('devices.filtered')}: ${filteredCount})`}
       </div>
 
       <div className="pagination-controls" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

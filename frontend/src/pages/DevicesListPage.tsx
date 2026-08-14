@@ -69,14 +69,45 @@ const DevicesListPage: React.FC = () => {
     loadDeviceTypes();
   }, []);
 
-  // Reload devices when pagination or filters change
+  // Reload devices when pagination changes. Filter changes are handled by
+  // the two effects below instead of being lumped in here: search/vendor/
+  // type/status/location/tags all need to reset back to page 1 (a filter
+  // applied while sitting on, say, page 3 of the unfiltered list must not
+  // silently keep querying page 3 of the filtered one — it may not exist),
+  // and the search/location text boxes need debouncing so every keystroke
+  // doesn't fire its own request.
   useEffect(() => {
     loadDevices();
   }, [currentPage, pageSize]);
 
+  // A filter change invalidates whatever page we were on. If we're not
+  // already on page 1, jump there — that alone triggers the effect above.
+  // If we're already on page 1, that effect won't fire (no dep changed),
+  // so the debounced effect below is what actually reloads in that case.
   useEffect(() => {
-    applyFilters();
-  }, [devices, searchTerm, filterVendor, filterType, filterStatus, filterLocation, filterTags, sortField, sortDirection]);
+    if (currentPage !== 1) {
+      setCurrentPage(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterVendor, filterType, filterStatus, filterLocation, filterTags]);
+
+  // Debounced reload for filter changes. Search/location are free text —
+  // this keeps a keystroke from firing a request per character. Vendor/
+  // type/status are discrete dropdown picks, cheap to also fold into the
+  // same short debounce rather than special-case them separately.
+  // clearTimeout on cleanup collapses the extra render this causes when
+  // currentPage also resets to 1 above into a single actual request.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadDevices();
+    }, 300);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterVendor, filterType, filterStatus, filterLocation, filterTags]);
+
+  useEffect(() => {
+    applySort();
+  }, [devices, sortField, sortDirection]);
 
   // Update pageSize when user preference loads
   useEffect(() => {
@@ -91,7 +122,19 @@ const DevicesListPage: React.FC = () => {
       const response = await apiService.devices.list({
         ordering: 'name',
         page: currentPage,
-        page_size: pageSize
+        page_size: pageSize,
+        // Sent to the server (DeviceViewSet.get_queryset) rather than
+        // filtered client-side against the one already-fetched page —
+        // this list is paginated (up to page_size=100), so a client-side
+        // filter used to only ever search/filter within whatever page
+        // happened to be loaded, silently missing matches sitting on any
+        // other page.
+        search: searchTerm || undefined,
+        vendor: filterVendor || undefined,
+        device_type: filterType || undefined,
+        status: filterStatus || undefined,
+        location: filterLocation || undefined,
+        tags: filterTags || undefined,
       });
       const devicesList = unwrapList<Device>(response);
       setDevices(devicesList);
@@ -127,44 +170,15 @@ const DevicesListPage: React.FC = () => {
     }
   };
 
-  const applyFilters = () => {
-    let filtered = devices;
-
-    if (searchTerm) {
-      filtered = filtered.filter(device =>
-        device.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        device.ip_address.includes(searchTerm) ||
-        (device.location && device.location.toLowerCase().includes(searchTerm.toLowerCase()))
-      );
-    }
-
-    if (filterVendor) {
-      filtered = filtered.filter(device => String(device.vendor) === filterVendor);
-    }
-
-    if (filterType) {
-      filtered = filtered.filter(device => String(device.device_type) === filterType);
-    }
-
-    if (filterStatus) {
-      filtered = filtered.filter(device => device.status === filterStatus);
-    }
-
-    if (filterLocation) {
-      filtered = filtered.filter(device =>
-        device.location && device.location.toLowerCase().includes(filterLocation.toLowerCase())
-      );
-    }
-
-    if (filterTags) {
-      // Any-overlap match against the comma-separated filter, same
-      // semantics as device_filters.device_matches_filters's 'tags' key
-      // on the backend (and Bulk Tag Edit's comma-separated input).
-      const wanted = filterTags.split(',').map(t => t.trim().toLowerCase()).filter(Boolean);
-      filtered = filtered.filter(device =>
-        wanted.some(w => (device.tags || []).some(tag => tag.toLowerCase().includes(w)))
-      );
-    }
+  // Search/vendor/type/status/location/tags are now applied server-side
+  // (loadDevices sends them as query params — see the comment there), so
+  // all that's left to do client-side is order the page that came back.
+  // This still only sorts within the current page rather than across the
+  // whole filtered result set, same as before this fix — a smaller,
+  // separate limitation of pagination+sort interaction that filtering
+  // alone doesn't touch.
+  const applySort = () => {
+    const filtered = devices.slice();
 
     filtered.sort((a, b) => {
       // The only array-valued Device field ('tags') is handled by its own
@@ -232,6 +246,10 @@ const DevicesListPage: React.FC = () => {
     setFilterLocation('');
     setFilterTags('');
   };
+
+  const hasActiveFilters = Boolean(
+    searchTerm || filterVendor || filterType || filterStatus || filterLocation || filterTags
+  );
 
   const totalPages = Math.ceil(totalCount / pageSize);
 
@@ -468,8 +486,12 @@ const DevicesListPage: React.FC = () => {
         <div className="empty-state">
           <div className="empty-icon">🖥️</div>
           <h3>{t('devices.no_devices')}</h3>
-          <p>{devices.length === 0 ? t('devices.add_first_device') : t('devices.adjust_filters')}</p>
-          {devices.length === 0 && (
+          {/* devices is now the server-filtered result itself (see
+              loadDevices), so an empty list here can mean either "no
+              devices at all" or "none match the current filters" —
+              hasActiveFilters is what tells those two apart. */}
+          <p>{hasActiveFilters ? t('devices.adjust_filters') : t('devices.add_first_device')}</p>
+          {!hasActiveFilters && (
             <button onClick={handleAddDevice} className="btn-primary">
               {t('devices.add_device')}
             </button>
@@ -497,8 +519,6 @@ const DevicesListPage: React.FC = () => {
         totalPages={totalPages}
         pageSize={pageSize}
         totalCount={totalCount}
-        filteredCount={filteredDevices.length}
-        totalDeviceCount={devices.length}
         onPageChange={handlePageChange}
         onPageSizeChange={handlePageSizeChange}
       />

@@ -148,6 +148,36 @@ class DeviceViewSet(viewsets.ModelViewSet):
         if criticality:
             queryset = queryset.filter(criticality=criticality)
 
+        # vendor/device_type/protocol are also declared in filterset_fields
+        # above, which — same as every other ViewSet in this project — has
+        # no effect: DEFAULT_FILTER_BACKENDS only lists SearchFilter/
+        # OrderingFilter, no DjangoFilterBackend. DevicesFilters.tsx's
+        # vendor and type dropdowns happened to work anyway because
+        # DevicesListPage.tsx was filtering the already-fetched page
+        # client-side; see loadDevices()/applyFilters() there for why that
+        # broke down under real pagination (>page_size devices) and why
+        # these params are now sent to the server instead.
+        vendor_param = self.request.query_params.get('vendor', None)
+        if vendor_param:
+            queryset = queryset.filter(vendor_id=vendor_param)
+
+        device_type_param = self.request.query_params.get('device_type', None)
+        if device_type_param:
+            queryset = queryset.filter(device_type_id=device_type_param)
+
+        protocol_param = self.request.query_params.get('protocol', None)
+        if protocol_param:
+            queryset = queryset.filter(protocol=protocol_param)
+
+        # Filter by location — DevicesFilters.tsx's Location box is a
+        # separate free-text field from the general search box below (which
+        # already covers location via icontains too, as one of several
+        # fields); this dedicated param preserves that field's own,
+        # location-only semantics now that it's sent to the server.
+        location_param = self.request.query_params.get('location', None)
+        if location_param:
+            queryset = queryset.filter(location__icontains=location_param)
+
         # Filter by tag — comma-separated, any-overlap. Reuses
         # device_matches_filters (the same function device_scope and
         # NotificationRule/CompliancePolicy device_filters use) rather than

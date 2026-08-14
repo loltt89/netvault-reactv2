@@ -500,6 +500,75 @@ class DeviceAPITestCase(APITestCase):
         self.assertNotIn('supersecret', str(response.data))
 
 
+class DeviceListFilterTestCase(APITestCase):
+    """
+    vendor/device_type/protocol/location are declared in DeviceViewSet's
+    filterset_fields, which — like every other ViewSet in this project —
+    has no actual effect (no DjangoFilterBackend installed, see
+    REST_FRAMEWORK['DEFAULT_FILTER_BACKENDS'] in settings.py). status/
+    criticality/tags/backup_enabled/search already had manual get_queryset()
+    handling; vendor/device_type/protocol/location didn't, so
+    DevicesFilters.tsx's vendor/type dropdowns and Location box only
+    appeared to work because DevicesListPage.tsx was filtering the
+    already-fetched page client-side — silently incomplete once a fleet
+    has more devices than one page (see DevicesListPage.tsx's loadDevices).
+    """
+
+    def setUp(self):
+        User = get_user_model()
+        self.admin = User.objects.create_user(
+            email='filter-admin@example.com',
+            username='filter-admin',
+            password='TestPass123!',
+            role='administrator'
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+
+        self.cisco = Vendor.objects.create(name='Cisco', slug='cisco')
+        self.juniper = Vendor.objects.create(name='Juniper', slug='juniper')
+        self.router_type = DeviceType.objects.create(name='Router', slug='router')
+        self.switch_type = DeviceType.objects.create(name='Switch', slug='switch')
+
+        self.cisco_router = Device.objects.create(
+            name='Cisco-Router', ip_address='10.0.0.30', vendor=self.cisco,
+            device_type=self.router_type, protocol='ssh', location='DC1-RackA',
+            username='admin', password_encrypted=encrypt_data('pass'), created_by=self.admin
+        )
+        self.juniper_switch = Device.objects.create(
+            name='Juniper-Switch', ip_address='10.0.0.31', vendor=self.juniper,
+            device_type=self.switch_type, protocol='telnet', location='DC2-RackB',
+            username='admin', password_encrypted=encrypt_data('pass'), created_by=self.admin
+        )
+
+    def test_filter_by_vendor(self):
+        response = self.client.get('/api/v1/devices/devices/', {'vendor': self.cisco.id})
+        names = [d['name'] for d in response.data['results']]
+        self.assertIn('Cisco-Router', names)
+        self.assertNotIn('Juniper-Switch', names)
+
+    def test_filter_by_device_type(self):
+        response = self.client.get('/api/v1/devices/devices/', {'device_type': self.switch_type.id})
+        names = [d['name'] for d in response.data['results']]
+        self.assertIn('Juniper-Switch', names)
+        self.assertNotIn('Cisco-Router', names)
+
+    def test_filter_by_protocol(self):
+        response = self.client.get('/api/v1/devices/devices/', {'protocol': 'telnet'})
+        names = [d['name'] for d in response.data['results']]
+        self.assertIn('Juniper-Switch', names)
+        self.assertNotIn('Cisco-Router', names)
+
+    def test_filter_by_location(self):
+        """location is a dedicated, icontains-partial param — distinct from
+        the general `search` box, which also happens to cover location
+        among other fields."""
+        response = self.client.get('/api/v1/devices/devices/', {'location': 'rackb'})
+        names = [d['name'] for d in response.data['results']]
+        self.assertIn('Juniper-Switch', names)
+        self.assertNotIn('Cisco-Router', names)
+
+
 class DeviceBulkActionsTestCase(APITestCase):
     """Tests for bulk_backup_now and bulk_tag_edit"""
 
