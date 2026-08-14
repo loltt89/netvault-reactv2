@@ -1,7 +1,7 @@
 """
 Tests for core module - DeviceLock and utilities
 """
-from django.test import TestCase, SimpleTestCase, override_settings
+from django.test import TestCase, SimpleTestCase, TransactionTestCase, override_settings
 from unittest.mock import patch, MagicMock
 import redis
 
@@ -1552,3 +1552,133 @@ class RateLimitTestCase(TestCase):
 
         with patch('core.rate_limit.cache.get', side_effect=Exception('cache unavailable')):
             self.assertTrue(check_rate_limit('rl:test:d', limit=1, window_seconds=60))
+
+
+class IsPrivateOrLoopbackIpTestCase(SimpleTestCase):
+    """Tests for core.host_validation.is_private_or_loopback_ip — the
+    shared range-check both the HTTP Host-header patch and the WebSocket
+    Origin validator (core/asgi_validators.py) build on."""
+
+    def test_private_ranges_match(self):
+        from core.host_validation import is_private_or_loopback_ip
+        for host in ['10.12.98.40', '10.0.0.1', '172.16.0.1', '172.31.255.254', '192.168.1.1', '127.0.0.1']:
+            self.assertTrue(is_private_or_loopback_ip(host), host)
+
+    def test_public_ip_does_not_match(self):
+        from core.host_validation import is_private_or_loopback_ip
+        for host in ['8.8.8.8', '1.1.1.1', '172.32.0.1', '172.15.0.1']:
+            self.assertFalse(is_private_or_loopback_ip(host), host)
+
+    def test_hostname_does_not_match(self):
+        from core.host_validation import is_private_or_loopback_ip
+        self.assertFalse(is_private_or_loopback_ip('example.com'))
+        self.assertFalse(is_private_or_loopback_ip('not-an-ip.local'))
+        self.assertFalse(is_private_or_loopback_ip(''))
+
+
+class PrivateNetworkAwareOriginValidatorTestCase(TestCase):
+    """
+    Tests for core.asgi_validators.PrivateNetworkAwareOriginValidator —
+    the fix for channels.security.websocket.AllowedHostsOriginValidator
+    not knowing about ALLOW_PRIVATE_NETWORK_HOSTS at all (it only checks
+    settings.ALLOWED_HOSTS as a literal list), which is why this
+    self-hosted appliance's WebSocket connection broke every time its own
+    LAN address moved under DHCP even though regular HTTP access
+    (patched separately, see core/host_validation.py) kept working.
+    """
+
+    def _validator(self):
+        from urllib.parse import urlparse
+        from core.asgi_validators import PrivateNetworkAwareOriginValidator
+        return PrivateNetworkAwareOriginValidator(None, ['example.com']), urlparse
+
+    @override_settings(ALLOW_PRIVATE_NETWORK_HOSTS=True)
+    def test_private_ip_origin_allowed_when_flag_on(self):
+        validator, urlparse = self._validator()
+        self.assertTrue(validator.valid_origin(urlparse('http://10.12.98.40')))
+        self.assertTrue(validator.valid_origin(urlparse('http://192.168.1.1:3000')))
+
+    @override_settings(ALLOW_PRIVATE_NETWORK_HOSTS=False)
+    def test_private_ip_origin_rejected_when_flag_off(self):
+        validator, urlparse = self._validator()
+        self.assertFalse(validator.valid_origin(urlparse('http://10.12.98.40')))
+
+    @override_settings(ALLOW_PRIVATE_NETWORK_HOSTS=True)
+    def test_public_origin_still_rejected_when_flag_on(self):
+        """The flag widens private-IP handling only — an arbitrary public
+        origin must still be rejected, matching the parent class's
+        original behavior."""
+        validator, urlparse = self._validator()
+        self.assertFalse(validator.valid_origin(urlparse('http://evil.example.org')))
+
+    @override_settings(ALLOW_PRIVATE_NETWORK_HOSTS=True)
+    def test_literal_allowed_hosts_entry_still_works(self):
+        """A real ALLOWED_HOSTS domain entry (not an IP) must still match
+        via the normal parent-class path."""
+        validator, urlparse = self._validator()
+        self.assertTrue(validator.valid_origin(urlparse('http://example.com')))
+
+
+class WebSocketOriginIntegrationTestCase(TransactionTestCase):
+    """
+    End-to-end test against the real ASGI application (netvault.asgi) —
+    proves the fix at the level that actually matters: a WebSocket
+    handshake from a private-LAN Origin, with valid auth, is accepted
+    when ALLOW_PRIVATE_NETWORK_HOSTS is on, and still rejected when it's
+    off (falling back to the exact ALLOWED_HOSTS list, same as upstream
+    Channels' own AllowedHostsOriginValidator).
+
+    TransactionTestCase, not TestCase: JWTAuthMiddleware's DB lookup runs
+    via channels' database_sync_to_async in a separate thread, which
+    deadlocks against TestCase's per-test SQLite transaction wrapper
+    ("database table is locked") — TransactionTestCase doesn't wrap the
+    test body in an outer transaction, avoiding that.
+    """
+
+    def setUp(self):
+        User = get_user_model()
+        self.user = User.objects.create_user(
+            email='wsuser@example.com', username='wsuser', password='TestPass123!'
+        )
+
+    def _token_cookie(self):
+        from rest_framework_simplejwt.tokens import RefreshToken
+        token = str(RefreshToken.for_user(self.user).access_token)
+        return f'access_token={token}'.encode()
+
+    def _connect(self, origin: bytes):
+        from channels.testing import WebsocketCommunicator
+        from netvault.asgi import application
+        import asyncio
+
+        # Generated synchronously, outside the coroutine below —
+        # RefreshToken.for_user() writes an OutstandingToken row, and
+        # Django's async-safety guard rejects a sync DB call made from
+        # inside an async context.
+        cookie = self._token_cookie()
+
+        async def run():
+            communicator = WebsocketCommunicator(
+                application, '/ws/backup_logs/',
+                headers=[(b'origin', origin), (b'cookie', cookie)],
+            )
+            connected, _ = await communicator.connect()
+            await communicator.disconnect()
+            return connected
+
+        return asyncio.run(run())
+
+    @override_settings(
+        ALLOW_PRIVATE_NETWORK_HOSTS=True, ALLOWED_HOSTS=['example.com'],
+        # This test's job is Origin+Auth gating, not the consumer's
+        # channel_layer.group_add() afterward — swap in the in-memory
+        # channel layer so a successful connect() doesn't also require a
+        # real, unauthenticated-by-default Redis instance.
+        CHANNEL_LAYERS={'default': {'BACKEND': 'channels.layers.InMemoryChannelLayer'}},
+    )
+    def test_private_lan_origin_connects_when_flag_on(self):
+        self.assertTrue(self._connect(b'http://10.12.98.40'))
+
+    @override_settings(ALLOW_PRIVATE_NETWORK_HOSTS=False, ALLOWED_HOSTS=['example.com'])
+    def test_private_lan_origin_rejected_when_flag_off(self):
+        self.assertFalse(self._connect(b'http://10.12.98.40'))

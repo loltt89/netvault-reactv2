@@ -28,7 +28,10 @@ from django.http import request as django_request
 
 _original_validate_host = django_request.validate_host
 
-_PRIVATE_NETWORKS = [
+# Public (not underscore-prefixed) — also imported by
+# core/asgi_validators.py, which needs the exact same range list for the
+# WebSocket layer's Origin check. One list, not two that could drift.
+PRIVATE_NETWORKS = [
     ipaddress.ip_network('10.0.0.0/8'),
     ipaddress.ip_network('172.16.0.0/12'),
     ipaddress.ip_network('192.168.0.0/16'),
@@ -36,16 +39,26 @@ _PRIVATE_NETWORKS = [
 ]
 
 
+def is_private_or_loopback_ip(host: str) -> bool:
+    """
+    True if `host` parses as an IP literal inside one of PRIVATE_NETWORKS.
+    False for anything that isn't a bare IP (hostnames, empty string) or
+    falls outside those ranges. Shared by both the HTTP Host-header patch
+    below and core/asgi_validators.py's WebSocket Origin check.
+    """
+    try:
+        # Defensively strip IPv6 literal brackets; ip_address() rejects them.
+        ip = ipaddress.ip_address(host.strip('[]'))
+    except ValueError:
+        return False
+    return any(ip in network for network in PRIVATE_NETWORKS)
+
+
 def _validate_host_allow_private_networks(host, allowed_hosts):
     # By the time validate_host() is called, get_host() has already run
     # split_domain_port() on the raw header — host here is lowercased,
-    # stripped of :port, and stripped of a trailing dot. Still strip a
-    # bracketed IPv6 literal defensively; ip_address() doesn't accept them.
-    try:
-        ip = ipaddress.ip_address(host.strip('[]'))
-    except ValueError:
-        ip = None
-    if ip is not None and any(ip in network for network in _PRIVATE_NETWORKS):
+    # stripped of :port, and stripped of a trailing dot.
+    if is_private_or_loopback_ip(host):
         return True
     return _original_validate_host(host, allowed_hosts)
 
