@@ -78,6 +78,29 @@ class ComplianceViolationViewSet(viewsets.ReadOnlyModelViewSet):
         scoped_ids = get_scoped_device_ids(self.request.user)
         if scoped_ids is not None:
             queryset = queryset.filter(device_id__in=scoped_ids)
+
+        # filterset_fields above claims 'status'/'policy'/'device' are
+        # filterable via DjangoFilterBackend, but that backend is never
+        # installed/configured in this project (see DEFAULT_FILTER_BACKENDS
+        # in settings.py — only SearchFilter/OrderingFilter are active),
+        # so filterset_fields here has always been dead configuration.
+        # ComplianceViolations.tsx's status dropdown (defaulting to
+        # "open", the exact scenario a compliance reviewer actually
+        # wants) sends ?status=<value> and got the full, unfiltered
+        # open+resolved list back regardless of selection — same class of
+        # bug as BackupViewSet's status/status__in fix.
+        status_param = self.request.query_params.get('status', None)
+        if status_param:
+            queryset = queryset.filter(status=status_param)
+
+        policy_param = self.request.query_params.get('policy', None)
+        if policy_param:
+            queryset = queryset.filter(policy_id=policy_param)
+
+        device_param = self.request.query_params.get('device', None)
+        if device_param:
+            queryset = queryset.filter(device_id=device_param)
+
         return queryset
 
     @action(detail=False, methods=['get'])

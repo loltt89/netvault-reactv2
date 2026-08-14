@@ -3,6 +3,7 @@ Tests for the compliance app: policy evaluation engine + API.
 """
 from django.test import TestCase
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from rest_framework.test import APITestCase
 from rest_framework import status
 
@@ -311,3 +312,46 @@ class ComplianceViolationAPITestCase(APITestCase):
         self.client.force_authenticate(user=self.viewer)
         response = self.client.post(f'/api/v1/compliance/violations/{self.core_violation.id}/acknowledge/')
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_filter_by_status(self):
+        """
+        Regression test: filterset_fields claimed 'status' was filterable,
+        but DjangoFilterBackend (the only thing that attribute means
+        anything to) is never installed/configured — ?status=<value> was
+        silently ignored, always returning every status regardless of
+        ComplianceViolations.tsx's status dropdown selection.
+        """
+        self.core_violation.status = 'resolved'
+        self.core_violation.resolved_at = timezone.now()
+        self.core_violation.save(update_fields=['status', 'resolved_at'])
+
+        self.client.force_authenticate(user=self.viewer)
+        response = self.client.get('/api/v1/compliance/violations/?status=open')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        ids = {v['id'] for v in response.data['results']}
+        self.assertEqual(ids, {self.edge_violation.id})
+
+        response = self.client.get('/api/v1/compliance/violations/?status=resolved')
+        ids = {v['id'] for v in response.data['results']}
+        self.assertEqual(ids, {self.core_violation.id})
+
+    def test_filter_by_policy(self):
+        other_policy = CompliancePolicy.objects.create(
+            name='No SSH v1', severity='critical',
+            rules=[{'type': 'must_not_contain', 'pattern': 'ssh v1'}],
+        )
+        other_violation = ComplianceViolation.objects.create(
+            policy=other_policy, device=self.core_device, rule_index=0,
+            rule_description='no ssh v1', status='open',
+        )
+
+        self.client.force_authenticate(user=self.viewer)
+        response = self.client.get(f'/api/v1/compliance/violations/?policy={other_policy.id}')
+        ids = {v['id'] for v in response.data['results']}
+        self.assertEqual(ids, {other_violation.id})
+
+    def test_filter_by_device(self):
+        self.client.force_authenticate(user=self.viewer)
+        response = self.client.get(f'/api/v1/compliance/violations/?device={self.core_device.id}')
+        ids = {v['id'] for v in response.data['results']}
+        self.assertEqual(ids, {self.core_violation.id})

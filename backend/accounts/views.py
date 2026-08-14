@@ -515,14 +515,45 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = AuditLog.objects.all()
     serializer_class = AuditLogSerializer
     permission_classes = [permissions.IsAuthenticated, CanViewAuditLogs]
+    # SearchFilter is active project-wide (DEFAULT_FILTER_BACKENDS) — this
+    # is all that was ever needed to make AuditLogsPage.tsx's search box
+    # work; unlike action/resource_type/success/user below, it needed no
+    # manual get_queryset() handling, just this declaration.
+    search_fields = ['resource_name', 'description', 'user__email']
 
     def get_queryset(self):
-        """Filter audit logs based on role"""
+        """Filter audit logs based on role, then by AuditLogsPage.tsx's filter bar"""
         user = self.request.user
 
         # Administrators and auditors can see all logs
         if user.role in ['administrator', 'auditor']:
-            return AuditLog.objects.all()
+            queryset = AuditLog.objects.all()
+        else:
+            # Others can only see their own logs
+            queryset = AuditLog.objects.filter(user=user)
 
-        # Others can only see their own logs
-        return AuditLog.objects.filter(user=user)
+        # action/resource_type/success/user were declared as query params
+        # AuditLogsPage.tsx's filter bar sends, but never actually
+        # enforced anywhere — there's no DjangoFilterBackend installed in
+        # this project (only SearchFilter/OrderingFilter are active) to
+        # give a filterset_fields-style declaration any effect, and this
+        # ViewSet never had manual handling for any of them. Every filter
+        # selection silently returned the same unfiltered (role-scoped)
+        # list.
+        action_param = self.request.query_params.get('action', None)
+        if action_param:
+            queryset = queryset.filter(action=action_param)
+
+        resource_type_param = self.request.query_params.get('resource_type', None)
+        if resource_type_param:
+            queryset = queryset.filter(resource_type=resource_type_param)
+
+        success_param = self.request.query_params.get('success', None)
+        if success_param:
+            queryset = queryset.filter(success=success_param.lower() == 'true')
+
+        user_param = self.request.query_params.get('user', None)
+        if user_param:
+            queryset = queryset.filter(user_id=user_param)
+
+        return queryset

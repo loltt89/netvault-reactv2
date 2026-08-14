@@ -1566,6 +1566,42 @@ class AuditLogViewSetTestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(len(response.data['results']), 1)
 
+    def test_filter_by_action_and_resource_type_and_success(self):
+        """
+        Regression test: none of AuditLogsPage.tsx's filter bar controls
+        (action/resource_type/success) had any effect on the returned
+        queryset before this fix — every selection returned the same
+        unfiltered, role-scoped list.
+        """
+        AuditLog.objects.create(
+            user=self.admin, action='delete', resource_type='Device',
+            description='Deleted a device', success=False, error_message='boom',
+        )
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.get('/api/v1/audit-logs/?action=delete')
+        self.assertEqual({r['action'] for r in response.data['results']}, {'delete'})
+
+        response = self.client.get('/api/v1/audit-logs/?resource_type=Device')
+        self.assertEqual({r['resource_type'] for r in response.data['results']}, {'Device'})
+
+        response = self.client.get('/api/v1/audit-logs/?success=false')
+        self.assertTrue(all(r['success'] is False for r in response.data['results']))
+        self.assertEqual(len(response.data['results']), 1)
+
+    def test_search_filter(self):
+        """search_fields was never declared — the search box was
+        equivalent to no filter selected at all."""
+        AuditLog.objects.create(
+            user=self.admin, action='backup', resource_type='Device',
+            resource_name='Core-Router-7', description='Manual backup triggered',
+        )
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.get('/api/v1/audit-logs/?search=Core-Router-7')
+        self.assertEqual(len(response.data['results']), 1)
+        self.assertEqual(response.data['results'][0]['resource_name'], 'Core-Router-7')
+
 
 class PermissionClassesTestCase(TestCase):
     """Tests for permission classes"""
